@@ -4,6 +4,12 @@
 
 All telemetry stripped. All injected security-prompt guardrails removed. All experimental features unlocked. One binary, zero callbacks home.
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/paoloanzn/free-code/main/install.sh | bash
+```
+
+> Checks your system, installs Bun if needed, clones, builds with all features enabled, and puts `free-code` on your PATH. Then just `export ANTHROPIC_API_KEY="sk-ant-..."` and run `free-code`.
+
 <p align="center">
   <img src="assets/screenshot.png" alt="free-code screenshot" width="800" />
 </p>
