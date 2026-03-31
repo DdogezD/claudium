@@ -61,6 +61,22 @@ See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their stat
 
 ---
 
+## Quick install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paoloanzn/free-code/main/install.sh | bash
+```
+
+This will check your system, install Bun if needed, clone the repo, build the binary with all experimental features enabled, and symlink it as `free-code` on your PATH.
+
+After install, just run:
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+free-code
+```
+
+---
+
 ## Requirements
 
 - [Bun](https://bun.sh) >= 1.3.11
