@@ -141,6 +141,7 @@ const defines = {
       }
     : {}),
   'process.env.CLAUDE_CODE_VERIFY_PLAN': JSON.stringify('false'),
+  'process.env.CCR_FORCE_BUNDLE': JSON.stringify('true'),
   'MACRO.VERSION': JSON.stringify(version),
   'MACRO.BUILD_TIME': JSON.stringify(buildTime),
   'MACRO.PACKAGE_URL': JSON.stringify(pkg.name),
