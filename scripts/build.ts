@@ -75,6 +75,7 @@ const externals = [
 
 const defines = {
   'process.env.USER_TYPE': JSON.stringify('external'),
+  'process.env.CLAUDE_CODE_FORCE_FULL_LOGO': JSON.stringify('true'),
   ...(dev
     ? { 'process.env.NODE_ENV': JSON.stringify('development') }
     : {}),
