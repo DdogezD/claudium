@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "bun run ./scripts/build.ts",
+    "build:dev": "bun run ./scripts/build.ts --dev",
     "compile": "bun run ./scripts/build.ts --compile",
     "dev": "bun run ./src/entrypoints/cli.tsx"
   },
