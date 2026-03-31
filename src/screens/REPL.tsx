@@ -270,6 +270,9 @@ import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL') ? require('../tools/WebBrowserTool/WebBrowserPanel.js') as typeof import('../tools/WebBrowserTool/WebBrowserPanel.js') : null;
+const UltraplanLaunchDialog: typeof import('../components/UltraplanLaunchDialog.js').UltraplanLaunchDialog = feature('ULTRAPLAN') ? require('../components/UltraplanLaunchDialog.js').UltraplanLaunchDialog : () => null;
+const UltraplanChoiceDialog: typeof import('../components/UltraplanChoiceDialog.js').UltraplanChoiceDialog = feature('ULTRAPLAN') ? require('../components/UltraplanChoiceDialog.js').UltraplanChoiceDialog : () => null;
+const launchUltraplan: typeof import('../commands/ultraplan.js').launchUltraplan = feature('ULTRAPLAN') ? require('../commands/ultraplan.js').launchUltraplan : () => Promise.resolve('');
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js';
 import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
