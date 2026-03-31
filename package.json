@@ -15,7 +15,7 @@
   "scripts": {
     "build": "bun run ./scripts/build.ts",
     "build:dev": "bun run ./scripts/build.ts --dev",
-    "build:dev:full": "bun run ./scripts/build.ts --dev --feature=QUICK_SEARCH --feature=HISTORY_PICKER --feature=TOKEN_BUDGET --feature=VOICE_MODE --feature=ULTRAPLAN --feature=CACHED_MICROCOMPACT --feature=PROMPT_CACHE_BREAK_DETECTION",
+    "build:dev:full": "bun run ./scripts/build.ts --dev --feature=QUICK_SEARCH --feature=HISTORY_PICKER --feature=TOKEN_BUDGET --feature=ULTRAPLAN --feature=CACHED_MICROCOMPACT --feature=PROMPT_CACHE_BREAK_DETECTION",
     "compile": "bun run ./scripts/build.ts --compile",
     "dev": "bun run ./src/entrypoints/cli.tsx"
   },

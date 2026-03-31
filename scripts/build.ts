@@ -40,18 +40,20 @@ function getVersionChangelog(): string {
   )
 }
 
-const features: string[] = []
+const defaultFeatures = ['VOICE_MODE']
+const featureSet = new Set(defaultFeatures)
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]
   if (arg === '--feature' && args[i + 1]) {
-    features.push(args[i + 1]!)
+    featureSet.add(args[i + 1]!)
     i += 1
     continue
   }
   if (arg.startsWith('--feature=')) {
-    features.push(arg.slice('--feature='.length))
+    featureSet.add(arg.slice('--feature='.length))
   }
 }
+const features = [...featureSet]
 
 const outfile = compile
   ? dev
