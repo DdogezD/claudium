@@ -210,33 +210,58 @@ export function getRecentReleaseNotes(
   changelogContent: string = getStoredChangelogFromMemory(),
 ): string[] {
   try {
-    const releaseNotes = parseChangelog(changelogContent)
-
-    // Strip SHA from both versions to compare only the base versions
-    const baseCurrentVersion = coerce(currentVersion)
-    const basePreviousVersion = previousVersion ? coerce(previousVersion) : null
-
-    if (
-      !basePreviousVersion ||
-      (baseCurrentVersion &&
-        gt(baseCurrentVersion.version, basePreviousVersion.version))
-    ) {
-      // Get all versions that are newer than the last seen version
-      return Object.entries(releaseNotes)
-        .filter(
-          ([version]) =>
-            !basePreviousVersion || gt(version, basePreviousVersion.version),
-        )
-        .sort(([versionA], [versionB]) => (gt(versionA, versionB) ? -1 : 1)) // Sort newest first
-        .flatMap(([_, notes]) => notes)
-        .filter(Boolean)
-        .slice(0, MAX_RELEASE_NOTES_SHOWN)
-    }
+    return getRecentReleaseNoteGroups(
+      currentVersion,
+      previousVersion,
+      changelogContent,
+    )
+      .flatMap(([, notes]) => notes)
+      .filter(Boolean)
+      .slice(0, MAX_RELEASE_NOTES_SHOWN)
   } catch (error) {
     logError(toError(error))
     return []
   }
   return []
+}
+
+export function getRecentReleaseNoteGroups(
+  currentVersion: string,
+  previousVersion: string | null | undefined,
+  changelogContent: string = getStoredChangelogFromMemory(),
+  maxVersions: number = Number.POSITIVE_INFINITY,
+): Array<[string, string[]]> {
+  try {
+    const releaseNotes = parseChangelog(changelogContent)
+
+    // Strip SHA/build metadata from both versions to compare only the base semver.
+    const baseCurrentVersion = coerce(currentVersion)
+    const basePreviousVersion = previousVersion ? coerce(previousVersion) : null
+
+    if (!baseCurrentVersion) {
+      return []
+    }
+
+    if (
+      basePreviousVersion &&
+      !gt(baseCurrentVersion.version, basePreviousVersion.version)
+    ) {
+      return []
+    }
+
+    return Object.entries(releaseNotes)
+      .filter(
+        ([version]) =>
+          !basePreviousVersion || gt(version, basePreviousVersion.version),
+      )
+      .sort(([versionA], [versionB]) => (gt(versionA, versionB) ? -1 : 1))
+      .slice(0, maxVersions)
+      .map(([version, notes]) => [version, notes.filter(Boolean)] as [string, string[]])
+      .filter(([, notes]) => notes.length > 0)
+  } catch (error) {
+    logError(toError(error))
+    return []
+  }
 }
 
 /**

@@ -3,8 +3,10 @@ import {
   CHANGELOG_URL,
   fetchAndStoreChangelog,
   getAllReleaseNotes,
+  getRecentReleaseNoteGroups,
   getStoredChangelog,
 } from '../../utils/releaseNotes.js'
+import { getGlobalConfig } from '../../utils/config.js'
 
 function formatReleaseNotes(notes: Array<[string, string[]]>): string {
   return notes
@@ -18,7 +20,7 @@ function formatReleaseNotes(notes: Array<[string, string[]]>): string {
 
 export async function call(): Promise<LocalCommandResult> {
   // Try to fetch the latest changelog with a 500ms timeout
-  let freshNotes: Array<[string, string[]]> = []
+  let changelog = ''
 
   try {
     const timeoutPromise = new Promise<void>((_, reject) => {
@@ -26,20 +28,28 @@ export async function call(): Promise<LocalCommandResult> {
     })
 
     await Promise.race([fetchAndStoreChangelog(), timeoutPromise])
-    freshNotes = getAllReleaseNotes(await getStoredChangelog())
+    changelog = await getStoredChangelog()
   } catch {
     // Either fetch failed or timed out - just use cached notes
   }
 
-  // If we have fresh notes from the quick fetch, use those
-  if (freshNotes.length > 0) {
-    return { type: 'text', value: formatReleaseNotes(freshNotes) }
+  if (!changelog) {
+    changelog = await getStoredChangelog()
   }
 
-  // Otherwise check cached notes
-  const cachedNotes = getAllReleaseNotes(await getStoredChangelog())
-  if (cachedNotes.length > 0) {
-    return { type: 'text', value: formatReleaseNotes(cachedNotes) }
+  const recentNotes = getRecentReleaseNoteGroups(
+    MACRO.VERSION,
+    getGlobalConfig().lastReleaseNotesSeen,
+    changelog,
+    3,
+  )
+  if (recentNotes.length > 0) {
+    return { type: 'text', value: formatReleaseNotes(recentNotes) }
+  }
+
+  const latestNotes = getAllReleaseNotes(changelog).slice(-3).reverse()
+  if (latestNotes.length > 0) {
+    return { type: 'text', value: formatReleaseNotes(latestNotes) }
   }
 
   // Nothing available, show link
