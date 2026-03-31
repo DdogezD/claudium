@@ -22,9 +22,10 @@ externalized `@ant/*` packages.
 - `bun run build:dev`
   Builds `./cli-dev` with a dev-stamped version and experimental GrowthBook key.
 - `bun run build:dev:full`
-  Builds `./cli-dev` with the current compile-safe experimental bundle:
-  `QUICK_SEARCH`, `HISTORY_PICKER`, `TOKEN_BUDGET`, `ULTRAPLAN`,
-  `CACHED_MICROCOMPACT`, and `PROMPT_CACHE_BREAK_DETECTION`.
+  Builds `./cli-dev` with the entire current "Working Experimental Features"
+  bundle from this document, minus `CHICAGO_MCP`. That flag still compiles,
+  but the external binary does not boot cleanly with it because startup
+  reaches the missing `@ant/computer-use-mcp` runtime package.
 
 ## Default Build Flags
 

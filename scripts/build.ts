@@ -10,6 +10,45 @@ const args = process.argv.slice(2)
 const compile = args.includes('--compile')
 const dev = args.includes('--dev')
 
+const fullExperimentalFeatures = [
+  'AGENT_MEMORY_SNAPSHOT',
+  'AGENT_TRIGGERS',
+  'AGENT_TRIGGERS_REMOTE',
+  'AWAY_SUMMARY',
+  'BASH_CLASSIFIER',
+  'BRIDGE_MODE',
+  'BUILTIN_EXPLORE_PLAN_AGENTS',
+  'CACHED_MICROCOMPACT',
+  'CCR_AUTO_CONNECT',
+  'CCR_MIRROR',
+  'CCR_REMOTE_SETUP',
+  'COMPACTION_REMINDERS',
+  'CONNECTOR_TEXT',
+  'EXTRACT_MEMORIES',
+  'HISTORY_PICKER',
+  'HOOK_PROMPTS',
+  'KAIROS_BRIEF',
+  'KAIROS_CHANNELS',
+  'LODESTONE',
+  'MCP_RICH_OUTPUT',
+  'MESSAGE_ACTIONS',
+  'NATIVE_CLIPBOARD_IMAGE',
+  'NEW_INIT',
+  'POWERSHELL_AUTO_MODE',
+  'PROMPT_CACHE_BREAK_DETECTION',
+  'QUICK_SEARCH',
+  'SHOT_STATS',
+  'TEAMMEM',
+  'TOKEN_BUDGET',
+  'TREE_SITTER_BASH',
+  'TREE_SITTER_BASH_SHADOW',
+  'ULTRAPLAN',
+  'ULTRATHINK',
+  'UNATTENDED_RETRY',
+  'VERIFICATION_AGENT',
+  'VOICE_MODE',
+] as const
+
 function runCommand(cmd: string[]): string | null {
   const proc = Bun.spawnSync({
     cmd,
@@ -44,6 +83,21 @@ const defaultFeatures = ['VOICE_MODE']
 const featureSet = new Set(defaultFeatures)
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]
+  if (arg === '--feature-set' && args[i + 1]) {
+    if (args[i + 1] === 'dev-full') {
+      for (const feature of fullExperimentalFeatures) {
+        featureSet.add(feature)
+      }
+    }
+    i += 1
+    continue
+  }
+  if (arg === '--feature-set=dev-full') {
+    for (const feature of fullExperimentalFeatures) {
+      featureSet.add(feature)
+    }
+    continue
+  }
   if (arg === '--feature' && args[i + 1]) {
     featureSet.add(args[i + 1]!)
     i += 1
