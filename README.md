@@ -4,6 +4,10 @@
 
 All telemetry stripped. All injected security-prompt guardrails removed. All experimental features unlocked. One binary, zero callbacks home.
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="free-code screenshot" width="800" />
+</p>
+
 ---
 
 ## What is this
