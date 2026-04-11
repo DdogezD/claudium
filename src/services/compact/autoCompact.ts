@@ -27,14 +27,23 @@ import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 
 // Reserve this many tokens for output during compaction
 // Based on p99.99 of compact summary output being 17,387 tokens.
-const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
+export const DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 
 // Returns the context window size minus the max output tokens for the model
 export function getEffectiveContextWindowSize(model: string): number {
-  const reservedTokensForSummary = Math.min(
-    getMaxOutputTokensForModel(model),
-    MAX_OUTPUT_TOKENS_FOR_SUMMARY,
-  )
+  // Allow overriding max output tokens for summary via environment variable.
+  // If the env var is defined, use the provided value directly.
+  const envSummaryTokens = process.env.CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS
+  const parsedSummaryTokens = envSummaryTokens
+    ? parseInt(envSummaryTokens, 10)
+    : DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY
+  const reservedTokensForSummary = envSummaryTokens !== undefined &&
+    !Number.isNaN(parsedSummaryTokens)
+    ? parsedSummaryTokens
+    : Math.min(
+        getMaxOutputTokensForModel(model),
+        DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY,
+      )
   let contextWindow = getContextWindowForModel(model, getSdkBetas())
 
   const autoCompactWindow = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW
@@ -59,10 +68,21 @@ export type AutoCompactTrackingState = {
   consecutiveFailures?: number
 }
 
-export const AUTOCOMPACT_BUFFER_TOKENS = 13_000
+export const DEFAULT_AUTOCOMPACT_BUFFER_TOKENS = 13_000
 export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000
 export const ERROR_THRESHOLD_BUFFER_TOKENS = 20_000
 export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
+
+export function getAutoCompactBufferTokens(): number {
+  // Allow overriding autocompact buffer size via environment variable.
+  // If the env var is defined, use the provided value directly.
+  const envBuffer = process.env.CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS
+  const parsed = envBuffer !== undefined ? parseInt(envBuffer, 10) : NaN
+  if (envBuffer !== undefined && !Number.isNaN(parsed)) {
+    return parsed
+  }
+  return DEFAULT_AUTOCOMPACT_BUFFER_TOKENS
+}
 
 // Stop trying autocompact after this many consecutive failures.
 // BQ 2026-03-10: 1,279 sessions had 50+ consecutive failures (up to 3,272)
@@ -72,8 +92,9 @@ const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3
 export function getAutoCompactThreshold(model: string): number {
   const effectiveContextWindow = getEffectiveContextWindowSize(model)
 
+  const autocompactBufferTokens = getAutoCompactBufferTokens()
   const autocompactThreshold =
-    effectiveContextWindow - AUTOCOMPACT_BUFFER_TOKENS
+    effectiveContextWindow - autocompactBufferTokens
 
   // Override for easier testing of autocompact
   const envPercent = process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
