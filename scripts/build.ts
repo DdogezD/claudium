@@ -88,6 +88,41 @@ for (let i = 0; i < args.length; i += 1) {
       for (const feature of fullExperimentalFeatures) {
         featureSet.add(feature)
       }
+    } else if (args[i + 1] === 'claudium') {
+      const claudiumFeatures = [
+        'AGENT_MEMORY_SNAPSHOT',
+        'AGENT_TRIGGERS',
+        'AGENT_TRIGGERS_REMOTE',
+        'AWAY_SUMMARY',
+        'BASH_CLASSIFIER',
+        'BUILTIN_EXPLORE_PLAN_AGENTS',
+        'CACHED_MICROCOMPACT',
+        'COMPACTION_REMINDERS',
+        'EXTRACT_MEMORIES',
+        'HISTORY_PICKER',
+        'HOOK_PROMPTS',
+        'KAIROS_BRIEF',
+        'KAIROS_CHANNELS',
+        'LODESTONE',
+        'MCP_RICH_OUTPUT',
+        'MESSAGE_ACTIONS',
+        'NATIVE_CLIPBOARD_IMAGE',
+        'NEW_INIT',
+        'POWERSHELL_AUTO_MODE',
+        'PROMPT_CACHE_BREAK_DETECTION',
+        'QUICK_SEARCH',
+        'SHOT_STATS',
+        'TEAMMEM',
+        'TOKEN_BUDGET',
+        'TREE_SITTER_BASH',
+        'TREE_SITTER_BASH_SHADOW',
+        'UNATTENDED_RETRY',
+        'VERIFICATION_AGENT',
+        'VOICE_MODE',
+      ]
+      for (const feature of claudiumFeatures) {
+        featureSet.add(feature)
+      }
     }
     i += 1
     continue
