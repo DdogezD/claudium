@@ -117,7 +117,7 @@ const lightTheme: Theme = {
   autoAccept: 'rgb(135,0,255)', // Electric violet
   bashBorder: 'rgb(255,0,135)', // Vibrant pink
   claude: 'rgb(215,119,87)', // Claude orange
-  startupAccent: 'rgb(124,176,133)', // Free Code pastel green
+  startupAccent: 'rgb(255,195,130)', // Claudium light orange
   claudeShimmer: 'rgb(245,149,117)', // Lighter claude orange for shimmer effect
   claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(87,105,247)', // Medium blue for system spinner
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(117,135,255)', // Lighter blue for system spinner shimmer
@@ -364,7 +364,7 @@ const lightDaltonizedTheme: Theme = {
   autoAccept: 'rgb(135,0,255)', // Electric violet
   bashBorder: 'rgb(0,102,204)', // Blue instead of pink
   claude: 'rgb(255,153,51)', // Orange adjusted for deuteranopia
-  startupAccent: 'rgb(124,176,133)', // Free Code pastel green
+  startupAccent: 'rgb(124,176,133)', // Claudium pastel green
   claudeShimmer: 'rgb(255,183,101)', // Lighter orange for shimmer effect
   claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(51,102,255)', // Bright blue for system spinner
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(101,152,255)', // Lighter bright blue for system spinner shimmer
@@ -446,7 +446,7 @@ const darkTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(253,93,177)', // Bright pink
   claude: 'rgb(215,119,87)', // Claude orange
-  startupAccent: 'rgb(184,225,174)', // Free Code pastel green
+  startupAccent: 'rgb(184,225,174)', // Claudium pastel green
   claudeShimmer: 'rgb(235,159,127)', // Lighter claude orange for shimmer effect
   claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(147,165,255)', // Blue for system spinner
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(177,195,255)', // Lighter blue for system spinner shimmer
@@ -528,7 +528,7 @@ const darkDaltonizedTheme: Theme = {
   autoAccept: 'rgb(175,135,255)', // Electric violet
   bashBorder: 'rgb(51,153,255)', // Bright blue
   claude: 'rgb(255,153,51)', // Orange adjusted for deuteranopia
-  startupAccent: 'rgb(184,225,174)', // Free Code pastel green
+  startupAccent: 'rgb(184,225,174)', // Claudium pastel green
   claudeShimmer: 'rgb(255,183,101)', // Lighter orange for shimmer effect
   claudeBlue_FOR_SYSTEM_SPINNER: 'rgb(153,204,255)', // Light blue for system spinner
   claudeBlueShimmer_FOR_SYSTEM_SPINNER: 'rgb(183,224,255)', // Lighter blue for system spinner shimmer

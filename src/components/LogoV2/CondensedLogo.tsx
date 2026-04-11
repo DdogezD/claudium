@@ -88,7 +88,7 @@ export function CondensedLogo() {
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true}>Free Code</Text>;
+    t5 = <Text bold={true}>Claudium</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
