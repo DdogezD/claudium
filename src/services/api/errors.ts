@@ -42,7 +42,7 @@ import { ImageSizeError } from '../../utils/imageValidation.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
+} from '../analytics-stub.js'
 import {
   type ClaudeAILimits,
   getRateLimitErrorMessage,

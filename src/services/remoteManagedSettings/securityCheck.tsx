@@ -8,7 +8,7 @@ import { AppStateProvider } from '../../state/AppState.js';
 import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
 import { getBaseRenderOptions } from '../../utils/renderOptions.js';
 import type { SettingsJson } from '../../utils/settings/types.js';
-import { logEvent } from '../analytics/index.js';
+import { logEvent } from '../analytics-stub.js';
 export type SecurityCheckResult = 'approved' | 'rejected' | 'no_check_needed';
 
 /**

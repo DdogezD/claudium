@@ -1,4 +1,4 @@
-import { logEvent } from 'src/services/analytics/index.js'
+import { logEvent } from '../analytics-stub.js'
 import { openBrowser } from '../../utils/browser.js'
 import { AuthCodeListener } from './auth-code-listener.js'
 import * as client from './client.js'

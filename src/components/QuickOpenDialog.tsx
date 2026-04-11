@@ -6,7 +6,7 @@ import { useRegisterOverlay } from '../context/overlayContext.js';
 import { generateFileSuggestions } from '../hooks/fileSuggestions.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { Text } from '../ink.js';
-import { logEvent } from '../services/analytics/index.js';
+import { logEvent } from '../services/analytics-stub.js';
 import { getCwd } from '../utils/cwd.js';
 import { openFileInExternalEditor } from '../utils/editor.js';
 import { truncatePathMiddle, truncateToWidth } from '../utils/format.js';

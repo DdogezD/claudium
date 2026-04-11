@@ -5,7 +5,7 @@ import {
   clearCommandsCache,
   getCommands,
 } from '../commands.js'
-import { onGrowthBookRefresh } from '../services/analytics/growthbook.js'
+import { onGrowthBookRefresh } from '../services/analytics-stub.js'
 import { logError } from '../utils/log.js'
 import { skillChangeDetector } from '../utils/skills/skillChangeDetector.js'
 

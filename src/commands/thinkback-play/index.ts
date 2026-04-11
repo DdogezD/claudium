@@ -1,5 +1,5 @@
 import type { Command } from '../../commands.js'
-import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js'
 
 // Hidden command that just plays the animation
 // Called by the thinkback skill after generation is complete

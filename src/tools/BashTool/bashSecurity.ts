@@ -1,4 +1,4 @@
-import { logEvent } from 'src/services/analytics/index.js'
+import { logEvent } from '../../services/analytics-stub.js'
 import { extractHeredocs } from '../../utils/bash/heredoc.js'
 import { ParsedCommand } from '../../utils/bash/ParsedCommand.js'
 import {

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { clearTrustedDeviceTokenCache } from '../../bridge/trustedDevice.js';
 import { Text } from '../../ink.js';
-import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
+import { refreshGrowthBookAfterAuthChange } from '../../services/analytics-stub.js';
 import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove.js';
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
@@ -19,7 +19,7 @@ export async function performLogout({
   // Flush telemetry BEFORE clearing credentials to prevent org data leakage
   const {
     flushTelemetry
-  } = await import('../../utils/telemetry/instrumentation.js');
+  } = await import('../../utils/telemetry-stub.js');
   await flushTelemetry();
   await removeApiKey();
 
