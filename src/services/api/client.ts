@@ -150,6 +150,14 @@ export async function getAnthropicClient({
       fetch: resolvedFetch,
     }),
   }
+  if (isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)) {
+    const { createOpenAIShimClient } = await import('./openaiShim.js')
+    return createOpenAIShimClient({
+      defaultHeaders,
+      maxRetries,
+      timeout: parseInt(process.env.API_TIMEOUT_MS || String(600 * 1000), 10),
+    }) as unknown as Anthropic
+  }
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
     const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
     // Use region override for small fast model if specified
