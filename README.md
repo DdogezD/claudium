@@ -8,7 +8,7 @@ All telemetry stripped. All injected security-prompt guardrails removed. All exp
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-> Checks your system, installs Bun if needed, clones, builds with all features enabled, and puts `claudium` on your PATH. Then just `export ANTHROPIC_API_KEY="sk-ant-..."` and run `claudium`.
+> Checks your system, installs Bun if needed, clones, builds with all features enabled, and puts `claudium` on your PATH. See [API Configuration](#api-configuration) for API setup.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="claudium screenshot" width="800" />
@@ -20,17 +20,22 @@ curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | 
 
 This is a clean, buildable fork of Anthropic's [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI -- the terminal-native AI coding agent. The upstream source became publicly available on March 31, 2026 through a source map exposure in the npm distribution.
 
-This fork applies three categories of changes on top of that snapshot:
+This fork applies four categories of changes on top of that snapshot:
 
-### 1. Telemetry removed
+### 1. Privacy-First
 
-The upstream binary phones home through OpenTelemetry/gRPC, GrowthBook analytics, Sentry error reporting, and custom event logging. In this build:
+Eliminates all tracking and remote-control mechanisms present in the original Claude Code:
 
-- All outbound telemetry endpoints are dead-code-eliminated or stubbed
-- GrowthBook feature flag evaluation still works locally (needed for runtime feature gates) but does not report back
-- No crash reports, no usage analytics, no session fingerprinting
+- No telemetry – No unnecessary data is transmitted to Anthropic servers
+- No analytics – No usage tracking or event logging
+- No fingerprinting – No user or environment identification
+- No auto-updates – No remote version control or forced updates
 
-### 2. Security-prompt guardrails removed
+### 2. OpenAI Chat Completions API support
+
+Added an API shim layer (`src/services/api/openaiShim.ts`) transparently translates between Anthropic message format and OpenAI Chat Completions format. All Claude Code tools (bash, file read/write, grep, glob, agents, MCP, etc.) work normally —— only the underlying LLM changes.
+
+### 3. Security-prompt guardrails removed
 
 Anthropic injects system-level instructions into every conversation that constrain Claude's behavior beyond what the model itself enforces. These include:
 
@@ -38,9 +43,9 @@ Anthropic injects system-level instructions into every conversation that constra
 - Injected "cyber risk" instruction blocks
 - Managed-settings security overlays pushed from Anthropic's servers
 
-This build strips those injections. The model's own safety training still applies -- this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
+This build strips those injections. The model's own safety training still applies —— this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
 
-### 3. Experimental features enabled
+### 4. Experimental features enabled
 
 Claude Code ships with dozens of feature flags gated behind `bun:bundle` compile-time switches. Most are disabled in the public npm release. This build unlocks all 45+ flags that compile cleanly, including:
 
@@ -73,13 +78,7 @@ See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their stat
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-This will check your system, install Bun if needed, clone the repo, build the binary with all experimental features enabled, and symlink it as `claudium` on your PATH.
-
-After install, just run:
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-claudium
-```
+This will check your system, install Bun if needed, clone the repo, build the binary `cli-dev` (with all experimental features enabled), and put it as `claudium` on your PATH.
 
 ---
 
@@ -87,7 +86,7 @@ claudium
 
 - [Bun](https://bun.sh) >= 1.3.11
 - macOS or Linux (Windows via WSL)
-- An Anthropic API key (set `ANTHROPIC_API_KEY` in your environment)
+- An API key ([Anthropic Messages](#anthropic-messages-api) or [OpenAI Completions](#openai-chat-completions-api))
 
 ```bash
 # Install Bun if you don't have it
@@ -145,7 +144,11 @@ bun run ./scripts/build.ts --dev --feature=BRIDGE_MODE
 ## Run
 
 ```bash
-# Run the built binary directly
+
+# Run the installed binary
+claudium
+
+# Or the built binary
 ./cli
 
 # Or the dev binary
@@ -154,24 +157,23 @@ bun run ./scripts/build.ts --dev --feature=BRIDGE_MODE
 # Or run from source without compiling (slower startup)
 bun run dev
 
-# Set your API key
-export ANTHROPIC_API_KEY="sk-ant-..."
+# See [API Configuration](#api-configuration) for API setup.
 
 # Or use Claude.ai OAuth
-./cli /login
+claudium /login
 ```
 
 ### Quick test
 
 ```bash
 # One-shot mode
-./cli -p "what files are in this directory?"
+claudium -p "what files are in this directory?"
 
 # Interactive REPL (default)
-./cli
+claudium
 
 # With specific model
-./cli --model claude-sonnet-4-6-20250514
+claudium --model claude-sonnet-4-6-20250514
 ```
 
 ---
@@ -216,7 +218,100 @@ src/
 | Schema validation | Zod v4 |
 | Code search | ripgrep (bundled) |
 | Protocols | MCP, LSP |
-| API | Anthropic Messages API |
+| API | Anthropic Messages API / OpenAI Chat Completions API |
+
+---
+
+## API Configuration
+
+Claudium supports both **Anthropic Messages API** (natively) and **OpenAI Chat Completions APIs** (including OpenAI, OpenRouter, DeepSeek, LLaMa.CPP, Ollama, LM Studio, Together AI, Groq, Mistral, Azure OpenAI, and more).
+
+### Anthropic Messages API
+
+Use the official Anthropic Messages API with your Anthropic API key.
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+### OpenAI Chat Completions API
+
+Enable OpenAI Chat Completions API mode and configure your preferred provider:
+
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+```
+
+#### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `OPENAI_API_KEY` | API key (required for cloud APIs, optional for local models) |
+| `OPENAI_BASE_URL` | API base URL (default: `https://api.openai.com/v1`) |
+| `OPENAI_MODEL` | Model ID (default: `gpt-4o`) |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Override max context window size |
+| `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
+| `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |
+
+**Autocompact buffer** = `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` + `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS`
+
+#### Provider Examples
+
+**OpenAI:**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL=gpt-4o
+```
+
+**OpenRouter:**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_API_KEY=sk-or-v1-...
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_MODEL=openai/gpt-5.4
+```
+
+**DeepSeek:**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_API_KEY=sk-...
+export OPENAI_BASE_URL=https://api.deepseek.com/v1
+export OPENAI_MODEL=deepseek-chat
+```
+
+**LLaMA.CPP (local):**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_BASE_URL=http://localhost:1234/v1
+export OPENAI_MODEL=your-model-name
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS=65536
+export CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS=12000
+export CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS=4000
+```
+
+**Ollama (local):**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_BASE_URL=http://localhost:1234/v1
+export OPENAI_MODEL=llama3.3
+```
+
+**LM Studio (local):**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_BASE_URL=http://localhost:1234/v1
+export OPENAI_MODEL=your-model-name
+```
+
+**Azure OpenAI:**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_API_KEY=your-azure-key
+export OPENAI_BASE_URL=https://your-resource.openai.azure.com/openai/deployments/your-deployment
+export OPENAI_MODEL=gpt-4o
+export AZURE_OPENAI_API_VERSION=2024-12-01-preview
+```
 
 ---
 
