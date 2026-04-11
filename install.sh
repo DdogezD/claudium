@@ -126,9 +126,9 @@ install_deps() {
 }
 
 build_binary() {
-  info "Building claudium (all experimental features enabled)..."
+  info "Building claudium..."
   cd "$BUILD_DIR" || fail "Cannot enter $BUILD_DIR"
-  bun run build:dev:full
+  bun run build:dev:claudium
   local binary="$BUILD_DIR/cli-dev"
   ok "Binary built: $binary"
 }
