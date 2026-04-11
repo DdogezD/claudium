@@ -1,17 +1,17 @@
-# free-code
+# Claudium
 
 **The free build of Claude Code.**
 
 All telemetry stripped. All injected security-prompt guardrails removed. All experimental features unlocked. One binary, zero callbacks home.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/paoloanzn/free-code/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-> Checks your system, installs Bun if needed, clones, builds with all features enabled, and puts `free-code` on your PATH. Then just `export ANTHROPIC_API_KEY="sk-ant-..."` and run `free-code`.
+> Checks your system, installs Bun if needed, clones, builds with all features enabled, and puts `claudium` on your PATH. Then just `export ANTHROPIC_API_KEY="sk-ant-..."` and run `claudium`.
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="free-code screenshot" width="800" />
+  <img src="assets/screenshot.png" alt="claudium screenshot" width="800" />
 </p>
 
 ---
@@ -70,15 +70,15 @@ See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their stat
 ## Quick install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/paoloanzn/free-code/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-This will check your system, install Bun if needed, clone the repo, build the binary with all experimental features enabled, and symlink it as `free-code` on your PATH.
+This will check your system, install Bun if needed, clone the repo, build the binary with all experimental features enabled, and symlink it as `claudium` on your PATH.
 
 After install, just run:
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
-free-code
+claudium
 ```
 
 ---
@@ -100,8 +100,8 @@ curl -fsSL https://bun.sh/install | bash
 
 ```bash
 # Clone the repo
-git clone https://github.com/paoloanzn/claude-code.git
-cd claude-code
+git clone https://github.com/DdogezD/claudium.git
+cd claudium
 
 # Install dependencies
 bun install

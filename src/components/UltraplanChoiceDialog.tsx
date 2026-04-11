@@ -99,7 +99,7 @@ export function UltraplanChoiceDialog({
             value: 'execute' as const,
             label: 'Execute plan here',
             description:
-              'Send the plan to Claude for execution in this session',
+              'Send the plan to Claudium for execution in this session',
           },
           {
             value: 'dismiss' as const,

@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# free-code installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/paoloanzn/free-code/main/install.sh | bash
+# claudium installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+ORANGE='\033[38;5;208m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
 
-REPO="https://github.com/paoloanzn/free-code.git"
-INSTALL_DIR="$HOME/free-code"
+REPO="https://github.com/DdogezD/claudium.git"
+INSTALL_DIR="$HOME/claudium"
 BUN_MIN_VERSION="1.3.11"
 
 info()  { printf "${CYAN}[*]${RESET} %s\n" "$*"; }
@@ -23,13 +24,15 @@ fail()  { printf "${RED}[x]${RESET} %s\n" "$*"; exit 1; }
 
 header() {
   echo ""
-  printf "${BOLD}${CYAN}"
+  printf "${BOLD}${ORANGE}"
   cat << 'ART'
-   ___                            _
-  / _|_ __ ___  ___        ___ __| | ___
- | |_| '__/ _ \/ _ \_____ / __/ _` |/ _ \
- |  _| | |  __/  __/_____| (_| (_| |  __/
- |_| |_|  \___|\___|      \___\__,_|\___|
+
+_________   .__                         .___ .__
+\_   ___ \  |  |   _____     __ __    __| _/ |__|  __ __    _____
+/    \  \/  |  |   \__  \   |  |  \  / __ |  |  | |  |  \  /     \
+\     \____ |  |__  / __ \_ |  |  / / /_/ |  |  | |  |  / |  Y Y  \
+ \______  / |____/ (____  / |____/  \____ |  |__| |____/  |__|_|  /
+        \/              \/               \/                     \/
 
 ART
   printf "${RESET}"
@@ -120,7 +123,7 @@ install_deps() {
 }
 
 build_binary() {
-  info "Building free-code (all experimental features enabled)..."
+  info "Building claudium (all experimental features enabled)..."
   cd "$INSTALL_DIR"
   bun run build:dev:full
   ok "Binary built: $INSTALL_DIR/cli-dev"
@@ -130,8 +133,8 @@ link_binary() {
   local link_dir="$HOME/.local/bin"
   mkdir -p "$link_dir"
 
-  ln -sf "$INSTALL_DIR/cli-dev" "$link_dir/free-code"
-  ok "Symlinked: $link_dir/free-code"
+  ln -sf "$INSTALL_DIR/cli-dev" "$link_dir/claudium"
+  ok "Symlinked: $link_dir/claudium"
 
   if ! echo "$PATH" | tr ':' '\n' | grep -qx "$link_dir"; then
     warn "$link_dir is not on your PATH"
@@ -164,16 +167,16 @@ echo ""
 printf "${GREEN}${BOLD}  Installation complete!${RESET}\n"
 echo ""
 printf "  ${BOLD}Run it:${RESET}\n"
-printf "    ${CYAN}free-code${RESET}                          # interactive REPL\n"
-printf "    ${CYAN}free-code -p \"your prompt\"${RESET}          # one-shot mode\n"
+printf "    ${CYAN}claudium${RESET}                          # interactive REPL\n"
+printf "    ${CYAN}claudium -p \"your prompt\"${RESET}          # one-shot mode\n"
 echo ""
 printf "  ${BOLD}Set your API key:${RESET}\n"
 printf "    ${CYAN}export ANTHROPIC_API_KEY=\"sk-ant-...\"${RESET}\n"
 echo ""
 printf "  ${BOLD}Or log in with Claude.ai:${RESET}\n"
-printf "    ${CYAN}free-code /login${RESET}\n"
+printf "    ${CYAN}claudium /login${RESET}\n"
 echo ""
 printf "  ${DIM}Source: $INSTALL_DIR${RESET}\n"
 printf "  ${DIM}Binary: $INSTALL_DIR/cli-dev${RESET}\n"
-printf "  ${DIM}Link:   ~/.local/bin/free-code${RESET}\n"
+printf "  ${DIM}Link:   ~/.local/bin/claudium${RESET}\n"
 echo ""

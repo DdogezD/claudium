@@ -70,7 +70,7 @@ export function BypassPermissionsModeDialog(t0) {
   }
   let t5;
   if ($[5] !== onChange) {
-    t5 = <Dialog title="WARNING: Claude Code running in Bypass Permissions mode" color="error" onCancel={handleEscape}>{t3}<Select options={t4} onChange={value_0 => onChange(value_0 as 'accept' | 'decline')} /></Dialog>;
+    t5 = <Dialog title="WARNING: Claudium running in Bypass Permissions mode" color="error" onCancel={handleEscape}>{t3}<Select options={t4} onChange={value_0 => onChange(value_0 as 'accept' | 'decline')} /></Dialog>;
     $[5] = onChange;
     $[6] = t5;
   } else {
