@@ -11,7 +11,7 @@ import {
   FileIndex,
   yieldToEventLoop,
 } from '../native-ts/file-index/index.js'
-import { logEvent } from '../services/analytics/index.js'
+import { logEvent } from '../services/analytics-stub.js'
 import type { FileSuggestionCommandInput } from '../types/fileSuggestion.js'
 import { getGlobalConfig } from '../utils/config.js'
 import { getCwd } from '../utils/cwd.js'

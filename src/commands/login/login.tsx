@@ -9,7 +9,7 @@ import { ConsoleOAuthFlow } from '../../components/ConsoleOAuthFlow.js';
 import { Dialog } from '../../components/design-system/Dialog.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { Text } from '../../ink.js';
-import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
+import { refreshGrowthBookAfterAuthChange } from '../../services/analytics-stub.js';
 import { refreshPolicyLimits } from '../../services/policyLimits/index.js';
 import { refreshRemoteManagedSettings } from '../../services/remoteManagedSettings/index.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';

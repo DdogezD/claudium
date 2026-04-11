@@ -4,7 +4,7 @@ import { type FileHandle, mkdir, open, realpath } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { isAbsolute, resolve } from 'path'
 import { join as posixJoin } from 'path/posix'
-import { logEvent } from 'src/services/analytics/index.js'
+import { logEvent } from '../services/analytics-stub.js'
 import {
   getOriginalCwd,
   getSessionId,

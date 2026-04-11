@@ -3,14 +3,14 @@ import { randomUUID } from 'crypto'
 import { hostname, tmpdir } from 'os'
 import { basename, join, resolve } from 'path'
 import { getRemoteSessionUrl } from '../constants/product.js'
-import { shutdownDatadog } from '../services/analytics/datadog.js'
-import { shutdown1PEventLogging } from '../services/analytics/firstPartyEventLogger.js'
-import { checkGate_CACHED_OR_BLOCKING } from '../services/analytics/growthbook.js'
+import { shutdownDatadog } from '../services/analytics-stub.js'
+import { shutdown1PEventLogging } from '../services/analytics-stub.js'
+import { checkGate_CACHED_OR_BLOCKING } from '../services/analytics-stub.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
   logEventAsync,
-} from '../services/analytics/index.js'
+} from '../services/analytics-stub.js'
 import { isInBundledMode } from '../utils/bundledMode.js'
 import { logForDebugging } from '../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'

@@ -3,7 +3,7 @@ import memoize from 'lodash-es/memoize.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js'
+} from '../analytics-stub.js'
 import { getOauthAccountInfo, isConsumerSubscriber } from 'src/utils/auth.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'

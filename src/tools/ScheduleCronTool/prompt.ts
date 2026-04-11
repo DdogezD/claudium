@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '../../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_WITH_REFRESH } from '../../services/analytics-stub.js'
 import { DEFAULT_CRON_JITTER_CONFIG } from '../../utils/cronTasks.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 

@@ -1,7 +1,7 @@
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js'
+} from '../../services/analytics-stub.js'
 import { saveGlobalConfig } from 'src/utils/config.js'
 import {
   CODE_REVIEW_PLUGIN_WORKFLOW_CONTENT,

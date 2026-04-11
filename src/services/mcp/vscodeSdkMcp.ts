@@ -4,8 +4,8 @@ import { lazySchema } from '../../utils/lazySchema.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../analytics/growthbook.js'
-import { logEvent } from '../analytics/index.js'
+} from '../analytics-stub.js'
+import { logEvent } from '../analytics-stub.js'
 import type { ConnectedMCPServer, MCPServerConnection } from './types.js'
 
 // Mirror of AutoModeEnabledState in permissionSetup.ts — inlined because that

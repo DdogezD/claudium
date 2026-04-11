@@ -29,12 +29,12 @@ import {
   supportsTabStatus,
   wrapForMultiplexer,
 } from '../ink/termio/osc.js'
-import { shutdownDatadog } from '../services/analytics/datadog.js'
-import { shutdown1PEventLogging } from '../services/analytics/firstPartyEventLogger.js'
+import { shutdownDatadog } from '../services/analytics-stub.js'
+import { shutdown1PEventLogging } from '../services/analytics-stub.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../services/analytics/index.js'
+} from '../services/analytics-stub.js'
 import type { AppState } from '../state/AppState.js'
 import { runCleanupFunctions } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'

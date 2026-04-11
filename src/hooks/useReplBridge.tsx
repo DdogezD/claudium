@@ -13,7 +13,7 @@ import { useNotifications } from '../context/notifications.js';
 import type { PermissionMode, SDKMessage } from '../entrypoints/agentSdkTypes.js';
 import type { SDKControlResponse } from '../entrypoints/sdk/controlTypes.js';
 import { Text } from '../ink.js';
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js';
 import { useAppState, useAppStateStore, useSetAppState } from '../state/AppState.js';
 import type { Message } from '../types/message.js';
 import { getCwd } from '../utils/cwd.js';

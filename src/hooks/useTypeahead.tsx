@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNotifications } from 'src/context/notifications.js';
 import { Text } from 'src/ink.js';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../services/analytics-stub.js';
 import { useDebounceCallback } from 'usehooks-ts';
 import { type Command, getCommandName } from '../commands.js';
 import { getModeFromInput, getValueFromInput } from '../components/PromptInput/inputModes.js';

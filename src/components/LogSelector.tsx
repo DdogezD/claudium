@@ -11,7 +11,7 @@ import { applyColor } from '../ink/colorize.js';
 import type { Color } from '../ink/styles.js';
 import { Box, Text, useInput, useTerminalFocus, useTheme } from '../ink.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
-import { logEvent } from '../services/analytics/index.js';
+import { logEvent } from '../services/analytics-stub.js';
 import type { LogOption, SerializedMessage } from '../types/logs.js';
 import { formatLogMetadata, truncateToWidth } from '../utils/format.js';
 import { getWorktreePaths } from '../utils/getWorktreePaths.js';

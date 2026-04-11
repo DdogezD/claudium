@@ -70,7 +70,7 @@ import {
 import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
-import { computeFingerprintFromMessages } from '../../utils/fingerprint.js'
+import { computeFingerprintFromMessages } from '../../utils/fingerprint-stub.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
 import {
   createAssistantAPIErrorMessage,
@@ -93,7 +93,7 @@ import {
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
-import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
+import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics-stub.js'
 import {
   currentLimits,
   extractQuotaStatusFromError,
@@ -144,7 +144,7 @@ import {
 import type { QuerySource } from 'src/constants/querySource.js'
 import type { Notification } from 'src/context/notifications.js'
 import { addToTotalSessionCost } from 'src/cost-tracker.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics-stub.js'
 import type { AgentId } from 'src/types/ids.js'
 import {
   ADVISOR_TOOL_INSTRUCTIONS,
@@ -213,12 +213,12 @@ import {
   isBetaTracingEnabled,
   type LLMRequestNewContext,
   startLLMRequestSpan,
-} from '../../utils/telemetry/sessionTracing.js'
+} from '../../utils/telemetry-stub.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
+} from '../analytics-stub.js'
 import {
   consumePendingCacheEdits,
   getPinnedCacheEdits,

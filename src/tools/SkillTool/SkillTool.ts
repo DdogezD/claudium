@@ -32,7 +32,7 @@ import {
   isOfficialMarketplaceName,
   parsePluginIdentifier,
 } from 'src/utils/plugins/pluginIdentifier.js'
-import { buildPluginCommandTelemetryFields } from 'src/utils/telemetry/pluginTelemetry.js'
+import { buildPluginCommandTelemetryFields } from '../../utils/telemetry-stub.js'
 import { z } from 'zod/v4'
 import {
   addInvokedSkill,
@@ -45,7 +45,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
-} from '../../services/analytics/index.js'
+} from '../../services/analytics-stub.js'
 import { getAgentContext } from '../../utils/agentContext.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
@@ -109,7 +109,7 @@ const remoteSkillModules = feature('EXPERIMENTAL_SKILL_SEARCH')
   ? {
       ...(require('../../services/skillSearch/remoteSkillState.js') as typeof import('../../services/skillSearch/remoteSkillState.js')),
       ...(require('../../services/skillSearch/remoteSkillLoader.js') as typeof import('../../services/skillSearch/remoteSkillLoader.js')),
-      ...(require('../../services/skillSearch/telemetry.js') as typeof import('../../services/skillSearch/telemetry.js')),
+      ...(require('../../services/analytics-stub.js') as typeof import('../../services/skillSearch/telemetry.js')),
       ...(require('../../services/skillSearch/featureCheck.js') as typeof import('../../services/skillSearch/featureCheck.js')),
     }
   : null

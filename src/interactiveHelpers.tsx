@@ -1,18 +1,18 @@
 import { feature } from 'bun:bundle';
 import { appendFileSync } from 'fs';
 import React from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from './services/analytics-stub.js';
 import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
 import { type ChannelEntry, getAllowedChannels, setAllowedChannels, setHasDevChannels, setSessionTrustAccepted, setStatsStore } from './bootstrap/state.js';
 import type { Command } from './commands.js';
 import { createStatsStore, type StatsStore } from './context/stats.js';
 import { getSystemContext } from './context.js';
-import { initializeTelemetryAfterTrust } from './entrypoints/init.js';
+// import { initializeTelemetryAfterTrust } from './entrypoints/init.js';
 import { isSynchronizedOutputSupported } from './ink/terminal.js';
 import type { RenderOptions, Root, TextProps } from './ink.js';
 import { KeybindingSetup } from './keybindings/KeybindingProviderSetup.js';
 import { startDeferredPrefetches } from './main.js';
-import { checkGate_CACHED_OR_BLOCKING, initializeGrowthBook, resetGrowthBook } from './services/analytics/growthbook.js';
+import { checkGate_CACHED_OR_BLOCKING, initializeGrowthBook, resetGrowthBook } from './services/analytics-stub.js';
 import { isQualifiedForGrove } from './services/api/grove.js';
 import { handleMcpjsonServerApprovals } from './services/mcpServerApproval.js';
 import { AppStateProvider } from './state/AppState.js';
@@ -187,7 +187,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
   // otelHeadersHelper (which requires trust to execute) are available.
   // Defer to next tick so the OTel dynamic import resolves after first render
   // instead of during the pre-render microtask queue.
-  setImmediate(() => initializeTelemetryAfterTrust());
+//   setImmediate(() => initializeTelemetryAfterTrust());
   if (await isQualifiedForGrove()) {
     const {
       GroveDialog

@@ -1,6 +1,6 @@
 import figures from 'figures';
 import React, { useEffect, useRef, useState } from 'react';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
+import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics-stub.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { getOauthConfig } from '../../constants/oauth.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';

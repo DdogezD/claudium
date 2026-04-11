@@ -1,4 +1,4 @@
-import { logEvent } from '../services/analytics/index.js'
+import { logEvent } from '../services/analytics-stub.js'
 import { logForDebugging } from '../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { errorMessage } from '../utils/errors.js'

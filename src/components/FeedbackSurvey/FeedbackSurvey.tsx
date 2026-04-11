@@ -1,6 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
+import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics-stub.js';
 import { Box, Text } from '../../ink.js';
 import { FeedbackSurveyView, isValidResponseInput } from './FeedbackSurveyView.js';
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js';

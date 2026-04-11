@@ -20,7 +20,7 @@ import { sleep } from '../../utils/sleep.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
+} from '../analytics-stub.js'
 
 // Files API is currently in beta. oauth-2025-04-20 enables Bearer OAuth
 // on public-api routes (auth.py: "oauth_auth" not in beta_versions → 404).

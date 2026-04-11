@@ -13,8 +13,8 @@ import { stat, unlink } from 'fs/promises'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+} from '../../services/analytics-stub.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js'
 import { type FilesApiConfig, uploadFile } from '../../services/api/filesApi.js'
 import { getCwd } from '../cwd.js'
 import { logForDebugging } from '../debug.js'

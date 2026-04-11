@@ -12,7 +12,7 @@ import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../services/analytics/index.js'
+} from '../services/analytics-stub.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import {
   handleIngressMessage,

@@ -10,7 +10,7 @@ import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithK
 import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { getAutoMemPath, isAutoMemoryEnabled } from '../../memdir/paths.js';
-import { logEvent } from '../../services/analytics/index.js';
+import { logEvent } from '../../services/analytics-stub.js';
 import { isAutoDreamEnabled } from '../../services/autoDream/config.js';
 import { readLastConsolidatedAt } from '../../services/autoDream/consolidationLock.js';
 import { useAppState } from '../../state/AppState.js';

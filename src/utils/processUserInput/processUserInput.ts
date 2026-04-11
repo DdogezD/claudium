@@ -6,7 +6,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'
 import type { QuerySource } from 'src/constants/querySource.js'
-import { logEvent } from 'src/services/analytics/index.js'
+import { logEvent } from '../../services/analytics-stub.js'
 import { getContentText } from 'src/utils/messages.js'
 import {
   findCommand,

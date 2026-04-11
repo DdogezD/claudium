@@ -10,7 +10,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
-} from '../../services/analytics/index.js'
+} from '../../services/analytics-stub.js'
 import {
   disableAllPlugins,
   disablePlugin,

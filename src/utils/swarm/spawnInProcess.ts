@@ -39,7 +39,7 @@ import {
   isPerfettoTracingEnabled,
   registerAgent as registerPerfettoAgent,
   unregisterAgent as unregisterPerfettoAgent,
-} from '../telemetry/perfettoTracing.js'
+} from '../telemetry-stub.js'
 import { removeMemberByAgentId } from './teamHelpers.js'
 
 type SetAppStateFn = (updater: (prev: AppState) => AppState) => void

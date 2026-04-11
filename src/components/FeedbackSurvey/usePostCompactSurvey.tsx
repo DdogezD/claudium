@@ -1,13 +1,13 @@
 import { c as _c } from "react/compiler-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isFeedbackSurveyDisabled } from 'src/services/analytics/config.js';
-import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
+import { isFeedbackSurveyDisabled } from '../../services/analytics-stub.js';
+import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js';
+import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics-stub.js';
 import { shouldUseSessionMemoryCompaction } from '../../services/compact/sessionMemoryCompact.js';
 import type { Message } from '../../types/message.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isCompactBoundaryMessage } from '../../utils/messages.js';
-import { logOTelEvent } from '../../utils/telemetry/events.js';
+import { logOTelEvent } from '../../utils/telemetry-stub.js';
 import { useSurveyState } from './useSurveyState.js';
 import type { FeedbackSurveyResponse } from './utils.js';
 const HIDE_THANKS_AFTER_MS = 3000;

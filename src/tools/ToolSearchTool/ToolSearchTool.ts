@@ -4,7 +4,7 @@ import { z } from 'zod/v4'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../../services/analytics/index.js'
+} from '../../services/analytics-stub.js'
 import {
   buildTool,
   findToolByName,

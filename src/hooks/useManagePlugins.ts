@@ -4,7 +4,7 @@ import { useNotifications } from '../context/notifications.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../services/analytics/index.js'
+} from '../services/analytics-stub.js'
 import { reinitializeLspServerManager } from '../services/lsp/manager.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'

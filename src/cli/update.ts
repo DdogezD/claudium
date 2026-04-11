@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { logEvent } from 'src/services/analytics/index.js'
+import { logEvent } from '../services/analytics-stub.js'
 import {
   getLatestVersion,
   type InstallStatus,

@@ -2,7 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import chalk from 'chalk';
 import * as path from 'path';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../../services/analytics-stub.js';
 import type { CommandResultDisplay, LocalJSXCommandContext } from '../../commands.js';
 import { Select } from '../../components/CustomSelect/index.js';
 import { Dialog } from '../../components/design-system/Dialog.js';

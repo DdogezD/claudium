@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import React, { useEffect, useState } from 'react';
 import type { CommandResultDisplay } from 'src/commands.js';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../services/analytics-stub.js';
 import { StatusIcon } from '../components/design-system/StatusIcon.js';
 import { Box, render, Text } from '../ink.js';
 import { logForDebugging } from '../utils/debug.js';

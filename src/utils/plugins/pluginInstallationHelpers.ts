@@ -12,7 +12,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
-} from '../../services/analytics/index.js'
+} from '../../services/analytics-stub.js'
 import { getCwd } from '../cwd.js'
 import { toError } from '../errors.js'
 import { getFsImplementation } from '../fsOperations.js'
@@ -21,7 +21,7 @@ import {
   getSettingsForSource,
   updateSettingsForSource,
 } from '../settings/settings.js'
-import { buildPluginTelemetryFields } from '../telemetry/pluginTelemetry.js'
+import { buildPluginTelemetryFields } from '../telemetry-stub.js'
 import { clearAllCaches } from './cacheUtils.js'
 import {
   formatDependencyCountSuffix,

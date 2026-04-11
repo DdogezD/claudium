@@ -14,7 +14,7 @@ import {
   type HeapSpaceInfo,
 } from 'v8'
 import { getSessionId } from '../bootstrap/state.js'
-import { logEvent } from '../services/analytics/index.js'
+import { logEvent } from '../services/analytics-stub.js'
 import { logForDebugging } from './debug.js'
 import { toError } from './errors.js'
 import { getDesktopPath } from './file.js'

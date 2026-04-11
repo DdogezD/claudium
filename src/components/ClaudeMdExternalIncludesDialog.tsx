@@ -1,6 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback } from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../services/analytics-stub.js';
 import { Box, Link, Text } from '../ink.js';
 import type { ExternalClaudeMdInclude } from '../utils/claudemd.js';
 import { saveCurrentProjectConfig } from '../utils/config.js';

@@ -2,7 +2,7 @@
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from 'src/services/analytics/index.js'
+} from '../services/analytics-stub.js'
 import {
   toolMatchesName,
   type Tools,
@@ -216,7 +216,7 @@ import {
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
 } from '../services/compact/autoCompact.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js'
 import {
   hasInstructionsLoadedHook,
   executeInstructionsLoadedHooks,

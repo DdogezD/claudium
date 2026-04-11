@@ -4,7 +4,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
-} from '../services/analytics/index.js'
+} from '../services/analytics-stub.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
 import type { Message } from '../types/message.js'
 import type { SkillUpdate } from '../utils/hooks/skillImprovement.js'

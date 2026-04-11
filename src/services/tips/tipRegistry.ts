@@ -43,7 +43,7 @@ import {
   getCurrentSessionAgentColor,
   isCustomTitleEnabled,
 } from '../../utils/sessionStorage.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics-stub.js'
 import {
   formatGrantAmount,
   getCachedOverageCreditGrant,

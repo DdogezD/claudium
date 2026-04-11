@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDynamicConfig } from 'src/hooks/useDynamicConfig.js';
-import { isFeedbackSurveyDisabled } from 'src/services/analytics/config.js';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
+import { isFeedbackSurveyDisabled } from '../../services/analytics-stub.js';
+import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics-stub.js';
 import { isPolicyAllowed } from '../../services/policyLimits/index.js';
 import type { Message } from '../../types/message.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
@@ -9,7 +9,7 @@ import { isEnvTruthy } from '../../utils/envUtils.js';
 import { getLastAssistantMessage } from '../../utils/messages.js';
 import { getMainLoopModel } from '../../utils/model/model.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
-import { logOTelEvent } from '../../utils/telemetry/events.js';
+import { logOTelEvent } from '../../utils/telemetry-stub.js';
 import { submitTranscriptShare, type TranscriptShareTrigger } from './submitTranscriptShare.js';
 import type { TranscriptShareResponse } from './TranscriptSharePrompt.js';
 import { useSurveyState } from './useSurveyState.js';
