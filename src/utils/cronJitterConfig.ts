@@ -9,7 +9,7 @@
 //   Daemon/SDK: omit getJitterConfig → DEFAULT_CRON_JITTER_CONFIG applies.
 
 import { z } from 'zod/v4'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_WITH_REFRESH } from '../services/analytics-stub.js'
 import {
   type CronJitterConfig,
   DEFAULT_CRON_JITTER_CONFIG,

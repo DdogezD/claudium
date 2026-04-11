@@ -5,7 +5,7 @@ import { errorMessage } from '../../utils/errors.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { logError, logMCPDebug, logMCPError } from '../../utils/log.js'
 import { jsonParse } from '../../utils/slowOperations.js'
-import { logEvent } from '../analytics/index.js'
+import { logEvent } from '../analytics-stub.js'
 import type {
   McpHTTPServerConfig,
   McpSSEServerConfig,

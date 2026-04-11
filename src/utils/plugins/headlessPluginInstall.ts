@@ -9,7 +9,7 @@
  * ZIP creation on install and extraction on load transparently.
  */
 
-import { logEvent } from '../../services/analytics/index.js'
+import { logEvent } from '../../services/analytics-stub.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { logForDebugging } from '../debug.js'
 import { withDiagnosticsTiming } from '../diagLogs.js'

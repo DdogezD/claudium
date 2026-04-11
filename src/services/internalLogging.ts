@@ -5,7 +5,7 @@ import { jsonStringify } from '../utils/slowOperations.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from './analytics/index.js'
+} from '../services/analytics-stub.js'
 
 /**
  * Get the current Kubernetes namespace:

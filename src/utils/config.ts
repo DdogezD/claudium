@@ -6,7 +6,7 @@ import pickBy from 'lodash-es/pickBy.js'
 import { basename, dirname, join, resolve } from 'path'
 import { getOriginalCwd, getSessionTrustAccepted } from '../bootstrap/state.js'
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
-import { logEvent } from '../services/analytics/index.js'
+import { logEvent } from '../services/analytics-stub.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
 import type {
   BillingType,

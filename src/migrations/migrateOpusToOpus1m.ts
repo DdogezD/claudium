@@ -1,4 +1,4 @@
-import { logEvent } from '../services/analytics/index.js'
+import { logEvent } from '../services/analytics-stub.js'
 import {
   getDefaultMainLoopModelSetting,
   isOpus1mMergeEnabled,

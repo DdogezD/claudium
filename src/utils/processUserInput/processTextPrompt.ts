@@ -6,11 +6,11 @@ import type {
   SystemMessage,
   UserMessage,
 } from 'src/types/message.js'
-import { logEvent } from '../../services/analytics/index.js'
+import { logEvent } from '../../services/analytics-stub.js'
 import type { PermissionMode } from '../../types/permissions.js'
 import { createUserMessage } from '../messages.js'
-import { logOTelEvent, redactIfDisabled } from '../telemetry/events.js'
-import { startInteractionSpan } from '../telemetry/sessionTracing.js'
+import { logOTelEvent, redactIfDisabled } from '../telemetry-stub.js'
+import { startInteractionSpan } from '../telemetry-stub.js'
 import {
   matchesKeepGoingKeyword,
   matchesNegativeKeyword,

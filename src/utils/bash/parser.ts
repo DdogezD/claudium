@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import { logEvent } from '../../services/analytics/index.js'
+import { logEvent } from '../../services/analytics-stub.js'
 import { logForDebugging } from '../debug.js'
 import {
   ensureParserInitialized,

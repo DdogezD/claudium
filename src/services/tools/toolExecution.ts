@@ -7,7 +7,7 @@ import type {
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from 'src/services/analytics/index.js'
+} from '../analytics-stub.js'
 import {
   extractMcpToolDetails,
   extractSkillName,
@@ -17,7 +17,7 @@ import {
   isToolDetailsLoggingEnabled,
   mcpToolDetailsForAnalytics,
   sanitizeToolNameForAnalytics,
-} from 'src/services/analytics/metadata.js'
+} from '../analytics-stub.js'
 import {
   addToToolDuration,
   getCodeEditToolDecisionCounter,
@@ -87,7 +87,7 @@ import {
 } from '../../utils/sessionActivity.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { Stream } from '../../utils/stream.js'
-import { logOTelEvent } from '../../utils/telemetry/events.js'
+import { logOTelEvent } from '../../utils/telemetry-stub.js'
 import {
   addToolContentEvent,
   endToolBlockedOnUserSpan,
@@ -97,7 +97,7 @@ import {
   startToolBlockedOnUserSpan,
   startToolExecutionSpan,
   startToolSpan,
-} from '../../utils/telemetry/sessionTracing.js'
+} from '../../utils/telemetry-stub.js'
 import {
   formatError,
   formatZodValidationError,

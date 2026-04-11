@@ -9,7 +9,7 @@ import type { HookInput, HookJSONOutput } from '../entrypoints/agentSdkTypes.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../services/analytics/index.js'
+} from '../services/analytics-stub.js'
 import { FILE_EDIT_TOOL_NAME } from '../tools/FileEditTool/constants.js'
 import { inputSchema as editInputSchema } from '../tools/FileEditTool/types.js'
 import { FileReadTool } from '../tools/FileReadTool/FileReadTool.js'
