@@ -14,7 +14,8 @@ DIM='\033[2m'
 RESET='\033[0m'
 
 REPO="https://github.com/DdogezD/claudium.git"
-INSTALL_DIR="$HOME/claudium"
+BUILD_DIR="$HOME/.cache/claudium"
+INSTALL_DIR="$HOME/.local/bin"
 BUN_MIN_VERSION="1.3.11"
 
 info()  { printf "${CYAN}[*]${RESET} %s\n" "$*"; }
@@ -64,7 +65,9 @@ check_git() {
 
 # Compare semver: returns 0 if $1 >= $2
 version_gte() {
-  [ "$(printf '%s\n' "$1" "$2" | sort -V | head -1)" = "$2" ]
+  local newer
+  newer="$(printf '%s\n' "$1" "$2" | sort -V | tail -1)"
+  [ "$newer" = "$1" ]
 }
 
 check_bun() {
@@ -100,44 +103,48 @@ install_bun() {
 # -------------------------------------------------------------------
 
 clone_repo() {
-  if [ -d "$INSTALL_DIR" ]; then
-    warn "$INSTALL_DIR already exists"
-    if [ -d "$INSTALL_DIR/.git" ]; then
+  if [ -d "$BUILD_DIR" ]; then
+    warn "$BUILD_DIR already exists"
+    if [ -d "$BUILD_DIR/.git" ]; then
       info "Pulling latest changes..."
-      git -C "$INSTALL_DIR" pull --ff-only origin main 2>/dev/null || {
+      git -C "$BUILD_DIR" pull --ff-only origin main 2>/dev/null || {
         warn "Pull failed, continuing with existing copy"
       }
     fi
   else
-    info "Cloning repository..."
-    git clone --depth 1 "$REPO" "$INSTALL_DIR"
+    info "Cloning repository to cache..."
+    git clone --depth 1 "$REPO" "$BUILD_DIR"
   fi
-  ok "Source: $INSTALL_DIR"
+  ok "Source cache: $BUILD_DIR"
 }
 
 install_deps() {
   info "Installing dependencies..."
-  cd "$INSTALL_DIR"
+  cd "$BUILD_DIR" || fail "Cannot enter $BUILD_DIR"
   bun install --frozen-lockfile 2>/dev/null || bun install
   ok "Dependencies installed"
 }
 
 build_binary() {
   info "Building claudium (all experimental features enabled)..."
-  cd "$INSTALL_DIR"
+  cd "$BUILD_DIR" || fail "Cannot enter $BUILD_DIR"
   bun run build:dev:full
-  ok "Binary built: $INSTALL_DIR/cli-dev"
+  local binary="$BUILD_DIR/cli-dev"
+  ok "Binary built: $binary"
 }
 
-link_binary() {
-  local link_dir="$HOME/.local/bin"
-  mkdir -p "$link_dir"
+install_binary() {
+  mkdir -p "$(dirname "$INSTALL_DIR")"
 
-  ln -sf "$INSTALL_DIR/cli-dev" "$link_dir/claudium"
-  ok "Symlinked: $link_dir/claudium"
+  cp "$BUILD_DIR/cli-dev" "$INSTALL_DIR/claudium"
+  chmod +x "$INSTALL_DIR/claudium"
+  ok "Installed: $INSTALL_DIR/claudium"
 
-  if ! echo "$PATH" | tr ':' '\n' | grep -qx "$link_dir"; then
-    warn "$link_dir is not on your PATH"
+  rm -rf "$BUILD_DIR"
+  ok "Build cache cleaned"
+
+  if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+    warn "$INSTALL_DIR is not on your PATH"
     echo ""
     printf "${YELLOW}  Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):${RESET}\n"
     printf "${BOLD}    export PATH=\"\$HOME/.local/bin:\$PATH\"${RESET}\n"
@@ -161,22 +168,24 @@ echo ""
 clone_repo
 install_deps
 build_binary
-link_binary
+install_binary
 
 echo ""
 printf "${GREEN}${BOLD}  Installation complete!${RESET}\n"
 echo ""
 printf "  ${BOLD}Run it:${RESET}\n"
-printf "    ${CYAN}claudium${RESET}                          # interactive REPL\n"
+printf "    ${CYAN}claudium${RESET}                           # interactive REPL\n"
 printf "    ${CYAN}claudium -p \"your prompt\"${RESET}          # one-shot mode\n"
 echo ""
-printf "  ${BOLD}Set your API key:${RESET}\n"
+printf "  ${BOLD}Set your Anthropic Messages API key:${RESET}\n"
 printf "    ${CYAN}export ANTHROPIC_API_KEY=\"sk-ant-...\"${RESET}\n"
 echo ""
 printf "  ${BOLD}Or log in with Claude.ai:${RESET}\n"
 printf "    ${CYAN}claudium /login${RESET}\n"
 echo ""
-printf "  ${DIM}Source: $INSTALL_DIR${RESET}\n"
-printf "  ${DIM}Binary: $INSTALL_DIR/cli-dev${RESET}\n"
-printf "  ${DIM}Link:   ~/.local/bin/claudium${RESET}\n"
+printf "  ${BOLD}Also support OpenAI Chat Completions APIs:${RESET}\n"
+printf "    ${CYAN}export CLAUDE_CODE_USE_OPENAI=1${RESET}\n"
+printf "    ${CYAN}export OPENAI_BASE_URL=http://.../v1${RESET}\n"
+echo ""
+printf "  ${BOLD}See README.md for full configs.${RESET}\n"
 echo ""
