@@ -16,6 +16,7 @@
     "build": "bun run ./scripts/build.ts",
     "build:dev": "bun run ./scripts/build.ts --dev",
     "build:dev:full": "bun run ./scripts/build.ts --dev --feature-set=dev-full",
+    "build:dev:claudium": "bun run ./scripts/build.ts --dev --feature-set=claudium",
     "compile": "bun run ./scripts/build.ts --compile",
     "dev": "bun run ./src/entrypoints/cli.tsx"
   },
