@@ -6,8 +6,8 @@
   "type": "module",
   "packageManager": "bun@1.3.11",
   "bin": {
-    "claude": "./cli",
-    "claude-source": "./cli"
+    "claudium": "./cli",
+    "claudium-source": "./cli"
   },
   "engines": {
     "bun": ">=1.3.11"
