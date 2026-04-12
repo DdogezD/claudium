@@ -712,6 +712,11 @@ export async function computeSimpleEnvInfo(
 // @[MODEL LAUNCH]: Add a knowledge cutoff date for the new model.
 function getKnowledgeCutoff(modelId: string): string | null {
   const canonical = getCanonicalName(modelId)
+  // Allow environment variable override: CLAUDE_CODE_PROMPTS_KNOWLEDGE_DATE
+  const customDate = process.env.CLAUDE_CODE_PROMPTS_KNOWLEDGE_DATE?.trim()
+  if (customDate) {
+    return customDate
+  }
   if (canonical.includes('claude-sonnet-4-6')) {
     return 'August 2025'
   } else if (canonical.includes('claude-opus-4-6')) {
