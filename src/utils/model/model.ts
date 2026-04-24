@@ -35,9 +35,10 @@ export type ModelSetting = ModelName | ModelAlias | null
 
 export function getSmallFastModel(): ModelName {
   if (process.env.ANTHROPIC_SMALL_FAST_MODEL) return process.env.ANTHROPIC_SMALL_FAST_MODEL
-  // For OpenAI provider, use OPENAI_MODEL or a sensible default
+  // For OpenAI provider, honor an explicit OPENAI_MODEL first; otherwise fall
+  // back to the Haiku default chain so ANTHROPIC_DEFAULT_HAIKU_MODEL also works.
   if (getAPIProvider() === 'openai') {
-    return process.env.OPENAI_MODEL || 'gpt-4o-mini'
+    return process.env.OPENAI_MODEL || getDefaultHaikuModel()
   }
   return getDefaultHaikuModel()
 }
