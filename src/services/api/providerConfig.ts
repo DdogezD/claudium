@@ -24,10 +24,13 @@ const CODEX_ALIAS_MODELS: Record<
 type CodexAlias = keyof typeof CODEX_ALIAS_MODELS
 type ReasoningEffort = 'low' | 'medium' | 'high'
 
-export type ProviderTransport = 'chat_completions' | 'codex_responses'
+export type ProviderTransport = 'chat_completions' | 'responses'
+
+export type ProviderBackend = 'openai' | 'codex'
 
 export type ResolvedProviderRequest = {
   transport: ProviderTransport
+  backend: ProviderBackend
   requestedModel: string
   resolvedModel: string
   baseUrl: string
@@ -171,6 +174,47 @@ export function isCodexBaseUrl(baseUrl: string | undefined): boolean {
   }
 }
 
+function isOfficialOpenAIBaseUrl(baseUrl: string | undefined): boolean {
+  const candidate = baseUrl ?? DEFAULT_OPENAI_BASE_URL
+  try {
+    return new URL(candidate).hostname === 'api.openai.com'
+  } catch {
+    return false
+  }
+}
+
+function getConfiguredOpenAITransport(
+  env: NodeJS.ProcessEnv = process.env,
+): Extract<ProviderTransport, 'chat_completions' | 'responses'> | undefined {
+  const explicitMode = asTrimmedString(env.OPENAI_API_MODE)?.toLowerCase()
+  if (explicitMode === 'chat_completions' || explicitMode === 'responses') {
+    return explicitMode
+  }
+
+  return undefined
+}
+
+function shouldUseOpenAIResponsesApi(options: {
+  baseUrl?: string
+  descriptor: ModelDescriptor
+  env?: NodeJS.ProcessEnv
+}): boolean {
+  const configuredTransport = getConfiguredOpenAITransport(options.env)
+  if (configuredTransport) {
+    return configuredTransport === 'responses'
+  }
+
+  if (!isOfficialOpenAIBaseUrl(options.baseUrl)) {
+    return false
+  }
+
+  if (options.descriptor.reasoning) {
+    return true
+  }
+
+  return false
+}
+
 export function resolveProviderRequest(options?: {
   model?: string
   baseUrl?: string
@@ -187,18 +231,28 @@ export function resolveProviderRequest(options?: {
     process.env.OPENAI_BASE_URL ??
     process.env.OPENAI_API_BASE ??
     undefined
-  const transport: ProviderTransport =
+  const backend: ProviderBackend =
     isCodexAlias(requestedModel) || isCodexBaseUrl(rawBaseUrl)
-      ? 'codex_responses'
-      : 'chat_completions'
+      ? 'codex'
+      : 'openai'
+  const transport: ProviderTransport =
+    backend === 'codex'
+      ? 'responses'
+      : shouldUseOpenAIResponsesApi({
+          baseUrl: rawBaseUrl,
+          descriptor,
+        })
+        ? 'responses'
+        : 'chat_completions'
 
   return {
     transport,
+    backend,
     requestedModel,
     resolvedModel: descriptor.baseModel,
     baseUrl:
       (rawBaseUrl ??
-        (transport === 'codex_responses'
+        (backend === 'codex'
           ? DEFAULT_CODEX_BASE_URL
           : DEFAULT_OPENAI_BASE_URL)
       ).replace(/\/+$/, ''),

@@ -2,24 +2,28 @@
  * OpenAI-compatible API shim for Claude Code.
  *
  * Translates Anthropic SDK calls (anthropic.beta.messages.create) into
- * OpenAI-compatible chat completion requests and streams back events
- * in the Anthropic streaming format so the rest of the codebase is unaware.
+ * OpenAI-compatible requests and streams back events in the Anthropic
+ * streaming format so the rest of the codebase is unaware.
  *
- * Supports: OpenAI, Azure OpenAI, Ollama, LM Studio, OpenRouter,
- * Together, Groq, Fireworks, DeepSeek, Mistral, and any OpenAI-compatible API.
+ * Supports both Chat Completions and the newer Responses API for OpenAI,
+ * Azure OpenAI, Ollama, LM Studio, OpenRouter, Together, Groq, Fireworks,
+ * DeepSeek, Mistral, ChatGPT Codex aliases, and other OpenAI-compatible APIs.
  *
  * Environment variables:
  *   CLAUDE_CODE_USE_OPENAI=1          — enable this provider
  *   OPENAI_API_KEY=sk-...             — API key (optional for local models)
  *   OPENAI_BASE_URL=http://...        — base URL (default: https://api.openai.com/v1)
- *   OPENAI_MODEL=gpt-4o              — default model override
+ *   OPENAI_MODEL=gpt-4o               — default model override
+ *   OPENAI_API_MODE=chat_completions|responses — force the transport mode
  *   CODEX_API_KEY / ~/.codex/auth.json — Codex auth for codexplan/codexspark
  */
 
 import {
   codexStreamToAnthropic,
   collectCodexCompletedResponse,
+  convertAnthropicMessagesToResponsesInput,
   convertCodexResponseToAnthropicMessage,
+  convertToolsToResponsesTools,
   performCodexRequest,
   type AnthropicStreamEvent,
   type AnthropicUsage,
@@ -60,6 +64,15 @@ interface OpenAITool {
     strict?: boolean
   }
 }
+
+type ResponsesToolChoice =
+  | 'auto'
+  | 'required'
+  | 'none'
+  | {
+      type: 'function'
+      name: string
+    }
 
 function convertSystemPrompt(
   system: unknown,
@@ -279,6 +292,108 @@ function convertTools(
         },
       }
     })
+}
+
+function convertResponsesToolChoice(
+  toolChoice: unknown,
+): ResponsesToolChoice | undefined {
+  const choice = toolChoice as { type?: string; name?: string } | undefined
+  if (!choice?.type) return undefined
+  if (choice.type === 'auto') return 'auto'
+  if (choice.type === 'any') return 'required'
+  if (choice.type === 'none') return 'none'
+  if (choice.type === 'tool' && choice.name) {
+    return {
+      type: 'function',
+      name: choice.name,
+    }
+  }
+  return undefined
+}
+
+function shouldOmitSamplingParamsForResponses(model: string): boolean {
+  const normalized = model.toLowerCase()
+  return (
+    normalized.includes('gpt') ||
+    normalized.includes('codex') ||
+    /^o\d/.test(normalized)
+  )
+}
+
+function buildResponsesRequestBody(
+  request: ReturnType<typeof resolveProviderRequest>,
+  params: ShimCreateParams,
+): Record<string, unknown> {
+  const input = convertAnthropicMessagesToResponsesInput(
+    params.messages as Array<{
+      role?: string
+      message?: { role?: string; content?: unknown }
+      content?: unknown
+    }>,
+  )
+  const body: Record<string, unknown> = {
+    model: request.resolvedModel,
+    input:
+      input.length > 0
+        ? input
+        : [
+            {
+              type: 'message',
+              role: 'user',
+              content: [{ type: 'input_text', text: '' }],
+            },
+          ],
+    store: false,
+    stream: true,
+  }
+
+  const instructions = convertSystemPrompt(params.system)
+  if (instructions) {
+    body.instructions = instructions
+  }
+
+  if (params.max_tokens > 0) {
+    body.max_output_tokens = params.max_tokens
+  }
+
+  const toolChoice = convertResponsesToolChoice(params.tool_choice)
+  if (toolChoice) {
+    body.tool_choice = toolChoice
+  }
+
+  if (params.tools && params.tools.length > 0) {
+    const convertedTools = convertToolsToResponsesTools(
+      params.tools as Array<{
+        name?: string
+        description?: string
+        input_schema?: Record<string, unknown>
+      }>,
+    )
+    if (convertedTools.length > 0) {
+      body.tools = convertedTools
+      body.parallel_tool_calls = true
+      body.tool_choice ??= 'auto'
+    }
+  }
+
+  if (request.reasoning) {
+    body.reasoning = request.reasoning
+  }
+
+  if (params.metadata !== undefined) {
+    body.metadata = params.metadata
+  }
+
+  if (!shouldOmitSamplingParamsForResponses(request.resolvedModel)) {
+    if (params.temperature !== undefined) {
+      body.temperature = params.temperature
+    }
+    if (params.top_p !== undefined) {
+      body.top_p = params.top_p
+    }
+  }
+
+  return body
 }
 
 // ---------------------------------------------------------------------------
@@ -563,16 +678,17 @@ class OpenAIShimMessages {
     const promise = (async () => {
       const request = resolveProviderRequest({ model: params.model })
       const response = await self._doRequest(request, params, options)
+      const usesResponsesTransport = request.transport === 'responses'
 
       if (params.stream) {
         return new OpenAIShimStream(
-          request.transport === 'codex_responses'
+          usesResponsesTransport
             ? codexStreamToAnthropic(response, request.resolvedModel)
             : openaiStreamToAnthropic(response, request.resolvedModel),
         )
       }
 
-      if (request.transport === 'codex_responses') {
+      if (usesResponsesTransport) {
         const data = await collectCodexCompletedResponse(response)
         return convertCodexResponseToAnthropicMessage(
           data,
@@ -602,35 +718,92 @@ class OpenAIShimMessages {
     params: ShimCreateParams,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
   ): Promise<Response> {
-    if (request.transport === 'codex_responses') {
-      const credentials = resolveCodexApiCredentials()
-      if (!credentials.apiKey) {
-        const authHint = credentials.authPath
-          ? ` or place a Codex auth.json at ${credentials.authPath}`
-          : ''
-        throw new Error(
-          `Codex auth is required for ${request.requestedModel}. Set CODEX_API_KEY${authHint}.`,
-        )
-      }
-      if (!credentials.accountId) {
-        throw new Error(
-          'Codex auth is missing chatgpt_account_id. Re-login with the Codex CLI or set CHATGPT_ACCOUNT_ID/CODEX_ACCOUNT_ID.',
-        )
+    if (request.transport === 'responses') {
+      if (request.backend === 'codex') {
+        const credentials = resolveCodexApiCredentials()
+        if (!credentials.apiKey) {
+          const authHint = credentials.authPath
+            ? ` or place a Codex auth.json at ${credentials.authPath}`
+            : ''
+          throw new Error(
+            `Codex auth is required for ${request.requestedModel}. Set CODEX_API_KEY${authHint}.`,
+          )
+        }
+        if (!credentials.accountId) {
+          throw new Error(
+            'Codex auth is missing chatgpt_account_id. Re-login with the Codex CLI or set CHATGPT_ACCOUNT_ID/CODEX_ACCOUNT_ID.',
+          )
+        }
+
+        return performCodexRequest({
+          request,
+          credentials,
+          params,
+          defaultHeaders: {
+            ...this.defaultHeaders,
+            ...(options?.headers ?? {}),
+          },
+          signal: options?.signal,
+        })
       }
 
-      return performCodexRequest({
-        request,
-        credentials,
-        params,
-        defaultHeaders: {
-          ...this.defaultHeaders,
-          ...(options?.headers ?? {}),
-        },
-        signal: options?.signal,
-      })
+      return this._doResponsesRequest(request, params, options)
     }
 
     return this._doOpenAIRequest(request, params, options)
+  }
+
+  private async _doResponsesRequest(
+    request: ReturnType<typeof resolveProviderRequest>,
+    params: ShimCreateParams,
+    options?: { signal?: AbortSignal; headers?: Record<string, string> },
+  ): Promise<Response> {
+    const body = buildResponsesRequestBody(request, params)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...this.defaultHeaders,
+      ...(options?.headers ?? {}),
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY ?? ''
+    const isAzure = /cognitiveservices\.azure\.com|openai\.azure\.com/.test(request.baseUrl)
+
+    if (apiKey) {
+      if (isAzure) {
+        headers['api-key'] = apiKey
+      } else {
+        headers.Authorization = `Bearer ${apiKey}`
+      }
+    }
+
+    let responsesUrl: string
+    if (isAzure) {
+      const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2025-03-01-preview'
+      const deployment = request.resolvedModel ?? process.env.OPENAI_MODEL ?? 'gpt-4o'
+      if (/\/deployments\//i.test(request.baseUrl)) {
+        const base = request.baseUrl.replace(/\/+$/, '')
+        responsesUrl = `${base}/responses?api-version=${apiVersion}`
+      } else {
+        const base = request.baseUrl.replace(/\/(openai\/)?v1\/?$/, '').replace(/\/+$/, '')
+        responsesUrl = `${base}/openai/deployments/${deployment}/responses?api-version=${apiVersion}`
+      }
+    } else {
+      responsesUrl = `${request.baseUrl}/responses`
+    }
+
+    const response = await fetch(responsesUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: options?.signal,
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'unknown error')
+      throw new Error(`OpenAI Responses API error ${response.status}: ${errorBody}`)
+    }
+
+    return response
   }
 
   private async _doOpenAIRequest(
