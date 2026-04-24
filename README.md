@@ -31,9 +31,9 @@ Eliminates all tracking and remote-control mechanisms present in the original Cl
 - No fingerprinting – No user or environment identification
 - No auto-updates – No remote version control or forced updates
 
-### 2. OpenAI Chat Completions API support
+### 2. OpenAI-compatible API support
 
-Added an API shim layer (`src/services/api/openaiShim.ts`) transparently translates between Anthropic message format and OpenAI Chat Completions format. All Claude Code tools (bash, file read/write, grep, glob, agents, MCP, etc.) work normally —— only the underlying LLM changes.
+Added an API shim layer (`src/services/api/openaiShim.ts`) transparently translates between Anthropic message format and OpenAI-compatible APIs. It supports both Chat Completions and the newer Responses API, so all Claude Code tools (bash, file read/write, grep, glob, agents, MCP, etc.) keep working while you swap in a different backend LLM.
 
 ### 3. Security-prompt guardrails removed
 
@@ -86,7 +86,7 @@ This will check your system, install Bun if needed, clone the repo, build the bi
 
 - [Bun](https://bun.sh) >= 1.3.11
 - macOS or Linux (Windows via WSL)
-- An API key ([Anthropic Messages](#anthropic-messages-api) or [OpenAI Completions](#openai-chat-completions-api))
+- An API key ([Anthropic Messages](#anthropic-messages-api) or [OpenAI-compatible APIs](#openai-compatible-apis))
 
 ```bash
 # Install Bun if you don't have it
@@ -218,13 +218,13 @@ src/
 | Schema validation | Zod v4 |
 | Code search | ripgrep (bundled) |
 | Protocols | MCP, LSP |
-| API | Anthropic Messages API / OpenAI Chat Completions API |
+| API | Anthropic Messages API / OpenAI-compatible APIs |
 
 ---
 
 ## API Configuration
 
-Claudium supports both **Anthropic Messages API** (natively) and **OpenAI Chat Completions APIs** (including OpenAI, OpenRouter, DeepSeek, LLaMa.CPP, Ollama, LM Studio, Together AI, Groq, Mistral, Azure OpenAI, and more).
+Claudium supports both **Anthropic Messages API** (natively) and **OpenAI-compatible APIs**. The shim can use either Chat Completions or the newer Responses API depending on the provider and model you configure.
 
 ### Anthropic Messages API
 
@@ -234,9 +234,9 @@ Use the official Anthropic Messages API with your Anthropic API key.
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-### OpenAI Chat Completions API
+### OpenAI-compatible APIs
 
-Enable OpenAI Chat Completions API mode and configure your preferred provider:
+Enable OpenAI-compatible mode and configure your preferred provider:
 
 ```bash
 export CLAUDE_CODE_USE_OPENAI=1
@@ -249,19 +249,44 @@ export CLAUDE_CODE_USE_OPENAI=1
 | `OPENAI_API_KEY` | API key (required for cloud APIs, optional for local models) |
 | `OPENAI_BASE_URL` | API base URL (default: `https://api.openai.com/v1`) |
 | `OPENAI_MODEL` | Model ID (default: `gpt-4o`) |
+| `OPENAI_API_MODE` | Force transport selection: `chat_completions` or `responses` |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Override max context window size |
 | `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
 | `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |
 
 **Autocompact buffer** = `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` + `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS`
 
+#### Transport selection
+
+- Codex aliases such as `codexplan` and `codexspark` also use the unified Responses transport, but through the ChatGPT Codex auth/backend path.
+- Other OpenAI-compatible backends stay on Chat Completions by default for maximum compatibility unless you explicitly select Responses.
+- Official OpenAI requests that include reasoning still use the Responses API.
+- Set `OPENAI_API_MODE=responses` to force `/responses` on providers that support it, or `OPENAI_API_MODE=chat_completions` to force the legacy path.
+
 #### Provider Examples
 
-**OpenAI:**
+**OpenAI (Responses API, explicit):**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL=gpt-5.4
+export OPENAI_API_MODE=responses
+```
+
+**OpenAI ChatGPT **
 ```bash
 export CLAUDE_CODE_USE_OPENAI=1
 export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL=gpt-4o
+export OPENAI_API_MODE=chat_completions
+```
+
+**OpenAI ChatGPT Codex:**
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export CODEX_API_KEY=eyJ...
+export CHATGPT_ACCOUNT_ID=account_...
+export OPENAI_MODEL=codexplan
 ```
 
 **OpenRouter:**
