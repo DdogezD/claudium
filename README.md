@@ -250,11 +250,16 @@ export CLAUDE_CODE_USE_OPENAI=1
 | `OPENAI_BASE_URL` | API base URL (default: `https://api.openai.com/v1`) |
 | `OPENAI_MODEL` | Model ID (default: `gpt-4o`) |
 | `OPENAI_API_MODE` | Force transport selection: `chat_completions` or `responses` |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Override which concrete model the `opus` alias resolves to |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Override which concrete model the `sonnet` alias resolves to |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Override which concrete model the `haiku` alias resolves to |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Override max context window size |
 | `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
 | `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |
 
 **Autocompact buffer** = `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` + `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS`
+
+Use `OPENAI_MODEL` when you want to pin the whole session to one exact model. Use `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` when you want aliases such as `opus`, `sonnet`, and `haiku` to resolve to your own provider-specific model IDs.
 
 #### Transport selection
 
