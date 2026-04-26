@@ -107,6 +107,7 @@ import {
 } from 'src/utils/gracefulShutdown.js'
 import { registerCleanup } from 'src/utils/cleanupRegistry.js'
 import { createIdleTimeoutManager } from 'src/utils/idleTimeout.js'
+import { startMemoryPressureAdvisor } from 'src/utils/memoryPressureAdvisor.js'
 import type {
   SDKStatus,
   ModelInfo,
@@ -544,10 +545,11 @@ export async function runHeadless(
     proactiveModule.activateProactive('command')
   }
 
-  // Periodically force a full GC to keep memory usage in check
+  // Adaptive memory pressure monitoring + GC
+  // Replaces blind fixed-interval GC with RSS-based state machine
+  // to prevent GC death spiral (madvise/mmap/munmap storms)
   if (typeof Bun !== 'undefined') {
-    const gcTimer = setInterval(Bun.gc, 1000)
-    gcTimer.unref()
+    startMemoryPressureAdvisor()
   }
 
   // Start headless profiler for first turn
