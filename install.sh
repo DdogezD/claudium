@@ -129,14 +129,14 @@ build_binary() {
   info "Building claudium..."
   cd "$BUILD_DIR" || fail "Cannot enter $BUILD_DIR"
   bun run build:dev:claudium
-  local binary="$BUILD_DIR/cli-dev"
+  local binary="$BUILD_DIR/claudium-cli-dev"
   ok "Binary built: $binary"
 }
 
 install_binary() {
   mkdir -p "$(dirname "$INSTALL_DIR")"
 
-  cp "$BUILD_DIR/cli-dev" "$INSTALL_DIR/claudium"
+  cp "$BUILD_DIR/claudium-cli-dev" "$INSTALL_DIR/claudium"
   chmod +x "$INSTALL_DIR/claudium"
   ok "Installed: $INSTALL_DIR/claudium"
 
