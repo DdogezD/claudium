@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useRegisterOverlay } from '../../context/overlayContext.js'
 import type { InputEvent } from '../../ink/events/input-event.js'
 import { useInput } from '../../ink.js'
@@ -83,6 +83,37 @@ export type UseSelectProps<T> = {
   onEnterImageSelection?: () => boolean
 }
 
+type ArrowDirection = 'up' | 'down'
+
+type ArrowNavigationLock = {
+  direction: ArrowDirection
+  expiresAt: number
+}
+
+const OPPOSING_ARROW_LOCK_MS = 50
+
+export function resolveArrowNavigationLock(
+  lock: ArrowNavigationLock | null,
+  direction: ArrowDirection,
+  now = Date.now(),
+  windowMs = OPPOSING_ARROW_LOCK_MS,
+): { suppress: boolean; nextLock: ArrowNavigationLock } {
+  if (lock && lock.expiresAt > now && lock.direction !== direction) {
+    return {
+      suppress: true,
+      nextLock: lock,
+    }
+  }
+
+  return {
+    suppress: false,
+    nextLock: {
+      direction,
+      expiresAt: now + windowMs,
+    },
+  }
+}
+
 export const useSelectInput = <T>({
   isDisabled = false,
   disableSelection = false,
@@ -96,6 +127,18 @@ export const useSelectInput = <T>({
   imagesSelected = false,
   onEnterImageSelection,
 }: UseSelectProps<T>) => {
+  const arrowNavigationLockRef = useRef<ArrowNavigationLock | null>(null)
+
+  const shouldSuppressArrowNavigation = (direction: ArrowDirection): boolean => {
+    const {
+      suppress,
+      nextLock,
+    } = resolveArrowNavigationLock(arrowNavigationLockRef.current, direction)
+
+    arrowNavigationLockRef.current = nextLock
+    return suppress
+  }
+
   // Automatically register as an overlay when onCancel is provided.
   // This ensures CancelRequestHandler won't intercept Escape when the select is active.
   useRegisterOverlay('select', !!state.onCancel)
@@ -114,6 +157,10 @@ export const useSelectInput = <T>({
 
     if (!isInInput) {
       handlers['select:next'] = () => {
+        if (shouldSuppressArrowNavigation('down')) {
+          return
+        }
+
         if (onDownFromLastItem) {
           const lastOption = options[options.length - 1]
           if (lastOption && state.focusedValue === lastOption.value) {
@@ -124,6 +171,10 @@ export const useSelectInput = <T>({
         state.focusNextOption()
       }
       handlers['select:previous'] = () => {
+        if (shouldSuppressArrowNavigation('up')) {
+          return
+        }
+
         if (onUpFromFirstItem && state.visibleFromIndex === 0) {
           const firstOption = options[0]
           if (firstOption && state.focusedValue === firstOption.value) {
@@ -197,6 +248,11 @@ export const useSelectInput = <T>({
 
         // Arrow keys still navigate the select even while in input mode
         if (key.downArrow || (key.ctrl && input === 'n')) {
+          if (key.downArrow && shouldSuppressArrowNavigation('down')) {
+            event.stopImmediatePropagation()
+            return
+          }
+
           if (onDownFromLastItem) {
             const lastOption = options[options.length - 1]
             if (lastOption && state.focusedValue === lastOption.value) {
@@ -210,6 +266,11 @@ export const useSelectInput = <T>({
           return
         }
         if (key.upArrow || (key.ctrl && input === 'p')) {
+          if (key.upArrow && shouldSuppressArrowNavigation('up')) {
+            event.stopImmediatePropagation()
+            return
+          }
+
           if (onUpFromFirstItem && state.visibleFromIndex === 0) {
             const firstOption = options[0]
             if (firstOption && state.focusedValue === firstOption.value) {
