@@ -87,7 +87,7 @@ See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their stat
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-This will check your system, install Bun if needed, clone the repo, build the binary `cli-dev` (with all experimental features enabled), and put it as `claudium` on your PATH.
+This will check your system, install Bun if needed, clone the repo, build the binary `claudium-cli-dev` (with all experimental features enabled), and put it as `claudium` on your PATH.
 
 ---
 
@@ -114,16 +114,16 @@ cd claudium
 # Install dependencies
 bun install
 
-# Standard build -- produces ./cli
+# Standard build -- produces ./claudium-cli
 bun run build
 
 # Dev build -- dev version stamp, experimental GrowthBook key
 bun run build:dev
 
-# Dev build with ALL experimental features enabled -- produces ./cli-dev
+# Dev build with ALL experimental features enabled -- produces ./claudium-cli-dev
 bun run build:dev:full
 
-# Compiled build (alternative output path) -- produces ./dist/cli
+# Compiled build (alternative output path) -- produces ./dist/claudium-cli
 bun run compile
 ```
 
@@ -131,10 +131,10 @@ bun run compile
 
 | Command | Output | Features | Notes |
 |---|---|---|---|
-| `bun run build` | `./cli` | `VOICE_MODE` only | Production-like binary |
-| `bun run build:dev` | `./cli-dev` | `VOICE_MODE` only | Dev version stamp |
-| `bun run build:dev:full` | `./cli-dev` | All 45+ experimental flags | The full unlock build |
-| `bun run compile` | `./dist/cli` | `VOICE_MODE` only | Alternative output directory |
+| `bun run build` | `./claudium-cli` | `VOICE_MODE` only | Production-like binary |
+| `bun run build:dev` | `./claudium-cli-dev` | `VOICE_MODE` only | Dev version stamp |
+| `bun run build:dev:full` | `./claudium-cli-dev` | All 45+ experimental flags | The full unlock build |
+| `bun run compile` | `./dist/claudium-cli` | `VOICE_MODE` only | Alternative output directory |
 
 ### Individual feature flags
 
@@ -158,10 +158,10 @@ bun run ./scripts/build.ts --dev --feature=BRIDGE_MODE
 claudium
 
 # Or the built binary
-./cli
+./claudium-cli
 
 # Or the dev binary
-./cli-dev
+./claudium-cli-dev
 
 # Or run from source without compiling (slower startup)
 bun run dev
