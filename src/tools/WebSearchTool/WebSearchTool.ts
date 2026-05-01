@@ -3,6 +3,7 @@ import type {
   BetaWebSearchTool20250305,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { hasSearxngWebSearchOverride } from 'src/tools/WebSearchTool/searxng.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js'
@@ -166,6 +167,10 @@ export const WebSearchTool = buildTool({
     return summary ? `Searching for ${summary}` : 'Searching the web'
   },
   isEnabled() {
+    if (hasSearxngWebSearchOverride()) {
+      return true
+    }
+
     const provider = getAPIProvider()
     const model = getMainLoopModel()
 
@@ -282,6 +287,11 @@ export const WebSearchTool = buildTool({
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
         extraToolSchemas: [toolSchema],
+        webSearchRequest: {
+          query,
+          allowedDomains: input.allowed_domains,
+          blockedDomains: input.blocked_domains,
+        },
         querySource: 'web_search_tool',
         agents: context.options.agentDefinitions.activeAgents,
         mcpTools: [],

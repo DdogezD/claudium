@@ -74,6 +74,7 @@ import { computeFingerprintFromMessages } from '../../utils/fingerprint-stub.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
 import {
   createAssistantAPIErrorMessage,
+  createAssistantMessage,
   createUserMessage,
   ensureToolResultPairing,
   normalizeContentFromAPI,
@@ -177,6 +178,11 @@ import { returnValue } from 'src/utils/generators.js'
 import { headlessProfilerCheckpoint } from 'src/utils/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcpInstructionsDelta.js'
 import { calculateUSDCost } from 'src/utils/modelCost.js'
+import {
+  hasSearxngWebSearchOverride,
+  performSearxngWebSearch,
+  type SearxngWebSearchRequest,
+} from 'src/tools/WebSearchTool/searxng.js'
 import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
@@ -679,6 +685,7 @@ export type Options = {
   toolChoice?: BetaToolChoiceTool | BetaToolChoiceAuto | undefined
   isNonInteractiveSession: boolean
   extraToolSchemas?: BetaToolUnion[]
+  webSearchRequest?: SearxngWebSearchRequest
   maxOutputTokensOverride?: number
   fallbackModel?: string
   onStreamingFallback?: () => void
@@ -937,6 +944,26 @@ function getPreviousRequestIdFromMessages(
   return undefined
 }
 
+function hasWebSearchToolSchema(
+  extraToolSchemas: BetaToolUnion[] | undefined,
+): boolean {
+  return (extraToolSchemas ?? []).some(
+    tool =>
+      tool.type === 'web_search_20250305' || tool.type === 'web_search_20260209',
+  )
+}
+
+function shouldUseSearxngWebSearch(
+  options: Options,
+): options is Options & { webSearchRequest: SearxngWebSearchRequest } {
+  return (
+    options.querySource === 'web_search_tool' &&
+    options.webSearchRequest !== undefined &&
+    hasSearxngWebSearchOverride() &&
+    hasWebSearchToolSchema(options.extraToolSchemas)
+  )
+}
+
 function isMedia(
   block: BetaContentBlockParam,
 ): block is BetaImageBlockParam | BetaRequestDocumentBlock {
@@ -1025,6 +1052,23 @@ async function* queryModel(
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
+  if (shouldUseSearxngWebSearch(options)) {
+    try {
+      const content = await performSearxngWebSearch({
+        request: options.webSearchRequest,
+        signal,
+        fetchFn: options.fetchOverride,
+      })
+      yield createAssistantMessage({ content })
+    } catch (error) {
+      logError(error)
+      yield createAssistantMessage({
+        content: `Web search via SearXNG failed: ${errorMessage(error)}`,
+      })
+    }
+    return
+  }
+
   // Check cheap conditions first — the off-switch await blocks on GrowthBook
   // init (~10ms). For non-Opus models (haiku, sonnet) this skips the await
   // entirely. Subscribers don't hit this path at all.
