@@ -133,12 +133,30 @@ build_binary() {
   ok "Binary built: $binary"
 }
 
+install_bypass_launcher() {
+  local launcher="$INSTALL_DIR/claudium-bypass"
+
+  cat > "$launcher" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export IS_SANDBOX=1
+exec "$SCRIPT_DIR/claudium" --permission-mode bypassPermissions "$@"
+EOF
+
+  chmod +x "$launcher"
+  ok "Installed: $launcher"
+}
+
 install_binary() {
-  mkdir -p "$(dirname "$INSTALL_DIR")"
+  mkdir -p "$INSTALL_DIR"
 
   cp "$BUILD_DIR/claudium-cli-dev" "$INSTALL_DIR/claudium"
   chmod +x "$INSTALL_DIR/claudium"
   ok "Installed: $INSTALL_DIR/claudium"
+
+  install_bypass_launcher
 
   rm -rf "$BUILD_DIR"
   ok "Build cache cleaned"
@@ -175,6 +193,7 @@ printf "${GREEN}${BOLD}  Installation complete!${RESET}\n"
 echo ""
 printf "  ${BOLD}Run it:${RESET}\n"
 printf "    ${CYAN}claudium${RESET}                           # interactive REPL\n"
+printf "    ${CYAN}claudium-bypass${RESET}                    # interactive REPL with bypassPermissions\n"
 printf "    ${CYAN}claudium -p \"your prompt\"${RESET}          # one-shot mode\n"
 echo ""
 printf "  ${BOLD}Set your Anthropic Messages API key:${RESET}\n"
