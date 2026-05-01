@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | 
 
 This is a clean, buildable fork of Anthropic's [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI -- the terminal-native AI coding agent. The upstream source became publicly available on March 31, 2026 through a source map exposure in the npm distribution.
 
-This fork applies four categories of changes on top of that snapshot:
+This fork applies five categories of changes on top of that snapshot:
 
 ### 1. Privacy-First
 
@@ -35,7 +35,16 @@ Eliminates all tracking and remote-control mechanisms present in the original Cl
 
 Added an API shim layer (`src/services/api/openaiShim.ts`) transparently translates between Anthropic message format and OpenAI-compatible APIs. It supports both Chat Completions and the newer Responses API, so all Claude Code tools (bash, file read/write, grep, glob, agents, MCP, etc.) keep working while you swap in a different backend LLM.
 
-### 3. Security-prompt guardrails removed
+### 3. SearXNG-backed WebSearch
+
+Added an optional override for the built-in `WebSearch` tool so it can query your own SearXNG instance instead of relying on provider-side web search.
+
+- Configured with one env var: `CLAUDE_CODE_SEARXNG_BASE_URL`
+- Keeps the existing `WebSearch` tool contract and UI intact
+- Preserves `allowed_domains` / `blocked_domains` semantics with local filtering
+- Falls back to the default provider behavior when the env var is unset
+
+### 4. Security-prompt guardrails removed
 
 Anthropic injects system-level instructions into every conversation that constrain Claude's behavior beyond what the model itself enforces. These include:
 
@@ -45,7 +54,7 @@ Anthropic injects system-level instructions into every conversation that constra
 
 This build strips those injections. The model's own safety training still applies —— this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
 
-### 4. Experimental features enabled
+### 5. Experimental features enabled
 
 Claude Code ships with dozens of feature flags gated behind `bun:bundle` compile-time switches. Most are disabled in the public npm release. This build unlocks all 45+ flags that compile cleanly, including:
 
@@ -342,6 +351,26 @@ export OPENAI_BASE_URL=https://your-resource.openai.azure.com/openai/deployments
 export OPENAI_MODEL=gpt-4o
 export AZURE_OPENAI_API_VERSION=2024-12-01-preview
 ```
+
+### SearXNG-backed WebSearch
+
+You can route Claudium's built-in `WebSearch` tool through your own SearXNG instance by setting one environment variable:
+
+```bash
+export CLAUDE_CODE_SEARXNG_BASE_URL=http://localhost:8888/
+```
+
+When this variable is set, `WebSearch` no longer relies on the provider's server-side web search. Instead, Claudium calls your SearXNG instance directly at:
+
+```text
+GET {CLAUDE_CODE_SEARXNG_BASE_URL}/search?q=<query>&format=json
+```
+
+Notes:
+
+- This only changes the `WebSearch` tool. `WebFetch` still fetches page content directly.
+- `allowed_domains` and `blocked_domains` are still supported, but filtering is applied locally after SearXNG returns results.
+- If `CLAUDE_CODE_SEARXNG_BASE_URL` is unset, Claudium falls back to the default provider behavior.
 
 ---
 
