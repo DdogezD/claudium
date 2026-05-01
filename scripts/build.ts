@@ -144,13 +144,8 @@ for (let i = 0; i < args.length; i += 1) {
 }
 const features = [...featureSet]
 
-const outfile = compile
-  ? dev
-    ? './dist/cli-dev'
-    : './dist/cli'
-  : dev
-    ? './cli-dev'
-    : './cli'
+const outfileName = dev ? 'claudium-cli-dev' : 'claudium-cli'
+const outfile = compile ? `./dist/${outfileName}` : `./${outfileName}`
 const buildTime = new Date().toISOString()
 const version = dev ? getDevVersion(pkg.version) : pkg.version
 
