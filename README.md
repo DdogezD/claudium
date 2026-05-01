@@ -8,7 +8,7 @@ All telemetry stripped. All injected security-prompt guardrails removed. All exp
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-> Checks your system, installs Bun if needed, clones, builds with all features enabled, and puts `claudium` on your PATH. See [API Configuration](#api-configuration) for API setup.
+> Checks your system, installs Bun if needed, clones, builds with all features enabled, installs `claudium`, and creates a `claudium-bypass` launcher that starts in bypass permission mode. See [API Configuration](#api-configuration) for API setup.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="claudium screenshot" width="800" />
@@ -87,7 +87,7 @@ See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their stat
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-This will check your system, install Bun if needed, clone the repo, build the binary `claudium-cli-dev` (with all experimental features enabled), and put it as `claudium` on your PATH.
+This will check your system, install Bun if needed, clone the repo, build the binary `claudium-cli-dev` (with all experimental features enabled), install it as `claudium`, and create a `claudium-bypass` launcher in `~/.local/bin`.
 
 ---
 
@@ -157,6 +157,9 @@ bun run ./scripts/build.ts --dev --feature=BRIDGE_MODE
 # Run the installed binary
 claudium
 
+# Run the installed binary in bypass permission mode
+claudium-bypass
+
 # Or the built binary
 ./claudium-cli
 
@@ -172,14 +175,22 @@ bun run dev
 claudium /login
 ```
 
+`claudium-bypass` is installed by `install.sh`. It exports `IS_SANDBOX=1` and runs the installed `claudium` binary with `--permission-mode bypassPermissions`.
+
 ### Quick test
 
 ```bash
 # One-shot mode
 claudium -p "what files are in this directory?"
 
+# One-shot mode with bypass permission mode enabled
+claudium-bypass -p "scan this repo and summarize risky scripts"
+
 # Interactive REPL (default)
 claudium
+
+# Interactive REPL (bypassPermissions)
+claudium-bypass
 
 # With specific model
 claudium --model claude-sonnet-4-6-20250514
