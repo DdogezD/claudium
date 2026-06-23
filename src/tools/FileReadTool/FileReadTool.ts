@@ -494,12 +494,26 @@ export const FileReadTool = buildTool({
     return { result: true }
   },
   async call(
-    { file_path, offset = 1, limit = undefined, pages },
+    { file_path, offset, limit, pages },
     context,
     _canUseTool?,
     parentMessage?,
   ) {
     const { readFileState, fileReadingLimits } = context
+
+    // Relational defaults: when only one of offset/limit is provided,
+    // fill in a sensible default and surface the decision to the model.
+    // The model can self-correct on the next turn if our guess is wrong.
+    let relationalNote: string | undefined
+    if (offset === undefined && limit !== undefined) {
+      relationalNote =
+        'offset was not provided with limit; defaulted to line 1. To start from a different line, retry with both offset and limit.'
+    } else if (offset !== undefined && limit === undefined) {
+      limit = 2000
+      relationalNote =
+        'limit was not provided with offset; defaulted to 2000 lines. To read more or fewer lines, retry with both offset and limit.'
+    }
+    if (offset === undefined) offset = 1
 
     const defaults = getDefaultFileReadingLimits()
     const maxSizeBytes =
@@ -604,6 +618,7 @@ export const FileReadTool = buildTool({
         readFileState,
         context,
         parentMessage?.message.id,
+        relationalNote,
       )
     } catch (error) {
       // Handle file-not-found: suggest similar files
@@ -627,6 +642,7 @@ export const FileReadTool = buildTool({
               readFileState,
               context,
               parentMessage?.message.id,
+              relationalNote,
             )
           } catch (altError) {
             if (!isENOENT(altError)) {
@@ -694,6 +710,7 @@ export const FileReadTool = buildTool({
 
         if (data.file.content) {
           content =
+            relationalNotePrefix(data) +
             memoryFileFreshnessPrefix(data) +
             formatFileLines(data.file) +
             (shouldIncludeFileReadMitigation()
@@ -750,6 +767,20 @@ function memoryFileFreshnessPrefix(data: object): string {
   const mtimeMs = memoryFileMtimes.get(data)
   if (mtimeMs === undefined) return ''
   return memoryFreshnessNote(mtimeMs)
+}
+
+/**
+ * Side-channel from call() to mapToolResultToToolResultBlockParam: relational
+ * default notes for offset/limit. When only one of offset/limit is provided,
+ * we fill in a sensible default and surface the decision so the model can
+ * self-correct on the next turn. No "Error:" prefix — the TUI won't paint it red.
+ */
+const relationalNotes = new WeakMap<object, string>()
+
+function relationalNotePrefix(data: object): string {
+  const note = relationalNotes.get(data)
+  if (note === undefined) return ''
+  return `Note: ${note}\n\n`
 }
 
 async function validateContentTokens(
@@ -814,6 +845,7 @@ async function callInner(
   readFileState: ToolUseContext['readFileState'],
   context: ToolUseContext,
   messageId: string | undefined,
+  relationalNote: string | undefined,
 ): Promise<{
   data: Output
   newMessages?: ReturnType<typeof createUserMessage>[]
@@ -1055,6 +1087,9 @@ async function callInner(
   }
   if (isAutoMemFile(fullFilePath)) {
     memoryFileMtimes.set(data, mtimeMs)
+  }
+  if (relationalNote) {
+    relationalNotes.set(data, relationalNote)
   }
 
   logFileOperation({
