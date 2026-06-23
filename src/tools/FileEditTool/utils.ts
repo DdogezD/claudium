@@ -89,7 +89,84 @@ export function findActualString(
     return fileContent.substring(searchIndex, searchIndex + searchString.length)
   }
 
+  // Try whitespace variants (tab ↔ space indentation)
+  const whitespaceVariant = tryWhitespaceVariants(searchString, fileContent)
+  if (whitespaceVariant) {
+    return whitespaceVariant
+  }
+
   return null
+}
+
+/**
+ * When old_string doesn't match anything in the file, extract a hint showing
+ * the model what the file actually looks like near where the match was likely
+ * intended. This helps the model self-diagnose whitespace, quote, or other
+ * formatting mismatches.
+ *
+ * Strategy: take the first non-empty, non-trivial line of old_string, strip
+ * its leading whitespace, and search for the "content" part in the file
+ * (ignoring indentation). If found, return the surrounding lines so the model
+ * can see the actual formatting.
+ */
+export function buildNotMatchedHint(
+  fileContent: string,
+  oldString: string,
+): string {
+  if (!oldString.trim() || !fileContent) return ''
+
+  // Extract first meaningful line of old_string (strip leading whitespace)
+  const lines = oldString.split('\n')
+  const searchLine = lines.find(l => l.trim().length > 0)
+  if (!searchLine) return ''
+
+  // Strip leading/trailing whitespace to get the "content core"
+  const trimmedSearch = searchLine.trim()
+
+  // Search file line-by-line for a line whose trimmed content matches
+  const fileLines = fileContent.split('\n')
+  let bestLineNum = -1
+  for (let i = 0; i < fileLines.length; i++) {
+    if (fileLines[i]!.trim() === trimmedSearch) {
+      bestLineNum = i
+      break
+    }
+  }
+
+  if (bestLineNum === -1) {
+    // Fallback: try case-insensitive search for short enough strings
+    if (trimmedSearch.length >= 4) {
+      for (let i = 0; i < fileLines.length; i++) {
+        if (
+          fileLines[i]!.trim().toLowerCase() === trimmedSearch.toLowerCase()
+        ) {
+          bestLineNum = i
+          break
+        }
+      }
+    }
+  }
+
+  if (bestLineNum === -1) return ''
+
+  // Show surrounding context (±2 lines) with visible whitespace indicators
+  const start = Math.max(0, bestLineNum - 2)
+  const end = Math.min(fileLines.length, bestLineNum + 3)
+  const contextLines = fileLines.slice(start, end)
+
+  // Make whitespace visible: tabs → →, leading spaces shown with dot
+  const visibleLines = contextLines.map(
+    (line, i) =>
+      `${String(start + i + 1).padStart(4, ' ')}: ${line
+        .replace(/\t/g, '→   ')
+        .replace(/^ +/gm, m => '·'.repeat(m.length))}`,
+  )
+
+  const indentNote = contextLines.some(l => l.startsWith('\t'))
+    ? ' (→ = tab, · = space — use exact characters from the file)'
+    : ''
+
+  return `\n\nFile context around line ${bestLineNum + 1}${indentNote}:\n${visibleLines.join('\n')}`
 }
 
 /**
@@ -550,6 +627,51 @@ const DESANITIZATIONS: Record<string, string> = {
 }
 
 /**
+ * When exact string matching fails because the model used spaces where the
+ * file uses tabs (or vice versa), try converting indentation whitespace.
+ *
+ * The Read tool preserves actual file content verbatim — tabs stay tabs.
+ * But models can't visually distinguish tabs from spaces in their context
+ * window, so they often emit spaces in old_string for a tab-indented file.
+ * This generates the most likely whitespace variants and returns the first
+ * one that actually exists in the file.
+ */
+function tryWhitespaceVariants(
+  oldString: string,
+  fileContent: string,
+): string | null {
+  // Tab → 4 spaces (most common tab width)
+  const tabsTo4Spaces = oldString.replace(/\t/g, '    ')
+  if (tabsTo4Spaces !== oldString && fileContent.includes(tabsTo4Spaces)) {
+    return tabsTo4Spaces
+  }
+
+  // Tab → 2 spaces
+  const tabsTo2Spaces = oldString.replace(/\t/g, '  ')
+  if (tabsTo2Spaces !== oldString && fileContent.includes(tabsTo2Spaces)) {
+    return tabsTo2Spaces
+  }
+
+  // Leading 4-space groups → tabs (only at line starts, not mid-line)
+  const spaces4ToTabs = oldString.replace(/^( {4})+/gm, match =>
+    '\t'.repeat(match.length / 4),
+  )
+  if (spaces4ToTabs !== oldString && fileContent.includes(spaces4ToTabs)) {
+    return spaces4ToTabs
+  }
+
+  // Leading 2-space groups → tabs
+  const spaces2ToTabs = oldString.replace(/^( {2})+/gm, match =>
+    '\t'.repeat(match.length / 2),
+  )
+  if (spaces2ToTabs !== oldString && fileContent.includes(spaces2ToTabs)) {
+    return spaces2ToTabs
+  }
+
+  return null
+}
+
+/**
  * Normalizes a match string by applying specific replacements
  * This helps handle when exact matches fail due to formatting differences
  * @returns The normalized string and which replacements were applied
@@ -634,6 +756,21 @@ export function normalizeFileEditInput({
           return {
             old_string: desanitizedOldString,
             new_string: desanitizedNewString,
+            replace_all,
+          }
+        }
+
+        // Try whitespace variants (tab ↔ space normalization).
+        // The model sees tabs and spaces as visually identical in context,
+        // so it often emits spaces for a tab-indented file or vice versa.
+        const whitespaceVariant = tryWhitespaceVariants(
+          old_string,
+          fileContent,
+        )
+        if (whitespaceVariant) {
+          return {
+            old_string: whitespaceVariant,
+            new_string: normalizedNewString,
             replace_all,
           }
         }

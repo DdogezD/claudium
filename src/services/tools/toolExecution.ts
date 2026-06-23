@@ -98,6 +98,7 @@ import {
   startToolExecutionSpan,
   startToolSpan,
 } from '../../utils/telemetry-stub.js'
+import { repairToolInput } from '../../utils/toolInputRepair.js'
 import {
   formatError,
   formatZodValidationError,
@@ -612,7 +613,31 @@ async function checkPermissionsAndCallTool(
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
-  const parsedInput = tool.inputSchema.safeParse(input)
+  let parsedInput = tool.inputSchema.safeParse(input)
+  if (!parsedInput.success) {
+    // Attempt targeted repairs guided by the Zod issue list.
+    // Valid inputs are never touched — repairs only fire at the exact paths
+    // the schema actually disagreed with.
+    const repairResult = repairToolInput(input, parsedInput.error, tool.name)
+    if (repairResult) {
+      const repairedParse = tool.inputSchema.safeParse(repairResult.repaired)
+      if (repairedParse.success) {
+        logForDebugging(
+          `${tool.name} tool input repaired: ${repairResult.repairs.join(', ')}`,
+        )
+        logEvent('tengu_tool_input_repaired', {
+          toolName: sanitizeToolNameForAnalytics(tool.name),
+          isMcp: tool.isMcp ?? false,
+          repairs:
+            repairResult.repairs.join(',') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          queryChainId: toolUseContext.queryTracking
+            ?.chainId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          queryDepth: toolUseContext.queryTracking?.depth,
+        })
+        parsedInput = repairedParse
+      }
+    }
+  }
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
 
