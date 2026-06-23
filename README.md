@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | 
 
 This is a clean, buildable fork of Anthropic's [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI -- the terminal-native AI coding agent. The upstream source became publicly available on March 31, 2026 through a source map exposure in the npm distribution.
 
-This fork applies five categories of changes on top of that snapshot:
+This fork applies 6 categories of changes on top of that snapshot:
 
 ### 1. Privacy-First
 
@@ -78,6 +78,19 @@ Claude Code ships with dozens of feature flags gated behind `bun:bundle` compile
 | `CACHED_MICROCOMPACT` | Cached microcompact state through query flows |
 
 See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their status.
+
+### 6. Open-model friendly tool input repair
+
+Open-source and smaller language models frequently fail at tool calling — not due to a capability gap, but because they emit minor input shape errors that strict JSON schema validation rejects. A model that knows how to format a path still hasn't been told clearly enough that this path is going to `fopen`, not into a chat bubble.
+
+Claudium ships a **validate-then-repair** layer at the tool dispatch boundary that intercepts four common failure modes:
+
+| Failure mode | Example | Repair |
+|---|---|---|
+| Null for optional | `{file_path:"/x", offset:null}` | Strip `null` keys |
+| JSON-stringified arrays | `'["a","b"]'` instead of `["a","b"]` | `JSON.parse` strings where arrays expected |
+| Markdown auto-links in paths | `/path/[notes.md](http://notes.md)` | Unwrap degenerate link → `/path/notes.md` |
+| Bare string for array | `"foo"` instead of `["foo"]` | Wrap in array |
 
 ---
 
