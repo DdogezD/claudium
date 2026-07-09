@@ -33,7 +33,7 @@ Eliminates all tracking and remote-control mechanisms present in the original Cl
 
 ### 2. OpenAI-compatible API support
 
-Added an API shim layer (`src/services/api/openaiShim.ts`) transparently translates between Anthropic message format and OpenAI-compatible APIs. It supports both Chat Completions and the newer Responses API, so all Claude Code tools (bash, file read/write, grep, glob, agents, MCP, etc.) keep working while you swap in a different backend LLM.
+Added an API shim layer (`src/services/api/openaiShim.ts`) that transparently translates between Anthropic message format and OpenAI-compatible APIs. It supports both Chat Completions and the newer Responses API, so all Claude Code tools (bash, file read/write, grep, glob, agents, MCP, etc.) keep working while you swap in a different backend LLM.
 
 ### 3. SearXNG-backed WebSearch
 
@@ -52,7 +52,7 @@ Anthropic injects system-level instructions into every conversation that constra
 - Injected "cyber risk" instruction blocks
 - Managed-settings security overlays pushed from Anthropic's servers
 
-This build strips those injections. The model's own safety training still applies —— this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
+This build strips those injections. The model's own safety training still applies -- this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
 
 ### 5. Experimental features enabled
 
@@ -153,7 +153,6 @@ bun run ./scripts/build.ts --dev --feature=BRIDGE_MODE
 ## Run
 
 ```bash
-
 # Run the installed binary
 claudium
 
@@ -298,7 +297,7 @@ export OPENAI_MODEL=gpt-5.4
 export OPENAI_API_MODE=responses
 ```
 
-**OpenAI ChatGPT **
+**OpenAI ChatGPT:**
 ```bash
 export CLAUDE_CODE_USE_OPENAI=1
 export OPENAI_API_KEY=sk-...
