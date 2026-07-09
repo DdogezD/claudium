@@ -10,14 +10,13 @@ import { Pane } from '../design-system/Pane.js';
 import { Tabs, Tab } from '../design-system/Tabs.js';
 import { Status, buildDiagnostics } from './Status.js';
 import { Config } from './Config.js';
-import { Usage } from './Usage.js';
 import type { LocalJSXCommandContext, CommandResultDisplay } from '../../commands.js';
 type Props = {
   onClose: (result?: string, options?: {
     display?: CommandResultDisplay;
   }) => void;
   context: LocalJSXCommandContext;
-  defaultTab: 'Status' | 'Config' | 'Usage' | 'Gates';
+  defaultTab: 'Status' | 'Config' | 'Gates';
 };
 export function Settings(t0) {
   const $ = _c(25);
@@ -86,13 +85,6 @@ export function Settings(t0) {
   } else {
     t5 = $[11];
   }
-  let t6;
-  if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = <Tab key="usage" title="Usage"><Usage /></Tab>;
-    $[12] = t6;
-  } else {
-    t6 = $[12];
-  }
   let t7;
   if ($[13] !== contentHeight) {
     t7 = false ? [<Tab key="gates" title="Gates"><Gates onOwnsEscChange={setGatesOwnsEsc} contentHeight={contentHeight} /></Tab>] : [];
@@ -103,7 +95,7 @@ export function Settings(t0) {
   }
   let t8;
   if ($[15] !== t4 || $[16] !== t5 || $[17] !== t7) {
-    t8 = [t4, t5, t6, ...t7];
+    t8 = [t4, t5, ...t7];
     $[15] = t4;
     $[16] = t5;
     $[17] = t7;
