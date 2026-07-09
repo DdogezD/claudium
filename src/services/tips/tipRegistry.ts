@@ -6,7 +6,7 @@ import {
   getSettings_DEPRECATED,
   getSettingsForSource,
 } from 'src/utils/settings/settings.js'
-import { shouldOfferTerminalSetup } from '../../commands/terminalSetup/terminalSetup.js'
+// shouldOfferTerminalSetup import stripped
 import { getDesktopUpsellConfig } from '../../components/DesktopUpsell/DesktopUpsellStartup.js'
 import { color } from '../../components/design-system/color.js'
 import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCreditUpsell.js'
@@ -170,16 +170,10 @@ const externalTips: Tip[] = [
     id: 'terminal-setup',
     content: async () =>
       env.terminal === 'Apple_Terminal'
-        ? 'Run /terminal-setup to enable convenient terminal integration like Option + Enter for new line and more'
-        : 'Run /terminal-setup to enable convenient terminal integration like Shift + Enter for new line and more',
+        ? 'Use Option + Enter to send a multi-line message'
+        : 'Use Shift + Enter to send a multi-line message',
     cooldownSessions: 10,
-    async isRelevant() {
-      const config = getGlobalConfig()
-      if (env.terminal === 'Apple_Terminal') {
-        return !config.optionAsMetaKeyInstalled
-      }
-      return !config.shiftEnterKeyBindingInstalled
-    },
+    isRelevant: async () => false,
   },
   {
     id: 'shift-enter',
@@ -204,15 +198,7 @@ const externalTips: Tip[] = [
         ? 'Run /terminal-setup to enable Option+Enter for new lines'
         : 'Run /terminal-setup to enable Shift+Enter for new lines',
     cooldownSessions: 10,
-    async isRelevant() {
-      if (!shouldOfferTerminalSetup()) {
-        return false
-      }
-      const config = getGlobalConfig()
-      return !(env.terminal === 'Apple_Terminal'
-        ? config.optionAsMetaKeyInstalled
-        : config.shiftEnterKeyBindingInstalled)
-    },
+    isRelevant: async () => false,
   },
   {
     id: 'memory-command',
@@ -278,62 +264,28 @@ const externalTips: Tip[] = [
   },
   {
     id: 'vscode-command-install',
-    content: async () =>
-      `Open the Command Palette (Cmd+Shift+P) and run "Shell Command: Install '${env.terminal === 'vscode' ? 'code' : env.terminal}' command in PATH" to enable IDE integration`,
+    content: async () => 'IDE integrations have been stripped from Claudium.',
     cooldownSessions: 0,
-    async isRelevant() {
-      // Only show this tip if we're in a VS Code-style terminal
-      if (!isSupportedVSCodeTerminal()) {
-        return false
-      }
-      if (getPlatform() !== 'macos') {
-        return false
-      }
-
-      // Check if the relevant command is available
-      switch (env.terminal) {
-        case 'vscode':
-          return !(await isVSCodeInstalled())
-        case 'cursor':
-          return !(await isCursorInstalled())
-        case 'windsurf':
-          return !(await isWindsurfInstalled())
-        default:
-          return false
-      }
-    },
+    isRelevant: async () => false,
   },
   {
     id: 'ide-upsell-external-terminal',
-    content: async () => 'Connect Claude to your IDE · /ide',
+    content: async () => 'Use ANTHROPIC_API_KEY to access Claude via API.',
     cooldownSessions: 4,
-    async isRelevant() {
-      if (isSupportedTerminal()) {
-        return false
-      }
-
-      // Use lockfiles as a (quicker) signal for running IDEs
-      const lockfiles = await getSortedIdeLockfiles()
-      if (lockfiles.length !== 0) {
-        return false
-      }
-
-      const runningIDEs = await detectRunningIDEsCached()
-      return runningIDEs.length > 0
-    },
+    isRelevant: async () => false,
   },
   {
     id: 'install-github-app',
     content: async () =>
-      'Run /install-github-app to tag @claude right from your Github issues and PRs',
+      'GitHub App integration has been stripped from Claudium.',
     cooldownSessions: 10,
-    isRelevant: async () => !getGlobalConfig().githubActionSetupCount,
+    isRelevant: async () => false,
   },
   {
     id: 'install-slack-app',
-    content: async () => 'Run /install-slack-app to use Claude in Slack',
+    content: async () => 'Slack App integration has been stripped from Claudium.',
     cooldownSessions: 10,
-    isRelevant: async () => !getGlobalConfig().slackAppInstallCount,
+    isRelevant: async () => false,
   },
   {
     id: 'permissions',

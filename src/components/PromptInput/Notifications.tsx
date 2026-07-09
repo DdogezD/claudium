@@ -27,7 +27,7 @@ import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js';
 import { AutoUpdaterWrapper } from '../AutoUpdaterWrapper.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
-import { IdeStatusIndicator } from '../IdeStatusIndicator.js';
+// import { IdeStatusIndicator } from '../IdeStatusIndicator.js'; // stripped
 import { MemoryUsageIndicator } from '../MemoryUsageIndicator.js';
 import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
 import { TokenWarning } from '../TokenWarning.js';
@@ -284,7 +284,7 @@ function NotificationContent({
     return <VoiceIndicator voiceState={voiceState} />;
   }
   return <>
-      <IdeStatusIndicator ideSelection={ideSelection} mcpClients={mcpClients} />
+      {/* IdeStatusIndicator stripped */}
       {notifications.current && ('jsx' in notifications.current ? <Text wrap="truncate" key={notifications.current.key}>
             {notifications.current.jsx}
           </Text> : <Text color={notifications.current.color} dimColor={!notifications.current.color} wrap="truncate">

@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { getOauthConfig, OAUTH_BETA_HEADER } from 'src/constants/oauth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js'
 import {
   getIsNonInteractiveSession,
@@ -12,9 +11,6 @@ import {
 } from '../services/analytics-stub.js'
 import {
   getAnthropicApiKey,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-  hasProfileScope,
 } from './auth.js'
 import { isInBundledMode } from './bundledMode.js'
 import { getGlobalConfig, saveGlobalConfig } from './config.js'
@@ -129,8 +125,7 @@ export function getFastModeUnavailableReason(): string | null {
         return null
       }
     }
-    const authType: AuthType =
-      getClaudeAIOAuthTokens() !== null ? 'oauth' : 'api-key'
+    const authType: AuthType = 'api-key'
     const reason = getDisabledReasonMessage(orgStatus.reason, authType)
     logForDebugging(`Fast mode unavailable: ${reason}`)
     return reason
@@ -365,16 +360,10 @@ type FastModeResponse = {
 }
 
 async function fetchFastModeStatus(
-  auth: { accessToken: string } | { apiKey: string },
+  auth: { apiKey: string },
 ): Promise<FastModeResponse> {
-  const endpoint = `${getOauthConfig().BASE_API_URL}/api/claude_code_penguin_mode`
-  const headers: Record<string, string> =
-    'accessToken' in auth
-      ? {
-          Authorization: `Bearer ${auth.accessToken}`,
-          'anthropic-beta': OAUTH_BETA_HEADER,
-        }
-      : { 'x-api-key': auth.apiKey }
+  const endpoint = 'https://api.anthropic.com/api/claude_code_penguin_mode'
+  const headers: Record<string, string> = { 'x-api-key': auth.apiKey }
 
   const response = await axios.get<FastModeResponse>(endpoint, { headers })
   return response.data
@@ -405,6 +394,10 @@ export function resolveFastModeStatusFromCache(): void {
 }
 
 export async function prefetchFastModeStatus(): Promise<void> {
+  // Stripped: fast mode pulls org-level config from Anthropic's API
+  // (non-inference endpoint). Return immediately to avoid the network call.
+  return
+
   // Skip network requests if nonessential traffic is disabled
   if (isEssentialTrafficOnly()) {
     return
@@ -421,13 +414,9 @@ export async function prefetchFastModeStatus(): Promise<void> {
     return inflightPrefetch
   }
 
-  // Service key OAuth sessions lack user:profile scope → endpoint 403s.
-  // Resolve orgStatus from cache and bail before burning the throttle window.
-  // API key auth is unaffected.
+  // API key auth only. OAuth path has been stripped.
   const apiKey = getAnthropicApiKey()
-  const hasUsableOAuth =
-    getClaudeAIOAuthTokens()?.accessToken && hasProfileScope()
-  if (!hasUsableOAuth && !apiKey) {
+  if (!apiKey) {
     const isAnt = process.env.USER_TYPE === 'ant'
     const cachedEnabled = getGlobalConfig().penguinModeOrgEnabled === true
     orgStatus =
@@ -444,44 +433,9 @@ export async function prefetchFastModeStatus(): Promise<void> {
   }
   lastPrefetchAt = now
 
-  const fetchWithCurrentAuth = async (): Promise<FastModeResponse> => {
-    const currentTokens = getClaudeAIOAuthTokens()
-    const auth =
-      currentTokens?.accessToken && hasProfileScope()
-        ? { accessToken: currentTokens.accessToken }
-        : apiKey
-          ? { apiKey }
-          : null
-    if (!auth) {
-      throw new Error('No auth available')
-    }
-    return fetchFastModeStatus(auth)
-  }
-
   async function doFetch(): Promise<void> {
     try {
-      let status: FastModeResponse
-      try {
-        status = await fetchWithCurrentAuth()
-      } catch (err) {
-        const isAuthError =
-          axios.isAxiosError(err) &&
-          (err.response?.status === 401 ||
-            (err.response?.status === 403 &&
-              typeof err.response?.data === 'string' &&
-              err.response.data.includes('OAuth token has been revoked')))
-        if (isAuthError) {
-          const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
-          if (failedAccessToken) {
-            await handleOAuth401Error(failedAccessToken)
-            status = await fetchWithCurrentAuth()
-          } else {
-            throw err
-          }
-        } else {
-          throw err
-        }
-      }
+      const status = await fetchFastModeStatus({ apiKey })
 
       const previousEnabled =
         orgStatus.status !== 'pending'

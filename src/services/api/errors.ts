@@ -16,8 +16,6 @@ import type {
 } from 'src/types/message.js'
 import {
   getAnthropicApiKeyWithSource,
-  getClaudeAIOAuthTokens,
-  getOauthAccountInfo,
   isClaudeAISubscriber,
 } from 'src/utils/auth.js'
 import {
@@ -155,12 +153,8 @@ export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
 export const INVALID_API_KEY_ERROR_MESSAGE = 'Not logged in · Please run /login'
 export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =
   'Invalid API key · Fix external API key'
-export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
-  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
   'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
-export const TOKEN_REVOKED_ERROR_MESSAGE =
-  'OAuth token revoked · Please run /login'
 export const CCR_AUTH_ERROR_MESSAGE =
   'Authentication error · This may be a temporary network issue, please try again'
 export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
@@ -194,21 +188,6 @@ export function getRequestTooLargeErrorMessage(): string {
     ? `Request too large (${limits}). Try with a smaller file.`
     : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
 }
-export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE =
-  'Your account does not have access to Claudium. Please run /login.'
-
-export function getTokenRevokedErrorMessage(): string {
-  return getIsNonInteractiveSession()
-    ? 'Your account does not have access to Claude. Please login again or contact your administrator.'
-    : TOKEN_REVOKED_ERROR_MESSAGE
-}
-
-export function getOauthOrgNotAllowedErrorMessage(): string {
-  return getIsNonInteractiveSession()
-    ? 'Your organization does not have access to Claude. Please login again or contact your administrator.'
-    : OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE
-}
-
 /**
  * Check if we're in CCR (Claudium Remote) mode.
  * In CCR mode, auth is handled via JWTs provided by the infrastructure,
@@ -794,18 +773,11 @@ export function getAssistantMessageFromError(
     // actually set and actually on the wire.
     if (
       source === 'ANTHROPIC_API_KEY' &&
-      process.env.ANTHROPIC_API_KEY &&
-      !isClaudeAISubscriber()
+      process.env.ANTHROPIC_API_KEY
     ) {
-      const hasStoredOAuth = getClaudeAIOAuthTokens()?.accessToken != null
-      // Not 'authentication_failed' — that triggers VS Code's showLogin(), but
-      // login can't fix this (approved env var keeps overriding OAuth). The fix
-      // is configuration-based (unset the var), so invalid_request is correct.
       return createAssistantAPIErrorMessage({
         error: 'invalid_request',
-        content: hasStoredOAuth
-          ? ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH
-          : ORG_DISABLED_ERROR_MESSAGE_ENV_KEY,
+        content: ORG_DISABLED_ERROR_MESSAGE_ENV_KEY,
       })
     }
   }
@@ -835,31 +807,7 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for OAuth token revocation error
-  if (
-    error instanceof APIError &&
-    error.status === 403 &&
-    error.message.includes('OAuth token has been revoked')
-  ) {
-    return createAssistantAPIErrorMessage({
-      error: 'authentication_failed',
-      content: getTokenRevokedErrorMessage(),
-    })
-  }
-
-  // Check for OAuth organization not allowed error
-  if (
-    error instanceof APIError &&
-    (error.status === 401 || error.status === 403) &&
-    error.message.includes(
-      'OAuth authentication is currently not allowed for this organization',
-    )
-  ) {
-    return createAssistantAPIErrorMessage({
-      error: 'authentication_failed',
-      content: getOauthOrgNotAllowedErrorMessage(),
-    })
-  }
+  // OAuth error handling has been stripped.
 
   // Generic handler for other 401/403 authentication errors
   if (
@@ -1106,24 +1054,7 @@ export function classifyAPIError(error: unknown): string {
     return 'invalid_api_key'
   }
 
-  if (
-    error instanceof APIError &&
-    error.status === 403 &&
-    error.message.includes('OAuth token has been revoked')
-  ) {
-    return 'token_revoked'
-  }
-
-  if (
-    error instanceof APIError &&
-    (error.status === 401 || error.status === 403) &&
-    error.message.includes(
-      'OAuth authentication is currently not allowed for this organization',
-    )
-  ) {
-    return 'oauth_org_not_allowed'
-  }
-
+  // OAuth-specific error classification has been stripped.
   // Generic auth errors
   if (
     error instanceof APIError &&

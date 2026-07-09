@@ -5,7 +5,6 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-st
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
 import { getLspServerManager } from '../../services/lsp/manager.js'
-import { notifyVscodeFileUpdated } from '../../services/mcp/vscodeSdkMcp.js'
 import { checkTeamMemSecrets } from '../../services/teamMemorySync/teamMemSecretGuard.js'
 import {
   activateConditionalSkillsForPaths,
@@ -326,7 +325,7 @@ export const FileWriteTool = buildTool({
     }
 
     // Notify VSCode about the file change for diff view
-    notifyVscodeFileUpdated(fullFilePath, oldContent, content)
+    // notifyVscodeFileUpdated removed (VSCode SDK MCP integration stripped)
 
     // Update read timestamp, to invalidate stale writes
     readFileState.set(fullFilePath, {

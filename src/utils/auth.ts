@@ -1,71 +1,41 @@
 import chalk from 'chalk'
-import { exec } from 'child_process'
 import { execa } from 'execa'
-import { mkdir, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
-import { join } from 'path'
-import { CLAUDE_AI_PROFILE_SCOPE } from 'src/constants/oauth.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics-stub.js'
-import { getModelStrings } from 'src/utils/model/modelStrings.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import {
   getIsNonInteractiveSession,
   preferThirdPartyAuthentication,
 } from '../bootstrap/state.js'
 import {
-  getMockSubscriptionType,
-  shouldUseMockSubscription,
-} from '../services/mockRateLimits.js'
-import {
-  isOAuthTokenExpired,
-  refreshOAuthToken,
-  shouldUseClaudeAIAuth,
-} from '../services/oauth/client.js'
-import { getOauthProfileFromOauthToken } from '../services/oauth/getOauthProfile.js'
-import type { OAuthTokens, SubscriptionType } from '../services/oauth/types.js'
-import {
   getApiKeyFromFileDescriptor,
-  getOAuthTokenFromFileDescriptor,
 } from './authFileDescriptor.js'
 import {
   maybeRemoveApiKeyFromMacOSKeychainThrows,
   normalizeApiKeyForConfig,
 } from './authPortable.js'
 import {
-  checkStsCallerIdentity,
-  clearAwsIniCache,
-  isValidAwsStsOutput,
-} from './aws.js'
-import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
-import { clearBetasCaches } from './betas.js'
-import {
-  type AccountInfo,
   checkHasTrustDialogAccepted,
   getGlobalConfig,
   saveGlobalConfig,
 } from './config.js'
 import { logAntError, logForDebugging } from './debug.js'
 import {
-  getClaudeConfigHomeDir,
   isBareMode,
   isEnvTruthy,
   isRunningOnHomespace,
 } from './envUtils.js'
 import { errorMessage } from './errors.js'
 import { execSyncWithDefaults_DEPRECATED } from './execFileNoThrow.js'
-import * as lockfile from './lockfile.js'
 import { logError } from './log.js'
-import { memoizeWithTTLAsync } from './memoize.js'
-import { getSecureStorage } from './secureStorage/index.js'
 import {
   clearLegacyApiKeyPrefetch,
   getLegacyApiKeyPrefetchResult,
 } from './secureStorage/keychainPrefetch.js'
 import {
-  clearKeychainCache,
   getMacOsKeychainStorageServiceName,
   getUsername,
 } from './secureStorage/macOsKeychainHelpers.js'
@@ -73,138 +43,10 @@ import {
   getSettings_DEPRECATED,
   getSettingsForSource,
 } from './settings/settings.js'
-import { sleep } from './sleep.js'
 import { jsonParse } from './slowOperations.js'
-import { clearToolSchemaCache } from './toolSchemaCache.js'
 
 /** Default TTL for API key helper cache in milliseconds (5 minutes) */
 const DEFAULT_API_KEY_HELPER_TTL = 5 * 60 * 1000
-
-/**
- * CCR and Claude Desktop spawn the CLI with OAuth and should never fall back
- * to the user's ~/.claude/settings.json API-key config (apiKeyHelper,
- * env.ANTHROPIC_API_KEY, env.ANTHROPIC_AUTH_TOKEN). Those settings exist for
- * the user's terminal CLI, not managed sessions. Without this guard, a user
- * who runs `claude` in their terminal with an API key sees every CCD session
- * also use that key — and fail if it's stale/wrong-org.
- */
-function isManagedOAuthContext(): boolean {
-  return (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ||
-    process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop'
-  )
-}
-
-/** Whether we are supporting direct 1P auth. */
-// this code is closely related to getAuthTokenSource
-export function isAnthropicAuthEnabled(): boolean {
-  // --bare: API-key-only, never OAuth.
-  if (isBareMode()) return false
-
-  // `claude ssh` remote: ANTHROPIC_UNIX_SOCKET tunnels API calls through a
-  // local auth-injecting proxy. The launcher sets CLAUDE_CODE_OAUTH_TOKEN as a
-  // placeholder iff the local side is a subscriber (so the remote includes the
-  // oauth-2025 beta header to match what the proxy will inject). The remote's
-  // ~/.claude settings (apiKeyHelper, settings.env.ANTHROPIC_API_KEY) MUST NOT
-  // flip this — they'd cause a header mismatch with the proxy and a bogus
-  // "invalid x-api-key" from the API. See src/ssh/sshAuthProxy.ts.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
-    return !!process.env.CLAUDE_CODE_OAUTH_TOKEN
-  }
-
-  const is3P =
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
-
-  // Check if user has configured an external API key source
-  // This allows externally-provided API keys to work (without requiring proxy configuration)
-  const settings = getSettings_DEPRECATED() || {}
-  const apiKeyHelper = settings.apiKeyHelper
-  const hasExternalAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
-    apiKeyHelper ||
-    process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
-
-  // Check if API key is from an external source (not managed by /login)
-  const { source: apiKeySource } = getAnthropicApiKeyWithSource({
-    skipRetrievingKeyFromApiKeyHelper: true,
-  })
-  const hasExternalApiKey =
-    apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper'
-
-  // Disable Anthropic auth if:
-  // 1. Using 3rd party services (Bedrock/Vertex/Foundry)
-  // 2. User has an external API key (regardless of proxy configuration)
-  // 3. User has an external auth token (regardless of proxy configuration)
-  // this may cause issues if users have complex proxy / gateway "client-side creds" auth scenarios,
-  // e.g. if they want to set X-Api-Key to a gateway key but use Anthropic OAuth for the Authorization
-  // if we get reports of that, we should probably add an env var to force OAuth enablement
-  const shouldDisableAuth =
-    is3P ||
-    (hasExternalAuthToken && !isManagedOAuthContext()) ||
-    (hasExternalApiKey && !isManagedOAuthContext())
-
-  return !shouldDisableAuth
-}
-
-/** Where the auth token is being sourced from, if any. */
-// this code is closely related to isAnthropicAuthEnabled
-export function getAuthTokenSource() {
-  // --bare: API-key-only. apiKeyHelper (from --settings) is the only
-  // bearer-token-shaped source allowed. OAuth env vars, FD tokens, and
-  // keychain are ignored.
-  if (isBareMode()) {
-    if (getConfiguredApiKeyHelper()) {
-      return { source: 'apiKeyHelper' as const, hasToken: true }
-    }
-    return { source: 'none' as const, hasToken: false }
-  }
-
-  if (process.env.ANTHROPIC_AUTH_TOKEN && !isManagedOAuthContext()) {
-    return { source: 'ANTHROPIC_AUTH_TOKEN' as const, hasToken: true }
-  }
-
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    return { source: 'CLAUDE_CODE_OAUTH_TOKEN' as const, hasToken: true }
-  }
-
-  // Check for OAuth token from file descriptor (or its CCR disk fallback)
-  const oauthTokenFromFd = getOAuthTokenFromFileDescriptor()
-  if (oauthTokenFromFd) {
-    // getOAuthTokenFromFileDescriptor has a disk fallback for CCR subprocesses
-    // that can't inherit the pipe FD. Distinguish by env var presence so the
-    // org-mismatch message doesn't tell the user to unset a variable that
-    // doesn't exist. Call sites fall through correctly — the new source is
-    // !== 'none' (cli/handlers/auth.ts → oauth_token) and not in the
-    // isEnvVarToken set (auth.ts:1844 → generic re-login message).
-    if (process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) {
-      return {
-        source: 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR' as const,
-        hasToken: true,
-      }
-    }
-    return {
-      source: 'CCR_OAUTH_TOKEN_FILE' as const,
-      hasToken: true,
-    }
-  }
-
-  // Check if apiKeyHelper is configured without executing it
-  // This prevents security issues where arbitrary code could execute before trust is established
-  const apiKeyHelper = getConfiguredApiKeyHelper()
-  if (apiKeyHelper && !isManagedOAuthContext()) {
-    return { source: 'apiKeyHelper' as const, hasToken: true }
-  }
-
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (shouldUseClaudeAIAuth(oauthTokens?.scopes) && oauthTokens?.accessToken) {
-    return { source: 'claude.ai' as const, hasToken: true }
-  }
-
-  return { source: 'none' as const, hasToken: false }
-}
 
 export type ApiKeySource =
   | 'ANTHROPIC_API_KEY'
@@ -375,56 +217,6 @@ function isApiKeyHelperFromProjectOrLocalSettings(): boolean {
   return (
     projectSettings?.apiKeyHelper === apiKeyHelper ||
     localSettings?.apiKeyHelper === apiKeyHelper
-  )
-}
-
-/**
- * Get the configured awsAuthRefresh from settings
- */
-function getConfiguredAwsAuthRefresh(): string | undefined {
-  const mergedSettings = getSettings_DEPRECATED() || {}
-  return mergedSettings.awsAuthRefresh
-}
-
-/**
- * Check if the configured awsAuthRefresh comes from project settings
- */
-export function isAwsAuthRefreshFromProjectSettings(): boolean {
-  const awsAuthRefresh = getConfiguredAwsAuthRefresh()
-  if (!awsAuthRefresh) {
-    return false
-  }
-
-  const projectSettings = getSettingsForSource('projectSettings')
-  const localSettings = getSettingsForSource('localSettings')
-  return (
-    projectSettings?.awsAuthRefresh === awsAuthRefresh ||
-    localSettings?.awsAuthRefresh === awsAuthRefresh
-  )
-}
-
-/**
- * Get the configured awsCredentialExport from settings
- */
-function getConfiguredAwsCredentialExport(): string | undefined {
-  const mergedSettings = getSettings_DEPRECATED() || {}
-  return mergedSettings.awsCredentialExport
-}
-
-/**
- * Check if the configured awsCredentialExport comes from project settings
- */
-export function isAwsCredentialExportFromProjectSettings(): boolean {
-  const awsCredentialExport = getConfiguredAwsCredentialExport()
-  if (!awsCredentialExport) {
-    return false
-  }
-
-  const projectSettings = getSettingsForSource('projectSettings')
-  const localSettings = getSettingsForSource('localSettings')
-  return (
-    projectSettings?.awsCredentialExport === awsCredentialExport ||
-    localSettings?.awsCredentialExport === awsCredentialExport
   )
 }
 
@@ -603,452 +395,7 @@ export function prefetchApiKeyFromApiKeyHelperIfSafe(
   void getApiKeyFromApiKeyHelper(isNonInteractiveSession)
 }
 
-/** Default STS credentials are one hour. We manually manage invalidation, so not too worried about this being accurate. */
-const DEFAULT_AWS_STS_TTL = 60 * 60 * 1000
 
-/**
- * Run awsAuthRefresh to perform interactive authentication (e.g., aws sso login)
- * Streams output in real-time for user visibility
- */
-async function runAwsAuthRefresh(): Promise<boolean> {
-  const awsAuthRefresh = getConfiguredAwsAuthRefresh()
-
-  if (!awsAuthRefresh) {
-    return false // Not configured, treat as success
-  }
-
-  // SECURITY: Check if awsAuthRefresh is from project settings
-  if (isAwsAuthRefreshFromProjectSettings()) {
-    // Check if trust has been established for this project
-    const hasTrust = checkHasTrustDialogAccepted()
-    if (!hasTrust && !getIsNonInteractiveSession()) {
-      const error = new Error(
-        `Security: awsAuthRefresh executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
-      )
-      logAntError('awsAuthRefresh invoked before trust check', error)
-      logEvent('tengu_awsAuthRefresh_missing_trust', {})
-      return false
-    }
-  }
-
-  try {
-    logForDebugging('Fetching AWS caller identity for AWS auth refresh command')
-    await checkStsCallerIdentity()
-    logForDebugging(
-      'Fetched AWS caller identity, skipping AWS auth refresh command',
-    )
-    return false
-  } catch {
-    // only actually do the refresh if caller-identity calls
-    return refreshAwsAuth(awsAuthRefresh)
-  }
-}
-
-// Timeout for AWS auth refresh command (3 minutes).
-// Long enough for browser-based SSO flows, short enough to prevent indefinite hangs.
-const AWS_AUTH_REFRESH_TIMEOUT_MS = 3 * 60 * 1000
-
-export function refreshAwsAuth(awsAuthRefresh: string): Promise<boolean> {
-  logForDebugging('Running AWS auth refresh command')
-  // Start tracking authentication status
-  const authStatusManager = AwsAuthStatusManager.getInstance()
-  authStatusManager.startAuthentication()
-
-  return new Promise(resolve => {
-    const refreshProc = exec(awsAuthRefresh, {
-      timeout: AWS_AUTH_REFRESH_TIMEOUT_MS,
-    })
-    refreshProc.stdout!.on('data', data => {
-      const output = data.toString().trim()
-      if (output) {
-        // Add output to status manager for UI display
-        authStatusManager.addOutput(output)
-        // Also log for debugging
-        logForDebugging(output, { level: 'debug' })
-      }
-    })
-
-    refreshProc.stderr!.on('data', data => {
-      const error = data.toString().trim()
-      if (error) {
-        authStatusManager.setError(error)
-        logForDebugging(error, { level: 'error' })
-      }
-    })
-
-    refreshProc.on('close', (code, signal) => {
-      if (code === 0) {
-        logForDebugging('AWS auth refresh completed successfully')
-        authStatusManager.endAuthentication(true)
-        void resolve(true)
-      } else {
-        const timedOut = signal === 'SIGTERM'
-        const message = timedOut
-          ? chalk.red(
-              'AWS auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
-            )
-          : chalk.red(
-              'Error running awsAuthRefresh (in settings or ~/.claude.json):',
-            )
-        // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.error(message)
-        authStatusManager.endAuthentication(false)
-        void resolve(false)
-      }
-    })
-  })
-}
-
-/**
- * Run awsCredentialExport to get credentials and set environment variables
- * Expects JSON output containing AWS credentials
- */
-async function getAwsCredsFromCredentialExport(): Promise<{
-  accessKeyId: string
-  secretAccessKey: string
-  sessionToken: string
-} | null> {
-  const awsCredentialExport = getConfiguredAwsCredentialExport()
-
-  if (!awsCredentialExport) {
-    return null
-  }
-
-  // SECURITY: Check if awsCredentialExport is from project settings
-  if (isAwsCredentialExportFromProjectSettings()) {
-    // Check if trust has been established for this project
-    const hasTrust = checkHasTrustDialogAccepted()
-    if (!hasTrust && !getIsNonInteractiveSession()) {
-      const error = new Error(
-        `Security: awsCredentialExport executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
-      )
-      logAntError('awsCredentialExport invoked before trust check', error)
-      logEvent('tengu_awsCredentialExport_missing_trust', {})
-      return null
-    }
-  }
-
-  try {
-    logForDebugging(
-      'Fetching AWS caller identity for credential export command',
-    )
-    await checkStsCallerIdentity()
-    logForDebugging(
-      'Fetched AWS caller identity, skipping AWS credential export command',
-    )
-    return null
-  } catch {
-    // only actually do the export if caller-identity calls
-    try {
-      logForDebugging('Running AWS credential export command')
-      const result = await execa(awsCredentialExport, {
-        shell: true,
-        reject: false,
-      })
-      if (result.exitCode !== 0 || !result.stdout) {
-        throw new Error('awsCredentialExport did not return a valid value')
-      }
-
-      // Parse the JSON output from aws sts commands
-      const awsOutput = jsonParse(result.stdout.trim())
-
-      if (!isValidAwsStsOutput(awsOutput)) {
-        throw new Error(
-          'awsCredentialExport did not return valid AWS STS output structure',
-        )
-      }
-
-      logForDebugging('AWS credentials retrieved from awsCredentialExport')
-      return {
-        accessKeyId: awsOutput.Credentials.AccessKeyId,
-        secretAccessKey: awsOutput.Credentials.SecretAccessKey,
-        sessionToken: awsOutput.Credentials.SessionToken,
-      }
-    } catch (e) {
-      const message = chalk.red(
-        'Error getting AWS credentials from awsCredentialExport (in settings or ~/.claude.json):',
-      )
-      if (e instanceof Error) {
-        // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.error(message, e.message)
-      } else {
-        // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.error(message, e)
-      }
-      return null
-    }
-  }
-}
-
-/**
- * Refresh AWS authentication and get credentials with cache clearing
- * This combines runAwsAuthRefresh, getAwsCredsFromCredentialExport, and clearAwsIniCache
- * to ensure fresh credentials are always used
- */
-export const refreshAndGetAwsCredentials = memoizeWithTTLAsync(
-  async (): Promise<{
-    accessKeyId: string
-    secretAccessKey: string
-    sessionToken: string
-  } | null> => {
-    // First run auth refresh if needed
-    const refreshed = await runAwsAuthRefresh()
-
-    // Get credentials from export
-    const credentials = await getAwsCredsFromCredentialExport()
-
-    // Clear AWS INI cache to ensure fresh credentials are used
-    if (refreshed || credentials) {
-      await clearAwsIniCache()
-    }
-
-    return credentials
-  },
-  DEFAULT_AWS_STS_TTL,
-)
-
-export function clearAwsCredentialsCache(): void {
-  refreshAndGetAwsCredentials.cache.clear()
-}
-
-/**
- * Get the configured gcpAuthRefresh from settings
- */
-function getConfiguredGcpAuthRefresh(): string | undefined {
-  const mergedSettings = getSettings_DEPRECATED() || {}
-  return mergedSettings.gcpAuthRefresh
-}
-
-/**
- * Check if the configured gcpAuthRefresh comes from project settings
- */
-export function isGcpAuthRefreshFromProjectSettings(): boolean {
-  const gcpAuthRefresh = getConfiguredGcpAuthRefresh()
-  if (!gcpAuthRefresh) {
-    return false
-  }
-
-  const projectSettings = getSettingsForSource('projectSettings')
-  const localSettings = getSettingsForSource('localSettings')
-  return (
-    projectSettings?.gcpAuthRefresh === gcpAuthRefresh ||
-    localSettings?.gcpAuthRefresh === gcpAuthRefresh
-  )
-}
-
-/** Short timeout for the GCP credentials probe. Without this, when no local
- *  credential source exists (no ADC file, no env var), google-auth-library falls
- *  through to the GCE metadata server which hangs ~12s outside GCP. */
-const GCP_CREDENTIALS_CHECK_TIMEOUT_MS = 5_000
-
-/**
- * Check if GCP credentials are currently valid by attempting to get an access token.
- * This uses the same authentication chain that the Vertex SDK uses.
- */
-export async function checkGcpCredentialsValid(): Promise<boolean> {
-  try {
-    // Dynamically import to avoid loading google-auth-library unnecessarily
-    const { GoogleAuth } = await import('google-auth-library')
-    const auth = new GoogleAuth({
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    })
-    const probe = (async () => {
-      const client = await auth.getClient()
-      await client.getAccessToken()
-    })()
-    const timeout = sleep(GCP_CREDENTIALS_CHECK_TIMEOUT_MS).then(() => {
-      throw new GcpCredentialsTimeoutError('GCP credentials check timed out')
-    })
-    await Promise.race([probe, timeout])
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** Default GCP credential TTL - 1 hour to match typical ADC token lifetime */
-const DEFAULT_GCP_CREDENTIAL_TTL = 60 * 60 * 1000
-
-/**
- * Run gcpAuthRefresh to perform interactive authentication (e.g., gcloud auth application-default login)
- * Streams output in real-time for user visibility
- */
-async function runGcpAuthRefresh(): Promise<boolean> {
-  const gcpAuthRefresh = getConfiguredGcpAuthRefresh()
-
-  if (!gcpAuthRefresh) {
-    return false // Not configured, treat as success
-  }
-
-  // SECURITY: Check if gcpAuthRefresh is from project settings
-  if (isGcpAuthRefreshFromProjectSettings()) {
-    // Check if trust has been established for this project
-    // Pass true to indicate this is a dangerous feature that requires trust
-    const hasTrust = checkHasTrustDialogAccepted()
-    if (!hasTrust && !getIsNonInteractiveSession()) {
-      const error = new Error(
-        `Security: gcpAuthRefresh executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
-      )
-      logAntError('gcpAuthRefresh invoked before trust check', error)
-      logEvent('tengu_gcpAuthRefresh_missing_trust', {})
-      return false
-    }
-  }
-
-  try {
-    logForDebugging('Checking GCP credentials validity for auth refresh')
-    const isValid = await checkGcpCredentialsValid()
-    if (isValid) {
-      logForDebugging(
-        'GCP credentials are valid, skipping auth refresh command',
-      )
-      return false
-    }
-  } catch {
-    // Credentials check failed, proceed with refresh
-  }
-
-  return refreshGcpAuth(gcpAuthRefresh)
-}
-
-// Timeout for GCP auth refresh command (3 minutes).
-// Long enough for browser-based auth flows, short enough to prevent indefinite hangs.
-const GCP_AUTH_REFRESH_TIMEOUT_MS = 3 * 60 * 1000
-
-export function refreshGcpAuth(gcpAuthRefresh: string): Promise<boolean> {
-  logForDebugging('Running GCP auth refresh command')
-  // Start tracking authentication status. AwsAuthStatusManager is cloud-provider-agnostic
-  // despite the name — print.ts emits its updates as generic SDK 'auth_status' messages.
-  const authStatusManager = AwsAuthStatusManager.getInstance()
-  authStatusManager.startAuthentication()
-
-  return new Promise(resolve => {
-    const refreshProc = exec(gcpAuthRefresh, {
-      timeout: GCP_AUTH_REFRESH_TIMEOUT_MS,
-    })
-    refreshProc.stdout!.on('data', data => {
-      const output = data.toString().trim()
-      if (output) {
-        // Add output to status manager for UI display
-        authStatusManager.addOutput(output)
-        // Also log for debugging
-        logForDebugging(output, { level: 'debug' })
-      }
-    })
-
-    refreshProc.stderr!.on('data', data => {
-      const error = data.toString().trim()
-      if (error) {
-        authStatusManager.setError(error)
-        logForDebugging(error, { level: 'error' })
-      }
-    })
-
-    refreshProc.on('close', (code, signal) => {
-      if (code === 0) {
-        logForDebugging('GCP auth refresh completed successfully')
-        authStatusManager.endAuthentication(true)
-        void resolve(true)
-      } else {
-        const timedOut = signal === 'SIGTERM'
-        const message = timedOut
-          ? chalk.red(
-              'GCP auth refresh timed out after 3 minutes. Run your auth command manually in a separate terminal.',
-            )
-          : chalk.red(
-              'Error running gcpAuthRefresh (in settings or ~/.claude.json):',
-            )
-        // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.error(message)
-        authStatusManager.endAuthentication(false)
-        void resolve(false)
-      }
-    })
-  })
-}
-
-/**
- * Refresh GCP authentication if needed.
- * This function checks if credentials are valid and runs the refresh command if not.
- * Memoized with TTL to avoid excessive refresh attempts.
- */
-export const refreshGcpCredentialsIfNeeded = memoizeWithTTLAsync(
-  async (): Promise<boolean> => {
-    // Run auth refresh if needed
-    const refreshed = await runGcpAuthRefresh()
-    return refreshed
-  },
-  DEFAULT_GCP_CREDENTIAL_TTL,
-)
-
-export function clearGcpCredentialsCache(): void {
-  refreshGcpCredentialsIfNeeded.cache.clear()
-}
-
-/**
- * Prefetches GCP credentials only if workspace trust has already been established.
- * This allows us to start the potentially slow GCP commands early for trusted workspaces
- * while maintaining security for untrusted ones.
- *
- * Returns void to prevent misuse - use refreshGcpCredentialsIfNeeded() to actually refresh.
- */
-export function prefetchGcpCredentialsIfSafe(): void {
-  // Check if gcpAuthRefresh is configured
-  const gcpAuthRefresh = getConfiguredGcpAuthRefresh()
-
-  if (!gcpAuthRefresh) {
-    return
-  }
-
-  // Check if gcpAuthRefresh is from project settings
-  if (isGcpAuthRefreshFromProjectSettings()) {
-    // Only prefetch if trust has already been established
-    const hasTrust = checkHasTrustDialogAccepted()
-    if (!hasTrust && !getIsNonInteractiveSession()) {
-      // Don't prefetch - wait for trust to be established first
-      return
-    }
-  }
-
-  // Safe to prefetch - either not from project settings or trust already established
-  void refreshGcpCredentialsIfNeeded()
-}
-
-/**
- * Prefetches AWS credentials only if workspace trust has already been established.
- * This allows us to start the potentially slow AWS commands early for trusted workspaces
- * while maintaining security for untrusted ones.
- *
- * Returns void to prevent misuse - use refreshAndGetAwsCredentials() to actually retrieve credentials.
- */
-export function prefetchAwsCredentialsAndBedRockInfoIfSafe(): void {
-  // Check if either AWS command is configured
-  const awsAuthRefresh = getConfiguredAwsAuthRefresh()
-  const awsCredentialExport = getConfiguredAwsCredentialExport()
-
-  if (!awsAuthRefresh && !awsCredentialExport) {
-    return
-  }
-
-  // Check if either command is from project settings
-  if (
-    isAwsAuthRefreshFromProjectSettings() ||
-    isAwsCredentialExportFromProjectSettings()
-  ) {
-    // Only prefetch if trust has already been established
-    const hasTrust = checkHasTrustDialogAccepted()
-    if (!hasTrust && !getIsNonInteractiveSession()) {
-      // Don't prefetch - wait for trust to be established first
-      return
-    }
-  }
-
-  // Safe to prefetch - either not from project settings or trust already established
-  void refreshAndGetAwsCredentials()
-  getModelStrings()
-}
-
-/** @private Use {@link getAnthropicApiKey} or {@link getAnthropicApiKeyWithSource} */
 export const getApiKeyFromConfigOrMacOSKeychain = memoize(
   (): { key: string; source: ApiKeySource } | null => {
     if (isBareMode()) return null
@@ -1190,554 +537,125 @@ async function maybeRemoveApiKeyFromMacOSKeychain(): Promise<void> {
     logError(e)
   }
 }
-
-// Function to store OAuth tokens in secure storage
-export function saveOAuthTokensIfNeeded(tokens: OAuthTokens): {
-  success: boolean
-  warning?: string
-} {
-  if (!shouldUseClaudeAIAuth(tokens.scopes)) {
-    logEvent('tengu_oauth_tokens_not_claude_ai', {})
-    return { success: true }
-  }
-
-  // Skip saving inference-only tokens (they come from env vars)
-  if (!tokens.refreshToken || !tokens.expiresAt) {
-    logEvent('tengu_oauth_tokens_inference_only', {})
-    return { success: true }
-  }
-
-  const secureStorage = getSecureStorage()
-  const storageBackend =
-    secureStorage.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-
-  try {
-    const storageData = secureStorage.read() || {}
-    const existingOauth = storageData.claudeAiOauth
-
-    storageData.claudeAiOauth = {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresAt: tokens.expiresAt,
-      scopes: tokens.scopes,
-      // Profile fetch in refreshOAuthToken swallows errors and returns null on
-      // transient failures (network, 5xx, rate limit). Don't clobber a valid
-      // stored subscription with null — fall back to the existing value.
-      subscriptionType:
-        tokens.subscriptionType ?? existingOauth?.subscriptionType ?? null,
-      rateLimitTier:
-        tokens.rateLimitTier ?? existingOauth?.rateLimitTier ?? null,
-    }
-
-    const updateStatus = secureStorage.update(storageData)
-
-    if (updateStatus.success) {
-      logEvent('tengu_oauth_tokens_saved', { storageBackend })
-    } else {
-      logEvent('tengu_oauth_tokens_save_failed', { storageBackend })
-    }
-
-    getClaudeAIOAuthTokens.cache?.clear?.()
-    clearBetasCaches()
-    clearToolSchemaCache()
-    return updateStatus
-  } catch (error) {
-    logError(error)
-    logEvent('tengu_oauth_tokens_save_exception', {
-      storageBackend,
-      error: errorMessage(
-        error,
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-    return { success: false, warning: 'Failed to save OAuth tokens' }
-  }
-}
-
-export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => {
-  // --bare: API-key-only. No OAuth env tokens, no keychain, no credentials file.
-  if (isBareMode()) return null
-
-  // Check for force-set OAuth token from environment variable
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    // Return an inference-only token (unknown refresh and expiry)
-    return {
-      accessToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-      refreshToken: null,
-      expiresAt: null,
-      scopes: ['user:inference'],
-      subscriptionType: null,
-      rateLimitTier: null,
-    }
-  }
-
-  // Check for OAuth token from file descriptor
-  const oauthTokenFromFd = getOAuthTokenFromFileDescriptor()
-  if (oauthTokenFromFd) {
-    // Return an inference-only token (unknown refresh and expiry)
-    return {
-      accessToken: oauthTokenFromFd,
-      refreshToken: null,
-      expiresAt: null,
-      scopes: ['user:inference'],
-      subscriptionType: null,
-      rateLimitTier: null,
-    }
-  }
-
-  try {
-    const secureStorage = getSecureStorage()
-    const storageData = secureStorage.read()
-    const oauthData = storageData?.claudeAiOauth
-
-    if (!oauthData?.accessToken) {
-      return null
-    }
-
-    return oauthData
-  } catch (error) {
-    logError(error)
-    return null
-  }
-})
-
 /**
- * Clears all OAuth token caches. Call this on 401 errors to ensure
- * the next token read comes from secure storage, not stale in-memory caches.
- * This handles the case where the local expiration check disagrees with the
- * server (e.g., due to clock corrections after token was issued).
+ * Stub: OAuth has been stripped. All users are API key users.
  */
-export function clearOAuthTokenCache(): void {
-  getClaudeAIOAuthTokens.cache?.clear?.()
-  clearKeychainCache()
-}
-
-let lastCredentialsMtimeMs = 0
-
-// Cross-process staleness: another CC instance may write fresh tokens to
-// disk (refresh or /login), but this process's memoize caches forever.
-// Without this, terminal 1's /login fixes terminal 1; terminal 2's /login
-// then revokes terminal 1 server-side, and terminal 1's memoize never
-// re-reads — infinite /login regress (CC-1096, GH#24317).
-async function invalidateOAuthCacheIfDiskChanged(): Promise<void> {
-  try {
-    const { mtimeMs } = await stat(
-      join(getClaudeConfigHomeDir(), '.credentials.json'),
-    )
-    if (mtimeMs !== lastCredentialsMtimeMs) {
-      lastCredentialsMtimeMs = mtimeMs
-      clearOAuthTokenCache()
-    }
-  } catch {
-    // ENOENT — macOS keychain path (file deleted on migration). Clear only
-    // the memoize so it delegates to the keychain cache's 30s TTL instead
-    // of caching forever on top. `security find-generic-password` is
-    // ~15ms; bounded to once per 30s by the keychain cache.
-    getClaudeAIOAuthTokens.cache?.clear?.()
-  }
-}
-
-// In-flight dedup: when N claude.ai proxy connectors hit 401 with the same
-// token simultaneously (common at startup — #20930), only one should clear
-// caches and re-read the keychain. Without this, each call's clearOAuthTokenCache()
-// nukes readInFlight in macOsKeychainStorage and triggers a fresh spawn —
-// sync spawns stacked to 800ms+ of blocked render frames.
-const pending401Handlers = new Map<string, Promise<boolean>>()
-
-/**
- * Handle a 401 "OAuth token has expired" error from the API.
- *
- * This function forces a token refresh when the server says the token is expired,
- * even if our local expiration check disagrees (which can happen due to clock
- * issues when the token was issued).
- *
- * Safety: We compare the failed token with what's in keychain. If another tab
- * already refreshed (different token in keychain), we use that instead of
- * refreshing again. Concurrent calls with the same failedAccessToken are
- * deduplicated to a single keychain read.
- *
- * @param failedAccessToken - The access token that was rejected with 401
- * @returns true if we now have a valid token, false otherwise
- */
-export function handleOAuth401Error(
-  failedAccessToken: string,
-): Promise<boolean> {
-  const pending = pending401Handlers.get(failedAccessToken)
-  if (pending) return pending
-
-  const promise = handleOAuth401ErrorImpl(failedAccessToken).finally(() => {
-    pending401Handlers.delete(failedAccessToken)
-  })
-  pending401Handlers.set(failedAccessToken, promise)
-  return promise
-}
-
-async function handleOAuth401ErrorImpl(
-  failedAccessToken: string,
-): Promise<boolean> {
-  // Clear caches and re-read from keychain (async — sync read blocks ~100ms/call)
-  clearOAuthTokenCache()
-  const currentTokens = await getClaudeAIOAuthTokensAsync()
-
-  if (!currentTokens?.refreshToken) {
-    return false
-  }
-
-  // If keychain has a different token, another tab already refreshed - use it
-  if (currentTokens.accessToken !== failedAccessToken) {
-    logEvent('tengu_oauth_401_recovered_from_keychain', {})
-    return true
-  }
-
-  // Same token that failed - force refresh, bypassing local expiration check
-  return checkAndRefreshOAuthTokenIfNeeded(0, true)
-}
-
-/**
- * Reads OAuth tokens asynchronously, avoiding blocking keychain reads.
- * Delegates to the sync memoized version for env var / file descriptor tokens
- * (which don't hit the keychain), and only uses async for storage reads.
- */
-export async function getClaudeAIOAuthTokensAsync(): Promise<OAuthTokens | null> {
-  if (isBareMode()) return null
-
-  // Env var and FD tokens are sync and don't hit the keychain
-  if (
-    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
-    getOAuthTokenFromFileDescriptor()
-  ) {
-    return getClaudeAIOAuthTokens()
-  }
-
-  try {
-    const secureStorage = getSecureStorage()
-    const storageData = await secureStorage.readAsync()
-    const oauthData = storageData?.claudeAiOauth
-    if (!oauthData?.accessToken) {
-      return null
-    }
-    return oauthData
-  } catch (error) {
-    logError(error)
-    return null
-  }
-}
-
-// In-flight promise for deduplicating concurrent calls
-let pendingRefreshCheck: Promise<boolean> | null = null
-
-export function checkAndRefreshOAuthTokenIfNeeded(
-  retryCount = 0,
-  force = false,
-): Promise<boolean> {
-  // Deduplicate concurrent non-retry, non-force calls
-  if (retryCount === 0 && !force) {
-    if (pendingRefreshCheck) {
-      return pendingRefreshCheck
-    }
-
-    const promise = checkAndRefreshOAuthTokenIfNeededImpl(retryCount, force)
-    pendingRefreshCheck = promise.finally(() => {
-      pendingRefreshCheck = null
-    })
-    return pendingRefreshCheck
-  }
-
-  return checkAndRefreshOAuthTokenIfNeededImpl(retryCount, force)
-}
-
-async function checkAndRefreshOAuthTokenIfNeededImpl(
-  retryCount: number,
-  force: boolean,
-): Promise<boolean> {
-  const MAX_RETRIES = 5
-
-  await invalidateOAuthCacheIfDiskChanged()
-
-  // First check if token is expired with cached value
-  // Skip this check if force=true (server already told us token is bad)
-  const tokens = getClaudeAIOAuthTokens()
-  if (!force) {
-    if (!tokens?.refreshToken || !isOAuthTokenExpired(tokens.expiresAt)) {
-      return false
-    }
-  }
-
-  if (!tokens?.refreshToken) {
-    return false
-  }
-
-  if (!shouldUseClaudeAIAuth(tokens.scopes)) {
-    return false
-  }
-
-  // Re-read tokens async to check if they're still expired
-  // Another process might have refreshed them
-  getClaudeAIOAuthTokens.cache?.clear?.()
-  clearKeychainCache()
-  const freshTokens = await getClaudeAIOAuthTokensAsync()
-  if (
-    !freshTokens?.refreshToken ||
-    !isOAuthTokenExpired(freshTokens.expiresAt)
-  ) {
-    return false
-  }
-
-  // Tokens are still expired, try to acquire lock and refresh
-  const claudeDir = getClaudeConfigHomeDir()
-  await mkdir(claudeDir, { recursive: true })
-
-  let release
-  try {
-    logEvent('tengu_oauth_token_refresh_lock_acquiring', {})
-    release = await lockfile.lock(claudeDir)
-    logEvent('tengu_oauth_token_refresh_lock_acquired', {})
-  } catch (err) {
-    if ((err as { code?: string }).code === 'ELOCKED') {
-      // Another process has the lock, let's retry if we haven't exceeded max retries
-      if (retryCount < MAX_RETRIES) {
-        logEvent('tengu_oauth_token_refresh_lock_retry', {
-          retryCount: retryCount + 1,
-        })
-        // Wait a bit before retrying
-        await sleep(1000 + Math.random() * 1000)
-        return checkAndRefreshOAuthTokenIfNeededImpl(retryCount + 1, force)
-      }
-      logEvent('tengu_oauth_token_refresh_lock_retry_limit_reached', {
-        maxRetries: MAX_RETRIES,
-      })
-      return false
-    }
-    logError(err)
-    logEvent('tengu_oauth_token_refresh_lock_error', {
-      error: errorMessage(
-        err,
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-    return false
-  }
-  try {
-    // Check one more time after acquiring lock
-    getClaudeAIOAuthTokens.cache?.clear?.()
-    clearKeychainCache()
-    const lockedTokens = await getClaudeAIOAuthTokensAsync()
-    if (
-      !lockedTokens?.refreshToken ||
-      !isOAuthTokenExpired(lockedTokens.expiresAt)
-    ) {
-      logEvent('tengu_oauth_token_refresh_race_resolved', {})
-      return false
-    }
-
-    logEvent('tengu_oauth_token_refresh_starting', {})
-    const refreshedTokens = await refreshOAuthToken(lockedTokens.refreshToken, {
-      // For Claude.ai subscribers, omit scopes so the default
-      // CLAUDE_AI_OAUTH_SCOPES applies — this allows scope expansion
-      // (e.g. adding user:file_upload) on refresh without re-login.
-      scopes: shouldUseClaudeAIAuth(lockedTokens.scopes)
-        ? undefined
-        : lockedTokens.scopes,
-    })
-    saveOAuthTokensIfNeeded(refreshedTokens)
-
-    // Clear the cache after refreshing token
-    getClaudeAIOAuthTokens.cache?.clear?.()
-    clearKeychainCache()
-    return true
-  } catch (error) {
-    logError(error)
-
-    getClaudeAIOAuthTokens.cache?.clear?.()
-    clearKeychainCache()
-    const currentTokens = await getClaudeAIOAuthTokensAsync()
-    if (currentTokens && !isOAuthTokenExpired(currentTokens.expiresAt)) {
-      logEvent('tengu_oauth_token_refresh_race_recovered', {})
-      return true
-    }
-
-    return false
-  } finally {
-    logEvent('tengu_oauth_token_refresh_lock_releasing', {})
-    await release()
-    logEvent('tengu_oauth_token_refresh_lock_released', {})
-  }
-}
-
 export function isClaudeAISubscriber(): boolean {
-  if (!isAnthropicAuthEnabled()) {
-    return false
-  }
-
-  return shouldUseClaudeAIAuth(getClaudeAIOAuthTokens()?.scopes)
+  return false
 }
 
 /**
- * Check if the current OAuth token has the user:profile scope.
- *
- * Real /login tokens always include this scope. Env-var and file-descriptor
- * tokens (service keys) hardcode scopes to ['user:inference'] only. Use this
- * to gate calls to profile-scoped endpoints so service key sessions don't
- * generate 403 storms against /api/oauth/profile, bootstrap, etc.
+ * Stub: OAuth has been stripped.
  */
+export function isAnthropicAuthEnabled(): boolean {
+  return false
+}
+
 export function hasProfileScope(): boolean {
-  return (
-    getClaudeAIOAuthTokens()?.scopes?.includes(CLAUDE_AI_PROFILE_SCOPE) ?? false
-  )
+  return false
+}
+
+/**
+ * Stub: Cloud provider auth has been stripped.
+ */
+export function clearAwsCredentialsCache(): void {}
+
+/**
+ * Stub: Cloud provider auth has been stripped.
+ */
+export function clearGcpCredentialsCache(): void {}
+
+/**
+ * Stub: OAuth token cache has been stripped.
+ */
+export function clearOAuthTokenCache(): void {}
+
+/**
+ * Stub: OAuth has been stripped.
+ */
+export function getAuthTokenSource(): { source: string; hasToken: boolean } {
+  return { source: 'none', hasToken: false }
+}
+
+/**
+ * Stub: OAuth has been stripped. Returns null.
+ */
+export function getClaudeAIOAuthTokens(): null {
+  return null
+}
+
+/**
+ * Stub: OAuth has been stripped. Returns false.
+ */
+export async function checkAndRefreshOAuthTokenIfNeeded(): Promise<boolean> {
+  return false
+}
+
+/**
+ * Stub: OAuth has been stripped. Returns false.
+ */
+export async function handleOAuth401Error(_failedAccessToken?: string): Promise<boolean> {
+  return false
+}
+
+/**
+ * Stub: OAuth has been stripped.
+ */
+export function isOverageProvisioningAllowed(): boolean {
+  return false
 }
 
 export function is1PApiCustomer(): boolean {
-  // 1P API customers are users who are NOT:
-  // 1. Claude.ai subscribers (Max, Pro, Enterprise, Team)
-  // 2. Vertex AI users
-  // 3. AWS Bedrock users
-  // 4. Foundry users
-
-  // Exclude Vertex, Bedrock, and Foundry customers
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-  ) {
-    return false
-  }
-
-  // Exclude Claude.ai subscribers
-  if (isClaudeAISubscriber()) {
-    return false
-  }
-
-  // Everyone else is an API customer (OAuth API customers, direct API key users, etc.)
   return true
 }
 
-/**
- * Gets OAuth account information when Anthropic auth is enabled.
- * Returns undefined when using external API keys or third-party services.
- */
-export function getOauthAccountInfo(): AccountInfo | undefined {
-  return isAnthropicAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
-}
-
-/**
- * Checks if overage/extra usage provisioning is allowed for this organization.
- * This mirrors the logic in apps/claude-ai `useIsOverageProvisioningAllowed` hook as closely as possible.
- */
-export function isOverageProvisioningAllowed(): boolean {
-  const accountInfo = getOauthAccountInfo()
-  const billingType = accountInfo?.billingType
-
-  // Must be a Claude subscriber with a supported subscription type
-  if (!isClaudeAISubscriber() || !billingType) {
-    return false
-  }
-
-  // only allow Stripe and mobile billing types to purchase extra usage
-  if (
-    billingType !== 'stripe_subscription' &&
-    billingType !== 'stripe_subscription_contracted' &&
-    billingType !== 'apple_subscription' &&
-    billingType !== 'google_play_subscription'
-  ) {
-    return false
-  }
-
-  return true
-}
-
-// Returns whether the user has Opus access at all, regardless of whether they
-// are a subscriber or PayG.
 export function hasOpusAccess(): boolean {
-  const subscriptionType = getSubscriptionType()
-
-  return (
-    subscriptionType === 'max' ||
-    subscriptionType === 'enterprise' ||
-    subscriptionType === 'team' ||
-    subscriptionType === 'pro' ||
-    // subscriptionType === null covers both API users and the case where
-    // subscribers do not have subscription type populated. For those
-    // subscribers, when in doubt, we should not limit their access to Opus.
-    subscriptionType === null
-  )
+  return false
 }
 
-export function getSubscriptionType(): SubscriptionType | null {
-  // Check for mock subscription type first (ANT-only testing)
-  if (shouldUseMockSubscription()) {
-    return getMockSubscriptionType()
-  }
+/**
+ * Stub: OAuth has been stripped. Returns undefined account info.
+ */
+export function getOauthAccountInfo(): undefined {
+  return undefined
+}
 
-  if (!isAnthropicAuthEnabled()) {
-    return null
-  }
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (!oauthTokens) {
-    return null
-  }
-
-  return oauthTokens.subscriptionType ?? null
+export function getSubscriptionType() {
+  return null
 }
 
 export function isMaxSubscriber(): boolean {
-  return getSubscriptionType() === 'max'
+  return false
 }
 
 export function isTeamSubscriber(): boolean {
-  return getSubscriptionType() === 'team'
+  return false
 }
 
 export function isTeamPremiumSubscriber(): boolean {
-  return (
-    getSubscriptionType() === 'team' &&
-    getRateLimitTier() === 'default_claude_max_5x'
-  )
+  return false
 }
 
 export function isEnterpriseSubscriber(): boolean {
-  return getSubscriptionType() === 'enterprise'
+  return false
 }
 
 export function isProSubscriber(): boolean {
-  return getSubscriptionType() === 'pro'
+  return false
 }
 
-export function getRateLimitTier(): string | null {
-  if (!isAnthropicAuthEnabled()) {
-    return null
-  }
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (!oauthTokens) {
-    return null
-  }
-
-  return oauthTokens.rateLimitTier ?? null
+export function getRateLimitTier() {
+  return null
 }
 
 export function getSubscriptionName(): string {
-  const subscriptionType = getSubscriptionType()
-
-  switch (subscriptionType) {
-    case 'enterprise':
-      return 'Claude Enterprise'
-    case 'team':
-      return 'Claude Team'
-    case 'max':
-      return 'Claude Max'
-    case 'pro':
-      return 'Claude Pro'
-    default:
-      return 'Claude API'
-  }
+  return 'API Key'
 }
 
-/** Check if using third-party services (Bedrock or Vertex or Foundry or OpenAI-compatible) */
 export function isUsing3PServices(): boolean {
-  return !!(
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_OPENAI)
-  )
+  return getAPIProvider() !== 'firstParty'
 }
+
 
 /**
  * Get the configured otelHeadersHelper from settings
@@ -1841,17 +759,8 @@ export function getOtelHeadersFromHelper(): Record<string, string> {
   }
 }
 
-function isConsumerPlan(plan: SubscriptionType): plan is 'max' | 'pro' {
-  return plan === 'max' || plan === 'pro'
-}
-
 export function isConsumerSubscriber(): boolean {
-  const subscriptionType = getSubscriptionType()
-  return (
-    isClaudeAISubscriber() &&
-    subscriptionType !== null &&
-    isConsumerPlan(subscriptionType)
-  )
+  return false
 }
 
 export type UserAccountInfo = {
@@ -1868,44 +777,14 @@ export function getAccountInformation() {
   if (apiProvider !== 'firstParty') {
     return undefined
   }
-  const { source: authTokenSource } = getAuthTokenSource()
   const accountInfo: UserAccountInfo = {}
-  if (
-    authTokenSource === 'CLAUDE_CODE_OAUTH_TOKEN' ||
-    authTokenSource === 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
-  ) {
-    accountInfo.tokenSource = authTokenSource
-  } else if (isClaudeAISubscriber()) {
-    accountInfo.subscription = getSubscriptionName()
-  } else {
-    accountInfo.tokenSource = authTokenSource
-  }
   const { key: apiKey, source: apiKeySource } = getAnthropicApiKeyWithSource()
   if (apiKey) {
     accountInfo.apiKeySource = apiKeySource
   }
-
-  // We don't know the organization if we're relying on an external API key or auth token
-  if (
-    authTokenSource === 'claude.ai' ||
-    apiKeySource === '/login managed key'
-  ) {
-    // Get organization name from OAuth account info
-    const orgName = getOauthAccountInfo()?.organizationName
-    if (orgName) {
-      accountInfo.organization = orgName
-    }
-  }
-  const email = getOauthAccountInfo()?.emailAddress
-  if (
-    (authTokenSource === 'claude.ai' ||
-      apiKeySource === '/login managed key') &&
-    email
-  ) {
-    accountInfo.email = email
-  }
   return accountInfo
 }
+
 
 /**
  * Result of org validation — either success or a descriptive error.
@@ -1914,91 +793,3 @@ export type OrgValidationResult =
   | { valid: true }
   | { valid: false; message: string }
 
-/**
- * Validate that the active OAuth token belongs to the organization required
- * by `forceLoginOrgUUID` in managed settings. Returns a result object
- * rather than throwing so callers can choose how to surface the error.
- *
- * Fails closed: if `forceLoginOrgUUID` is set and we cannot determine the
- * token's org (network error, missing profile data), validation fails.
- */
-export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
-  // `claude ssh` remote: real auth lives on the local machine and is injected
-  // by the proxy. The placeholder token can't be validated against the profile
-  // endpoint. The local side already ran this check before establishing the session.
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
-    return { valid: true }
-  }
-
-  if (!isAnthropicAuthEnabled()) {
-    return { valid: true }
-  }
-
-  const requiredOrgUuid =
-    getSettingsForSource('policySettings')?.forceLoginOrgUUID
-  if (!requiredOrgUuid) {
-    return { valid: true }
-  }
-
-  // Ensure the access token is fresh before hitting the profile endpoint.
-  // No-op for env-var tokens (refreshToken is null).
-  await checkAndRefreshOAuthTokenIfNeeded()
-
-  const tokens = getClaudeAIOAuthTokens()
-  if (!tokens) {
-    return { valid: true }
-  }
-
-  // Always fetch the authoritative org UUID from the profile endpoint.
-  // Even keychain-sourced tokens verify server-side: the cached org UUID
-  // in ~/.claude.json is user-writable and cannot be trusted.
-  const { source } = getAuthTokenSource()
-  const isEnvVarToken =
-    source === 'CLAUDE_CODE_OAUTH_TOKEN' ||
-    source === 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
-
-  const profile = await getOauthProfileFromOauthToken(tokens.accessToken)
-  if (!profile) {
-    // Fail closed — we can't verify the org
-    return {
-      valid: false,
-      message:
-        `Unable to verify organization for the current authentication token.\n` +
-        `This machine requires organization ${requiredOrgUuid} but the profile could not be fetched.\n` +
-        `This may be a network error, or the token may lack the user:profile scope required for\n` +
-        `verification (tokens from 'claude setup-token' do not include this scope).\n` +
-        `Try again, or obtain a full-scope token via 'claude auth login'.`,
-    }
-  }
-
-  const tokenOrgUuid = profile.organization.uuid
-  if (tokenOrgUuid === requiredOrgUuid) {
-    return { valid: true }
-  }
-
-  if (isEnvVarToken) {
-    const envVarName =
-      source === 'CLAUDE_CODE_OAUTH_TOKEN'
-        ? 'CLAUDE_CODE_OAUTH_TOKEN'
-        : 'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR'
-    return {
-      valid: false,
-      message:
-        `The ${envVarName} environment variable provides a token for a\n` +
-        `different organization than required by this machine's managed settings.\n\n` +
-        `Required organization: ${requiredOrgUuid}\n` +
-        `Token organization:   ${tokenOrgUuid}\n\n` +
-        `Remove the environment variable or obtain a token for the correct organization.`,
-    }
-  }
-
-  return {
-    valid: false,
-    message:
-      `Your authentication token belongs to organization ${tokenOrgUuid},\n` +
-      `but this machine requires organization ${requiredOrgUuid}.\n\n` +
-      `Please log in with the correct organization: claude auth login`,
-  }
-}
-
-class GcpCredentialsTimeoutError extends Error {}

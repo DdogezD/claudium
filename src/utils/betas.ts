@@ -21,8 +21,6 @@ import {
   TOOL_SEARCH_BETA_HEADER_3P,
   WEB_SEARCH_BETA_HEADER,
 } from '../constants/betas.js'
-import { OAUTH_BETA_HEADER } from '../constants/oauth.js'
-import { isClaudeAISubscriber } from './auth.js'
 import { has1mContext } from './context.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
@@ -68,13 +66,8 @@ export function filterAllowedSdkBetas(
     return undefined
   }
 
-  if (isClaudeAISubscriber()) {
-    // biome-ignore lint/suspicious/noConsole: intentional warning
-    console.warn(
-      'Warning: Custom betas are only available for API key users. Ignoring provided betas.',
-    )
-    return undefined
-  }
+  // OAuth stripped: always API key; custom betas allowed.
+  // The old isClaudeAISubscriber() branch warned API key users; not needed.
 
   const { allowed, disallowed } = partitionBetasByAllowlist(sdkBetas)
   for (const beta of disallowed) {
@@ -248,9 +241,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
       }
     }
   }
-  if (isClaudeAISubscriber()) {
-    betaHeaders.push(OAUTH_BETA_HEADER)
-  }
+  // OAuth stripped: OAUTH_BETA_HEADER is no longer needed
   if (has1mContext(model)) {
     betaHeaders.push(CONTEXT_1M_BETA_HEADER)
   }

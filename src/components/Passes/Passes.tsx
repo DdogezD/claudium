@@ -9,7 +9,9 @@ import { Box, Link, Text, useInput } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { logEvent } from '../../services/analytics-stub.js';
 import { fetchReferralRedemptions, formatCreditAmount, getCachedOrFetchPassesEligibility } from '../../services/api/referral.js';
-import type { ReferralRedemptionsResponse, ReferrerRewardInfo } from '../../services/oauth/types.js';
+// Stripped: OAuth types removed.
+type ReferralRedemptionsResponse = unknown
+type ReferrerRewardInfo = Record<string, unknown> | null
 import { count } from '../../utils/array.js';
 import { logError } from '../../utils/log.js';
 import { Pane } from '../design-system/Pane.js';

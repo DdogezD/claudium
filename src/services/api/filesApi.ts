@@ -22,9 +22,8 @@ import {
   logEvent,
 } from '../analytics-stub.js'
 
-// Files API is currently in beta. oauth-2025-04-20 enables Bearer OAuth
-// on public-api routes (auth.py: "oauth_auth" not in beta_versions → 404).
-const FILES_API_BETA_HEADER = 'files-api-2025-04-14,oauth-2025-04-20'
+// Files API is currently in beta.
+const FILES_API_BETA_HEADER = 'files-api-2025-04-14'
 const ANTHROPIC_VERSION = '2023-06-01'
 
 // API base URL - uses ANTHROPIC_BASE_URL set by env-manager for the appropriate environment
@@ -58,8 +57,8 @@ export type File = {
  * Configuration for the files API client
  */
 export type FilesApiConfig = {
-  /** OAuth token for authentication (from session JWT) */
-  oauthToken: string
+  /** API key for authentication */
+  apiKey?: string
   /** Base URL for the API (default: https://api.anthropic.com) */
   baseUrl?: string
   /** Session ID for creating session-specific directories */
@@ -136,8 +135,8 @@ export async function downloadFile(
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
   const url = `${baseUrl}/v1/files/${fileId}/content`
 
-  const headers = {
-    Authorization: `Bearer ${config.oauthToken}`,
+  const headers: Record<string, string> = {
+    'x-api-key': config.apiKey || '',
     'anthropic-version': ANTHROPIC_VERSION,
     'anthropic-beta': FILES_API_BETA_HEADER,
   }
@@ -384,8 +383,8 @@ export async function uploadFile(
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
   const url = `${baseUrl}/v1/files`
 
-  const headers = {
-    Authorization: `Bearer ${config.oauthToken}`,
+  const headers: Record<string, string> = {
+    'x-api-key': config.apiKey || '',
     'anthropic-version': ANTHROPIC_VERSION,
     'anthropic-beta': FILES_API_BETA_HEADER,
   }
@@ -619,8 +618,8 @@ export async function listFilesCreatedAfter(
   config: FilesApiConfig,
 ): Promise<FileMetadata[]> {
   const baseUrl = config.baseUrl || getDefaultApiBaseUrl()
-  const headers = {
-    Authorization: `Bearer ${config.oauthToken}`,
+  const headers: Record<string, string> = {
+    'x-api-key': config.apiKey || '',
     'anthropic-version': ANTHROPIC_VERSION,
     'anthropic-beta': FILES_API_BETA_HEADER,
   }

@@ -6,7 +6,6 @@
 import {
   getOauthAccountInfo,
   getSubscriptionType,
-  isOverageProvisioningAllowed,
 } from '../utils/auth.js'
 import { hasClaudeAiBillingAccess } from '../utils/billing.js'
 import { formatResetTime } from '../utils/format.js'
@@ -83,7 +82,7 @@ export function getRateLimitMessage(
     const isTeamOrEnterprise =
       subscriptionType === 'team' || subscriptionType === 'enterprise'
     const hasExtraUsageEnabled =
-      getOauthAccountInfo()?.hasExtraUsageEnabled === true
+      false
 
     if (
       isTeamOrEnterprise &&
@@ -270,7 +269,7 @@ function getWarningUpsellText(
     // Teams/Enterprise with overages disabled: prompt to request extra usage
     // Only show if overage provisioning is allowed for this org type (e.g., not AWS marketplace)
     if (subscriptionType === 'team' || subscriptionType === 'enterprise') {
-      if (!hasExtraUsageEnabled && isOverageProvisioningAllowed()) {
+      if (!hasExtraUsageEnabled && false) {
         return '/extra-usage to request more'
       }
       // Teams/Enterprise with overages enabled or unsupported billing type don't need upsell
@@ -286,7 +285,7 @@ function getWarningUpsellText(
   // Overage warning (approaching spending limit)
   if (rateLimitType === 'overage') {
     if (subscriptionType === 'team' || subscriptionType === 'enterprise') {
-      if (!hasExtraUsageEnabled && isOverageProvisioningAllowed()) {
+      if (!hasExtraUsageEnabled && false) {
         return '/extra-usage to request more'
       }
     }

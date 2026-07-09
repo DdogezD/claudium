@@ -5,7 +5,7 @@ import { ERROR_MESSAGE_USER_ABORT } from 'src/services/compact/compact.js';
 import { isRateLimitErrorMessage } from 'src/services/rateLimitMessages.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { Box, NoSelect, Text } from '../../ink.js';
-import { API_ERROR_MESSAGE_PREFIX, API_TIMEOUT_ERROR_MESSAGE, CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE, CUSTOM_OFF_SWITCH_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL, ORG_DISABLED_ERROR_MESSAGE_ENV_KEY, ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH, PROMPT_TOO_LONG_ERROR_MESSAGE, startsWithApiErrorPrefix, TOKEN_REVOKED_ERROR_MESSAGE } from '../../services/api/errors.js';
+import { API_ERROR_MESSAGE_PREFIX, API_TIMEOUT_ERROR_MESSAGE, CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE, CUSTOM_OFF_SWITCH_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL, ORG_DISABLED_ERROR_MESSAGE_ENV_KEY, PROMPT_TOO_LONG_ERROR_MESSAGE, startsWithApiErrorPrefix } from '../../services/api/errors.js';
 import { isEmptyMessageText, NO_RESPONSE_REQUESTED } from '../../utils/messages.js';
 import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.js';
 import { getDefaultSonnetModel, renderModelName } from '../../utils/model/model.js';
@@ -130,29 +130,6 @@ export function AssistantTextMessage(t0) {
         return t2;
       }
     case ORG_DISABLED_ERROR_MESSAGE_ENV_KEY:
-    case ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH:
-      {
-        let t2;
-        if ($[8] !== text) {
-          t2 = <MessageResponse><Text color="error">{text}</Text></MessageResponse>;
-          $[8] = text;
-          $[9] = t2;
-        } else {
-          t2 = $[9];
-        }
-        return t2;
-      }
-    case TOKEN_REVOKED_ERROR_MESSAGE:
-      {
-        let t2;
-        if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-          t2 = <MessageResponse height={1}><Text color="error">{TOKEN_REVOKED_ERROR_MESSAGE}</Text></MessageResponse>;
-          $[10] = t2;
-        } else {
-          t2 = $[10];
-        }
-        return t2;
-      }
     case API_TIMEOUT_ERROR_MESSAGE:
       {
         let t2;

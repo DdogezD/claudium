@@ -7,7 +7,6 @@ import { getIsNonInteractiveSession } from 'src/bootstrap/state.js'
 import type { AttributedCounter } from '../bootstrap/state.js'
 import { getSessionCounter, setMeter } from '../bootstrap/state.js'
 import { shutdownLspServerManager } from '../services/lsp/manager.js'
-import { populateOAuthAccountInfoIfNeeded } from '../services/oauth/client.js'
 import {
   initializePolicyLimitsLoadingPromise,
   isPolicyLimitsEligible,
@@ -24,7 +23,6 @@ import { enableConfigs, recordFirstStartTime } from '../utils/config.js'
 import { logForDebugging } from '../utils/debug.js'
 import { detectCurrentRepository } from '../utils/detectRepository.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
-import { initJetBrainsDetection } from '../utils/envDynamic.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { ConfigParseError, errorMessage } from '../utils/errors.js'
 // showInvalidConfigDialog is dynamically imported in the error path to avoid loading React at init
@@ -106,14 +104,7 @@ export const init = memoize(async (): Promise<void> => {
     // })
     profileCheckpoint('init_after_1p_event_logging')
 
-    // Populate OAuth account info if it is not already cached in config. This is needed since the
-    // OAuth account info may not be populated when logging in through the VSCode extension.
-    void populateOAuthAccountInfoIfNeeded()
     profileCheckpoint('init_after_oauth_populate')
-
-    // Initialize JetBrains IDE detection asynchronously (populates cache for later sync access)
-    void initJetBrainsDetection()
-    profileCheckpoint('init_after_jetbrains_detection')
 
     // Detect GitHub repository asynchronously (populates cache for gitDiff PR linking)
     void detectCurrentRepository()

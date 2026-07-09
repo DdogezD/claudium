@@ -32,8 +32,8 @@ externalized `@ant/*` packages.
 - `VOICE_MODE`
   This is now included in the default build pipeline, not just the dev build.
   It enables `/voice`, push-to-talk UI, voice notices, and dictation plumbing.
-  Runtime still depends on claude.ai OAuth plus either the native audio module
-  or a fallback recorder such as SoX.
+  Note: claude.ai OAuth has been stripped in Claudium. Voice mode requires a
+  local recording backend (e.g., SoX).
 
 ## Working Experimental Features
 
@@ -172,15 +172,16 @@ These bundle today, but I would still treat them as experimental because they
 have meaningful runtime caveats:
 
 - `VOICE_MODE`
-  Bundles cleanly, but requires claude.ai OAuth and a local recording backend.
-  The native audio module is optional now; on this machine the fallback path
-  asks for `brew install sox`.
+  Bundles cleanly. claude.ai OAuth has been stripped in Claudium; requires a
+  local recording backend. The native audio module is optional; on this machine
+  the fallback path asks for `brew install sox`.
 - `NATIVE_CLIPBOARD_IMAGE`
   Bundles cleanly, but only accelerates macOS clipboard reads when
   `image-processor-napi` is present.
 - `BRIDGE_MODE`, `CCR_AUTO_CONNECT`, `CCR_MIRROR`, `CCR_REMOTE_SETUP`
   Bundle cleanly, but are gated at runtime on claude.ai OAuth plus GrowthBook
-  entitlement checks.
+  entitlement checks. Note: claude.ai OAuth has been stripped in Claudium, so
+  these features are unavailable at runtime.
 - `KAIROS_BRIEF`, `KAIROS_CHANNELS`
   Bundle cleanly, but they do not restore the full missing assistant stack.
   They only expose the brief/channel-specific surfaces that still exist.

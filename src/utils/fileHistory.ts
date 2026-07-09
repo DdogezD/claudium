@@ -17,7 +17,6 @@ import {
   getSessionId,
 } from 'src/bootstrap/state.js'
 import { logEvent } from '../services/analytics-stub.js'
-import { notifyVscodeFileUpdated } from 'src/services/mcp/vscodeSdkMcp.js'
 import type { LogOption } from 'src/types/logs.js'
 import { inspect } from 'util'
 import { getGlobalConfig } from './config.js'
@@ -1092,7 +1091,7 @@ async function notifyVscodeSnapshotFilesUpdated(
 
     // Only notify if content actually changed
     if (oldContent !== newContent) {
-      notifyVscodeFileUpdated(filePath, oldContent, newContent)
+      // notifyVscodeFileUpdated removed (VSCode SDK MCP integration stripped)
     }
   }
 }

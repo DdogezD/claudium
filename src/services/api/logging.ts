@@ -1,9 +1,13 @@
 import { feature } from 'bun:bundle'
-import { APIError } from '@anthropic-ai/sdk'
-import type {
-  BetaStopReason,
-  BetaUsage as Usage,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+
+// Local types replacing @anthropic-ai/sdk imports (stripped OAuth)
+type BetaStopReason = string
+type Usage = {
+  input_tokens: number
+  output_tokens: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+}
 import {
   addToTotalDurationState,
   consumePostCompaction,
@@ -46,8 +50,14 @@ export { EMPTY_USAGE }
 export type GlobalCacheStrategy = 'tool_based' | 'system_prompt' | 'none'
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof APIError) {
-    const body = error.error as { error?: { message?: string } } | undefined
+  if (
+    error != null &&
+    typeof error === 'object' &&
+    'error' in error
+  ) {
+    const body = (
+      error as { error: { error?: { message?: string } } | undefined }
+    ).error
     if (body?.error?.message) return body.error.message
   }
   return error instanceof Error ? error.message : String(error)
@@ -271,14 +281,25 @@ export function logAPIError({
   fastMode?: boolean
   previousRequestId?: string | null
 }): void {
+  const errHeaders =
+    error &&
+    typeof error === 'object' &&
+    'headers' in error
+      ? (error as { headers: globalThis.Headers }).headers
+      : headers
   const gateway = detectGateway({
-    headers:
-      error instanceof APIError && error.headers ? error.headers : headers,
+    headers: errHeaders,
     baseUrl: process.env.ANTHROPIC_BASE_URL,
   })
 
   const errStr = getErrorMessage(error)
-  const status = error instanceof APIError ? String(error.status) : undefined
+  const status =
+    error &&
+    typeof error === 'object' &&
+    'status' in error &&
+    (error as { status: number }).status !== undefined
+      ? String((error as { status: number }).status)
+      : undefined
   const errorType = classifyAPIError(error)
 
   // Log detailed connection error info to debug logs (visible via --debug)

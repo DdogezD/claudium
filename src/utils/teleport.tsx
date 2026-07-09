@@ -14,11 +14,9 @@ import type { Root } from '../ink.js';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { queryHaiku } from '../services/api/claude.js';
 import { getSessionLogsViaOAuth, getTeleportEvents } from '../services/api/sessionIngress.js';
-import { getOrganizationUUID } from '../services/oauth/client.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { Message, SystemMessage } from '../types/message.js';
 import type { PermissionMode } from '../types/permissions.js';
-import { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } from './auth.js';
 import { checkGithubAppInstalled } from './background/remote/preconditions.js';
 import { deserializeMessages, type TeleportRemoteResponse } from './conversationRecovery.js';
 import { getCwd } from './cwd.js';
@@ -433,22 +431,7 @@ export async function teleportResumeCodeSession(sessionId: string, onProgress?: 
   }
   logForDebugging(`Resuming code session ID: ${sessionId}`);
   try {
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken;
-    if (!accessToken) {
-      logEvent('tengu_teleport_resume_error', {
-        error_type: 'no_access_token' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-      throw new Error('Claudium web sessions require authentication with a Claude.ai account. API key authentication is not sufficient. Please run /login to authenticate, or check your authentication status with /status.');
-    }
-
-    // Get organization UUID
-    const orgUUID = await getOrganizationUUID();
-    if (!orgUUID) {
-      logEvent('tengu_teleport_resume_error', {
-        error_type: 'no_org_uuid' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-      throw new Error('Unable to get organization UUID for constructing session URL');
-    }
+    throw new Error('Web sessions require an API key. Remote session teleport is not supported.');
 
     // Fetch and validate repository matches before resuming
     onProgress?.('validating');
@@ -633,20 +616,7 @@ export type PollRemoteSessionResponse = {
 export async function pollRemoteSessionEvents(sessionId: string, afterId: string | null = null, opts?: {
   skipMetadata?: boolean;
 }): Promise<PollRemoteSessionResponse> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken;
-  if (!accessToken) {
-    throw new Error('No access token for polling');
-  }
-  const orgUUID = await getOrganizationUUID();
-  if (!orgUUID) {
-    throw new Error('No org UUID for polling');
-  }
-  const headers = {
-    ...getOAuthHeaders(accessToken),
-    'anthropic-beta': 'ccr-byoc-2025-07-29',
-    'x-organization-uuid': orgUUID
-  };
-  const eventsUrl = `${getOauthConfig().BASE_API_URL}/v1/sessions/${sessionId}/events`;
+  throw new Error('Remote session polling is not supported without OAuth.');
   type EventsResponse = {
     data: unknown[];
     has_more: boolean;
@@ -798,20 +768,8 @@ export async function teleportToRemote(options: {
     signal
   } = options;
   try {
-    // Check authentication
-    await checkAndRefreshOAuthTokenIfNeeded();
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken;
-    if (!accessToken) {
-      logError(new Error('No access token found for remote session creation'));
-      return null;
-    }
-
-    // Get organization UUID
-    const orgUUID = await getOrganizationUUID();
-    if (!orgUUID) {
-      logError(new Error('Unable to get organization UUID for remote session creation'));
-      return null;
-    }
+    logError(new Error('Remote session creation requires OAuth, which has been stripped.'));
+    return null;
 
     // Explicit environmentId short-circuits Haiku title-gen + env selection.
     // Still runs repo detection so the container gets a working directory —
@@ -1198,10 +1156,7 @@ export async function teleportToRemote(options: {
  * reaper collects it.
  */
 export async function archiveRemoteSession(sessionId: string): Promise<void> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken;
-  if (!accessToken) return;
-  const orgUUID = await getOrganizationUUID();
-  if (!orgUUID) return;
+  return;
   const headers = {
     ...getOAuthHeaders(accessToken),
     'anthropic-beta': 'ccr-byoc-2025-07-29',

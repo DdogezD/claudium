@@ -14,10 +14,6 @@ import { createSystemAPIErrorMessage } from 'src/utils/messages.js'
 import { getAPIProviderForStatsig } from 'src/utils/model/providers.js'
 import {
   clearApiKeyHelperCache,
-  clearAwsCredentialsCache,
-  clearGcpCredentialsCache,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
   isClaudeAISubscriber,
   isEnterpriseSubscriber,
 } from '../../utils/auth.js'
@@ -232,21 +228,10 @@ export async function* withRetry<T>(
       if (
         client === null ||
         (lastError instanceof APIError && lastError.status === 401) ||
-        isOAuthTokenRevokedError(lastError) ||
         isBedrockAuthError(lastError) ||
         isVertexAuthError(lastError) ||
         isStaleConnection
       ) {
-        // On 401 "token expired" or 403 "token revoked", force a token refresh
-        if (
-          (lastError instanceof APIError && lastError.status === 401) ||
-          isOAuthTokenRevokedError(lastError)
-        ) {
-          const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
-          if (failedAccessToken) {
-            await handleOAuth401Error(failedAccessToken)
-          }
-        }
         client = await getClient()
       }
 
@@ -620,14 +605,6 @@ export function is529Error(error: unknown): boolean {
   )
 }
 
-function isOAuthTokenRevokedError(error: unknown): boolean {
-  return (
-    error instanceof APIError &&
-    error.status === 403 &&
-    (error.message?.includes('OAuth token has been revoked') ?? false)
-  )
-}
-
 function isBedrockAuthError(error: unknown): boolean {
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) {
     // AWS libs reject without an API call if .aws holds a past Expiration value
@@ -649,7 +626,6 @@ function isBedrockAuthError(error: unknown): boolean {
  */
 function handleAwsCredentialError(error: unknown): boolean {
   if (isBedrockAuthError(error)) {
-    clearAwsCredentialsCache()
     return true
   }
   return false
@@ -687,7 +663,6 @@ function isVertexAuthError(error: unknown): boolean {
  */
 function handleGcpCredentialError(error: unknown): boolean {
   if (isVertexAuthError(error)) {
-    clearGcpCredentialsCache()
     return true
   }
   return false
@@ -775,11 +750,7 @@ function shouldRetry(error: APIError): boolean {
     return true
   }
 
-  // Retry on 403 "token revoked" (same refresh logic as 401, see above)
-  if (isOAuthTokenRevokedError(error)) {
-    return true
-  }
-
+  // OAuth token revoked retry has been stripped.
   // Retry internal errors.
   if (error.status && error.status >= 500) return true
 

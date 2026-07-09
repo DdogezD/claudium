@@ -172,20 +172,17 @@ function trackUnknownModelCost(model: string, shortName: ModelShortName): void {
   setHasUnknownModelCost()
 }
 
-// Calculate the cost of a query in US dollars.
-// If the model's costs are not found, use the default model's costs.
-export function calculateUSDCost(resolvedModel: string, usage: Usage): number {
-  const modelCosts = getModelCosts(resolvedModel, usage)
-  return tokensToUSDCost(modelCosts, usage)
+// Stub: cost calculation stripped. Returns 0 for third-party API providers.
+export function calculateUSDCost(_resolvedModel: string, _usage: Usage): number {
+  return 0
 }
 
 /**
- * Calculate cost from raw token counts without requiring a full BetaUsage object.
- * Useful for side queries (e.g. classifier) that track token counts independently.
+ * Stub: cost calculation stripped. Returns 0.
  */
 export function calculateCostFromTokens(
-  model: string,
-  tokens: {
+  _model: string,
+  _tokens: {
     inputTokens: number
     outputTokens: number
     cacheReadInputTokens: number

@@ -1,7 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../services/analytics-stub.js';
-import { setupTerminal, shouldOfferTerminalSetup } from '../commands/terminalSetup/terminalSetup.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { Box, Link, Newline, Text, useTheme } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
@@ -19,7 +18,7 @@ import { WelcomeV2 } from './LogoV2/WelcomeV2.js';
 import { PressEnterToContinue } from './PressEnterToContinue.js';
 import { ThemePicker } from './ThemePicker.js';
 import { OrderedList } from './ui/OrderedList.js';
-type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security' | 'terminal-setup';
+type StepId = 'preflight' | 'theme' | 'oauth' | 'api-key' | 'security';
 interface OnboardingStep {
   id: StepId;
   component: React.ReactNode;
@@ -142,43 +141,9 @@ export function Onboarding({
     id: 'security',
     component: securityStep
   });
-  if (shouldOfferTerminalSetup()) {
-    steps.push({
-      id: 'terminal-setup',
-      component: <Box flexDirection="column" gap={1} paddingLeft={1}>
-          <Text bold>Use Claudium&apos;s terminal setup?</Text>
-          <Box flexDirection="column" width={70} gap={1}>
-            <Text>
-              For the optimal coding experience, enable the recommended settings
-              <Newline />
-              for your terminal:{' '}
-              {env.terminal === 'Apple_Terminal' ? 'Option+Enter for newlines and visual bell' : 'Shift+Enter for newlines'}
-            </Text>
-            <Select options={[{
-            label: 'Yes, use recommended settings',
-            value: 'install'
-          }, {
-            label: 'No, maybe later with /terminal-setup',
-            value: 'no'
-          }]} onChange={value => {
-            if (value === 'install') {
-              // Errors already logged in setupTerminal, just swallow and proceed
-              void setupTerminal(theme).catch(() => {}).finally(goToNextStep);
-            } else {
-              goToNextStep();
-            }
-          }} onCancel={() => goToNextStep()} />
-            <Text dimColor>
-              {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to skip</>}
-            </Text>
-          </Box>
-        </Box>
-    });
-  }
   const currentStep = steps[currentStepIndex];
 
-  // Handle Enter on security step and Escape on terminal-setup step
-  // Dependencies match what goToNextStep uses internally
+  // Handle Enter on security step
   const handleSecurityContinue = useCallback(() => {
     if (currentStepIndex === steps.length - 1) {
       onDone();
@@ -186,20 +151,11 @@ export function Onboarding({
       goToNextStep();
     }
   }, [currentStepIndex, steps.length, oauthEnabled, onDone]);
-  const handleTerminalSetupSkip = useCallback(() => {
-    goToNextStep();
-  }, [currentStepIndex, steps.length, oauthEnabled, onDone]);
   useKeybindings({
     'confirm:yes': handleSecurityContinue
   }, {
     context: 'Confirmation',
     isActive: currentStep?.id === 'security'
-  });
-  useKeybindings({
-    'confirm:no': handleTerminalSetupSkip
-  }, {
-    context: 'Confirmation',
-    isActive: currentStep?.id === 'terminal-setup'
   });
   return <Box flexDirection="column">
       <WelcomeV2 />

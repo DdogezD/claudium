@@ -10,8 +10,6 @@ import type { getGlobalConfig } from './config.js';
 import { getAnthropicApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource, isClaudeAISubscriber } from './auth.js';
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js';
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
-import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
-import { isJetBrainsPluginInstalledCachedSync } from './jetbrains.js';
 
 // Types
 export type StatusNoticeType = 'warning' | 'info';
@@ -157,39 +155,9 @@ const largeAgentDescriptionsNotice: StatusNoticeDefinition = {
       </Box>;
   }
 };
-const jetbrainsPluginNotice: StatusNoticeDefinition = {
-  id: 'jetbrains-plugin-install',
-  type: 'info',
-  isActive: context => {
-    // Only show if running in JetBrains built-in terminal
-    if (!isSupportedJetBrainsTerminal()) {
-      return false;
-    }
-    // Don't show if auto-install is disabled
-    const shouldAutoInstall = context.config.autoInstallIdeExtension ?? true;
-    if (!shouldAutoInstall) {
-      return false;
-    }
-    // Check if plugin is already installed (cached to avoid repeated filesystem checks)
-    const ideType = getTerminalIdeType();
-    return ideType !== null && !isJetBrainsPluginInstalledCachedSync(ideType);
-  },
-  render: () => {
-    const ideType = getTerminalIdeType();
-    const ideName = toIDEDisplayName(ideType);
-    return <Box flexDirection="row" gap={1} marginLeft={1}>
-        <Text color="ide">{figures.arrowUp}</Text>
-        <Text>
-          Install the <Text color="ide">{ideName}</Text> plugin from the
-          JetBrains Marketplace:{' '}
-          <Text bold>https://docs.claude.com/s/claude-code-jetbrains</Text>
-        </Text>
-      </Box>;
-  }
-};
 
 // All notice definitions
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {

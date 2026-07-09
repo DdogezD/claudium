@@ -1,5 +1,7 @@
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BetaToolUnion = any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TextBlockParam = any
 import { createPatch } from 'diff'
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'

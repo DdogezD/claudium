@@ -1,8 +1,6 @@
 # Claudium
 
-**The free build of Claude Code.**
-
-All telemetry stripped. All injected security-prompt guardrails removed. All experimental features unlocked. One binary, zero callbacks home.
+All Anthropic OAuth stripped. All telemetry stripped. All injected security-prompt guardrails removed. All experimental features unlocked. One binary, zero callbacks home.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
@@ -20,22 +18,34 @@ curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | 
 
 This is a clean, buildable fork of Anthropic's [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI -- the terminal-native AI coding agent. The upstream source became publicly available on March 31, 2026 through a source map exposure in the npm distribution.
 
-This fork applies five categories of changes on top of that snapshot:
+This fork applies six categories of changes on top of that snapshot:
 
 ### 1. Privacy-First
 
 Eliminates all tracking and remote-control mechanisms present in the original Claude Code:
 
-- No telemetry – No unnecessary data is transmitted to Anthropic servers
-- No analytics – No usage tracking or event logging
-- No fingerprinting – No user or environment identification
-- No auto-updates – No remote version control or forced updates
+- No telemetry -- No unnecessary data is transmitted to Anthropic servers
+- No analytics -- No usage tracking or event logging
+- No fingerprinting -- No user or environment identification
+- No auto-updates -- No remote version control or forced updates
 
-### 2. OpenAI-compatible API support
+### 2. OAuth and Cloud Services Stripped
 
-Added an API shim layer (`src/services/api/openaiShim.ts`) that transparently translates between Anthropic message format and OpenAI-compatible APIs. It supports both Chat Completions and the newer Responses API, so all Claude Code tools (bash, file read/write, grep, glob, agents, MCP, etc.) keep working while you swap in a different backend LLM.
+Unlike the upstream Claude Code, Claudium has no OAuth login, no claude.ai remote sessions, and no cloud provider integration:
 
-### 3. SearXNG-backed WebSearch
+- No `/login` command -- authenticating with claude.ai OAuth is removed
+- No remote CCR sessions -- all bridge/remote session code is stripped
+- No GrowthBook server-side feature flag dependency
+- No auto-update infrastructure
+- No settings sync to/from cloud
+
+All authentication is done via API keys (see [API Configuration](#api-configuration)).
+
+### 3. OpenAI-compatible API support
+
+Added an API shim layer (`src/services/api/openaiShim.ts`) that transparently translates between Anthropic message format and OpenAI-compatible APIs. It supports both Chat Completions and the newer Responses API, so all Claudium tools (bash, file read/write, grep, glob, agents, MCP, etc.) keep working while you swap in a different backend LLM.
+
+### 4. SearXNG-backed WebSearch
 
 Added an optional override for the built-in `WebSearch` tool so it can query your own SearXNG instance instead of relying on provider-side web search.
 
@@ -44,7 +54,7 @@ Added an optional override for the built-in `WebSearch` tool so it can query you
 - Preserves `allowed_domains` / `blocked_domains` semantics with local filtering
 - Falls back to the default provider behavior when the env var is unset
 
-### 4. Security-prompt guardrails removed
+### 5. Security-prompt guardrails removed
 
 Anthropic injects system-level instructions into every conversation that constrain Claude's behavior beyond what the model itself enforces. These include:
 
@@ -54,7 +64,7 @@ Anthropic injects system-level instructions into every conversation that constra
 
 This build strips those injections. The model's own safety training still applies -- this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
 
-### 5. Experimental features enabled
+### 6. Experimental features enabled
 
 Claude Code ships with dozens of feature flags gated behind `bun:bundle` compile-time switches. Most are disabled in the public npm release. This build unlocks all 45+ flags that compile cleanly, including:
 
@@ -169,9 +179,6 @@ claudium-bypass
 bun run dev
 
 # See [API Configuration](#api-configuration) for API setup.
-
-# Or use Claude.ai OAuth
-claudium /login
 ```
 
 `claudium-bypass` is installed by `install.sh`. It exports `IS_SANDBOX=1` and runs the installed `claudium` binary with `--permission-mode bypassPermissions`.
@@ -239,7 +246,7 @@ src/
   tools/                # Agent tool implementations (Bash, Read, Edit, etc.)
   components/           # Ink/React terminal UI components
   hooks/                # React hooks
-  services/             # API client, MCP, OAuth, analytics
+  services/             # API client, MCP, analytics
   state/                # App state store
   utils/                # Utilities
   skills/               # Skill system
@@ -269,6 +276,8 @@ src/
 ## API Configuration
 
 Claudium supports both **Anthropic Messages API** (natively) and **OpenAI-compatible APIs**. The shim can use either Chat Completions or the newer Responses API depending on the provider and model you configure.
+
+Note: Unlike the upstream Claude Code, Claudium does **not** support OAuth login via claude.ai. All authentication is done via API keys.
 
 ### Anthropic Messages API
 

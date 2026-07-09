@@ -4,9 +4,7 @@ import isEqual from 'lodash-es/isEqual.js'
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
 import { z } from 'zod/v4'
-import { OAUTH_BETA_HEADER } from '../../constants/oauth.js'
 import { getAnthropicClient } from '../../services/api/client.js'
-import { isClaudeAISubscriber } from '../auth.js'
 import { logForDebugging } from '../debug.js'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
 import { safeParseJSON } from '../json.js'
@@ -88,7 +86,7 @@ export async function refreshModelCapabilities(): Promise<void> {
 
   try {
     const anthropic = await getAnthropicClient({ maxRetries: 1 })
-    const betas = isClaudeAISubscriber() ? [OAUTH_BETA_HEADER] : undefined
+    const betas = undefined
     const parsed: ModelCapability[] = []
     for await (const entry of anthropic.models.list({ betas })) {
       const result = ModelCapabilitySchema().safeParse(entry)

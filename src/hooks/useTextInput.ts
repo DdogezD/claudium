@@ -1,7 +1,7 @@
 import { isInputModeCharacter } from 'src/components/PromptInput/inputModes.js'
 import { useNotifications } from 'src/context/notifications.js'
 import stripAnsi from 'strip-ansi'
-import { markBackslashReturnUsed } from '../commands/terminalSetup/terminalSetup.js'
+// import { markBackslashReturnUsed } from '../commands/terminalSetup/terminalSetup.js' // stripped
 import { addToHistory } from '../history.js'
 import type { Key } from '../ink.js'
 import type {
@@ -251,7 +251,7 @@ export function useTextInput({
       cursor.text[cursor.offset - 1] === '\\'
     ) {
       // Track that the user has used backslash+return
-      markBackslashReturnUsed()
+      // markBackslashReturnUsed stripped
       return cursor.backspace().insert('\n')
     }
     // Meta+Enter or Shift+Enter inserts a newline
