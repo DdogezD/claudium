@@ -193,6 +193,31 @@ claudium-bypass
 
 # With specific model
 claudium --model claude-sonnet-4-6-20250514
+
+# Set advisor model
+claudium --advisor-model claude-sonnet-4-6-20250514
+```
+
+## Advisor Tool
+
+Claudium includes a built-in **Advisor** tool that runs a stronger reviewer model
+to audit your approach before you commit to implementation. The advisor checks for
+architecture flaws, security issues, edge cases, and correctness.
+
+- Configured via `CLAUDE_CODE_ADVISOR_MODEL` or the `/advisor <model>` slash command
+- Provider-agnostic — works with any model, including OpenAI-compatible backends
+- Automatically called by the executor model on the first significant action of each task
+- Also available for manual review: call the `Advisor` tool with your question
+
+```bash
+# Enable via env var
+export CLAUDE_CODE_ADVISOR_MODEL="claude-opus-4-6"
+
+# Enable via slash command (interactive session)
+/advisor claude-opus-4-6
+
+# Disable
+/advisor off
 ```
 
 ---
@@ -275,6 +300,7 @@ export CLAUDE_CODE_USE_OPENAI=1
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Override max context window size |
 | `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
 | `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |
+| `CLAUDE_CODE_ADVISOR_MODEL` | Set the advisor/reviewer model (provider-agnostic) |
 
 **Autocompact buffer** = `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` + `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS`
 

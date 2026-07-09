@@ -1,5 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { toolMatchesName, type Tool, type Tools } from './Tool.js'
+import { AdvisorTool } from './tools/AdvisorTool/AdvisorTool.js'
 import { AgentTool } from './tools/AgentTool/AgentTool.js'
 import { SkillTool } from './tools/SkillTool/SkillTool.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
@@ -192,6 +193,7 @@ export function getToolsForDefaultPreset(): string[] {
  */
 export function getAllBaseTools(): Tools {
   return [
+    AdvisorTool,
     AgentTool,
     TaskOutputTool,
     BashTool,

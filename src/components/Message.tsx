@@ -9,12 +9,12 @@ import { Box } from '../ink.js';
 import type { Tools } from '../Tool.js';
 import { type ConnectorTextBlock, isConnectorTextBlock } from '../types/connectorText.js';
 import type { AssistantMessage, AttachmentMessage as AttachmentMessageType, CollapsedReadSearchGroup as CollapsedReadSearchGroupType, GroupedToolUseMessage as GroupedToolUseMessageType, NormalizedUserMessage, ProgressMessage, SystemMessage } from '../types/message.js';
-import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js';
+
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
 import { logError } from '../utils/log.js';
 import type { buildMessageLookups } from '../utils/messages.js';
 import { CompactSummary } from './CompactSummary.js';
-import { AdvisorMessage } from './messages/AdvisorMessage.js';
+
 import { AssistantRedactedThinkingMessage } from './messages/AssistantRedactedThinkingMessage.js';
 import { AssistantTextMessage } from './messages/AssistantTextMessage.js';
 import { AssistantThinkingMessage } from './messages/AssistantThinkingMessage.js';
@@ -559,28 +559,7 @@ function AssistantMessageBlock(t0) {
       }
     case "server_tool_use":
     case "advisor_tool_result":
-      {
-        if (isAdvisorBlock(param)) {
-          const t1 = verbose || isTranscriptMode;
-          let t2;
-          if ($[37] !== addMargin || $[38] !== advisorModel || $[39] !== lookups.erroredToolUseIDs || $[40] !== lookups.resolvedToolUseIDs || $[41] !== param || $[42] !== shouldAnimate || $[43] !== t1) {
-            t2 = <AdvisorMessage block={param} addMargin={addMargin} resolvedToolUseIDs={lookups.resolvedToolUseIDs} erroredToolUseIDs={lookups.erroredToolUseIDs} shouldAnimate={shouldAnimate} verbose={t1} advisorModel={advisorModel} />;
-            $[37] = addMargin;
-            $[38] = advisorModel;
-            $[39] = lookups.erroredToolUseIDs;
-            $[40] = lookups.resolvedToolUseIDs;
-            $[41] = param;
-            $[42] = shouldAnimate;
-            $[43] = t1;
-            $[44] = t2;
-          } else {
-            t2 = $[44];
-          }
-          return t2;
-        }
-        logError(new Error(`Unable to render server tool block: ${param.type}`));
-        return null;
-      }
+      return null;
     default:
       {
         logError(new Error(`Unable to render message type: ${param.type}`));

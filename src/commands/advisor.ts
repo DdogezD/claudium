@@ -1,12 +1,7 @@
 import type { Command } from '../commands.js'
 import type { LocalCommandCall } from '../types/command.js'
+import { isAdvisorEnabled } from '../utils/advisor.js'
 import {
-  canUserConfigureAdvisor,
-  isValidAdvisorModel,
-  modelSupportsAdvisor,
-} from '../utils/advisor.js'
-import {
-  getDefaultMainLoopModelSetting,
   normalizeModelStringForAPI,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
@@ -15,9 +10,6 @@ import { updateSettingsForSource } from '../utils/settings/settings.js'
 
 const call: LocalCommandCall = async (args, context) => {
   const arg = args.trim().toLowerCase()
-  const baseModel = parseUserSpecifiedModel(
-    context.getAppState().mainLoopModel ?? getDefaultMainLoopModelSetting(),
-  )
 
   if (!arg) {
     const current = context.getAppState().advisorModel
@@ -25,13 +17,9 @@ const call: LocalCommandCall = async (args, context) => {
       return {
         type: 'text',
         value:
-          'Advisor: not set\nUse "/advisor <model>" to enable (e.g. "/advisor opus").',
-      }
-    }
-    if (!modelSupportsAdvisor(baseModel)) {
-      return {
-        type: 'text',
-        value: `Advisor: ${current} (inactive)\nThe current model (${baseModel}) does not support advisors.`,
+          'Advisor: not set\n' +
+          'Use "/advisor <model>" to enable (e.g. "/advisor claude-opus-4-6").\n' +
+          'Or set CLAUDE_CODE_ADVISOR_MODEL environment variable.',
       }
     }
     return {
@@ -55,7 +43,6 @@ const call: LocalCommandCall = async (args, context) => {
     }
   }
 
-  const normalizedModel = normalizeModelStringForAPI(arg)
   const resolvedModel = parseUserSpecifiedModel(arg)
   const { valid, error } = await validateModel(resolvedModel)
   if (!valid) {
@@ -67,25 +54,13 @@ const call: LocalCommandCall = async (args, context) => {
     }
   }
 
-  if (!isValidAdvisorModel(resolvedModel)) {
-    return {
-      type: 'text',
-      value: `The model ${arg} (${resolvedModel}) cannot be used as an advisor`,
-    }
-  }
+  const normalizedModel = normalizeModelStringForAPI(resolvedModel)
 
   context.setAppState(s => {
     if (s.advisorModel === normalizedModel) return s
     return { ...s, advisorModel: normalizedModel }
   })
   updateSettingsForSource('userSettings', { advisorModel: normalizedModel })
-
-  if (!modelSupportsAdvisor(baseModel)) {
-    return {
-      type: 'text',
-      value: `Advisor set to ${normalizedModel}.\nNote: Your current model (${baseModel}) does not support advisors. Switch to a supported model to use the advisor.`,
-    }
-  }
 
   return {
     type: 'text',
@@ -96,11 +71,12 @@ const call: LocalCommandCall = async (args, context) => {
 const advisor = {
   type: 'local',
   name: 'advisor',
-  description: 'Configure the advisor model',
+  description:
+    'Configure the advisor model',
   argumentHint: '[<model>|off]',
-  isEnabled: () => canUserConfigureAdvisor(),
+  isEnabled: () => isAdvisorEnabled(),
   get isHidden() {
-    return !canUserConfigureAdvisor()
+    return false
   },
   supportsNonInteractive: true,
   load: () => Promise.resolve({ call }),
