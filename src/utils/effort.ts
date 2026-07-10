@@ -141,19 +141,48 @@ export function getEffortEnvOverride(): EffortValue | null | undefined {
     : parseEffortValue(envOverride)
 }
 
+export function getSubagentEffortEnvOverride(): EffortValue | null | undefined {
+  const v = process.env.CLAUDE_CODE_SUBAGENT_EFFORT_LEVEL
+  if (!v) return undefined // not set → inherit from base
+  return v.toLowerCase() === 'unset' || v.toLowerCase() === 'auto'
+    ? null
+    : parseEffortValue(v)
+}
+
+export function getAdvisorEffortEnvOverride(): EffortValue | null | undefined {
+  const v = process.env.CLAUDE_CODE_ADVISOR_EFFORT_LEVEL
+  if (!v) return undefined // not set → inherit from base
+  return v.toLowerCase() === 'unset' || v.toLowerCase() === 'auto'
+    ? null
+    : parseEffortValue(v)
+}
+
 /**
  * Resolve the effort value that will actually be sent to the API for a given
  * model, following the full precedence chain:
- *   env CLAUDE_CODE_EFFORT_LEVEL → appState.effortValue → model default
+ *   scope-specific env → CLAUDE_CODE_EFFORT_LEVEL → appState.effortValue → model default
+ *
+ * Scope-specific env vars (CLAUDE_CODE_SUBAGENT_EFFORT_LEVEL,
+ * CLAUDE_CODE_ADVISOR_EFFORT_LEVEL) take priority over the base env var.
  *
  * Returns undefined when no effort parameter should be sent (env set to
- * 'unset', or no default exists for the model).
+ * 'unset' / 'auto', or no default exists for the model).
  */
 export function resolveAppliedEffort(
   model: string,
   appStateEffortValue: EffortValue | undefined,
+  scope?: 'subagent' | 'advisor',
 ): EffortValue | undefined {
-  const envOverride = getEffortEnvOverride()
+  const scopeOverride =
+    scope === 'subagent'
+      ? getSubagentEffortEnvOverride()
+      : scope === 'advisor'
+        ? getAdvisorEffortEnvOverride()
+        : undefined
+  // scopeOverride: undefined = not set (inherit), null = explicit unset, value = explicit
+  // If scope-specific is set (including null), use it. Otherwise fall to base env.
+  const envOverride =
+    scopeOverride !== undefined ? scopeOverride : getEffortEnvOverride()
   if (envOverride === null) {
     return undefined
   }

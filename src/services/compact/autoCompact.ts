@@ -30,21 +30,103 @@ import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 export const DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 
 // Returns the context window size minus the max output tokens for the model
-export function getEffectiveContextWindowSize(model: string): number {
-  // Allow overriding max output tokens for summary via environment variable.
-  // If the env var is defined, use the provided value directly.
-  const envSummaryTokens = process.env.CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS
-  const parsedSummaryTokens = envSummaryTokens
-    ? parseInt(envSummaryTokens, 10)
-    : DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY
-  const reservedTokensForSummary = envSummaryTokens !== undefined &&
-    !Number.isNaN(parsedSummaryTokens)
-    ? parsedSummaryTokens
-    : Math.min(
-        getMaxOutputTokensForModel(model),
-        DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY,
-      )
+export function getEffectiveContextWindowSize(
+  model: string,
+  querySource?: string,
+): number {
+  const ctxType = getContextType(querySource)
+
+  // Resolve the summary output token reservation, allowing context-specific
+  // overrides (env var → setting → model default).
+  let reservedTokensForSummary: number
+  const generalEnvSummary = process.env.CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS
+
+  // Check context-specific env var first
+  if (ctxType === 'subagent') {
+    const subagentEnvSummary =
+      process.env.CLAUDE_CODE_SUBAGENT_SUMMARY_OUTPUT_TOKENS
+    if (subagentEnvSummary !== undefined) {
+      const parsed = parseInt(subagentEnvSummary, 10)
+      if (!isNaN(parsed) && parsed > 0) {
+        reservedTokensForSummary = parsed
+      } else {
+        reservedTokensForSummary = DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY
+      }
+    } else {
+      // Check settings
+      const override = getSubagentSummaryOutputOverride()
+      if (override !== undefined) {
+        reservedTokensForSummary = override
+      } else if (generalEnvSummary !== undefined) {
+        const parsed = parseInt(generalEnvSummary, 10)
+        reservedTokensForSummary =
+          !isNaN(parsed) && parsed > 0
+            ? parsed
+            : DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY
+      } else {
+        reservedTokensForSummary = Math.min(
+          getMaxOutputTokensForModel(model),
+          DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY,
+        )
+      }
+    }
+  } else if (ctxType === 'advisor') {
+    const advisorEnvSummary =
+      process.env.CLAUDE_CODE_ADVISOR_SUMMARY_OUTPUT_TOKENS
+    if (advisorEnvSummary !== undefined) {
+      const parsed = parseInt(advisorEnvSummary, 10)
+      if (!isNaN(parsed) && parsed > 0) {
+        reservedTokensForSummary = parsed
+      } else {
+        reservedTokensForSummary = DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY
+      }
+    } else {
+      const override = getAdvisorSummaryOutputOverride()
+      if (override !== undefined) {
+        reservedTokensForSummary = override
+      } else if (generalEnvSummary !== undefined) {
+        const parsed = parseInt(generalEnvSummary, 10)
+        reservedTokensForSummary =
+          !isNaN(parsed) && parsed > 0
+            ? parsed
+            : DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY
+      } else {
+        reservedTokensForSummary = Math.min(
+          getMaxOutputTokensForModel(model),
+          DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY,
+        )
+      }
+    }
+  } else {
+    // Main agent — existing logic unchanged
+    const parsedSummaryTokens = generalEnvSummary
+      ? parseInt(generalEnvSummary, 10)
+      : DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY
+    reservedTokensForSummary = generalEnvSummary !== undefined &&
+      !Number.isNaN(parsedSummaryTokens)
+      ? parsedSummaryTokens
+      : Math.min(
+          getMaxOutputTokensForModel(model),
+          DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY,
+        )
+  }
+
   let contextWindow = getContextWindowForModel(model, getSdkBetas())
+
+  // Apply context-type specific overrides (subagent / advisor)
+  // These are applied BEFORE the CLAUDE_CODE_AUTO_COMPACT_WINDOW cap
+  // so the global cap can further constrain if needed.
+  if (ctxType === 'subagent') {
+    const override = getSubagentContextWindowOverride()
+    if (override !== undefined) {
+      contextWindow = Math.min(contextWindow, override)
+    }
+  } else if (ctxType === 'advisor') {
+    const override = getAdvisorContextWindowOverride()
+    if (override !== undefined) {
+      contextWindow = Math.min(contextWindow, override)
+    }
+  }
 
   const autoCompactWindow = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW
   if (autoCompactWindow) {
@@ -73,7 +155,137 @@ export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000
 export const ERROR_THRESHOLD_BUFFER_TOKENS = 20_000
 export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
 
-export function getAutoCompactBufferTokens(): number {
+// ---------------------------------------------------------------------------
+// Context type detection — used to resolve subagent/adviser-specific
+// context window and buffer overrides from settings and env vars.
+// ---------------------------------------------------------------------------
+
+type ContextType = 'main' | 'subagent' | 'advisor'
+
+function getContextType(querySource?: string): ContextType {
+  if (!querySource) return 'main'
+  if (querySource === 'advisor') return 'advisor'
+  if (
+    querySource.startsWith('agent:') ||
+    querySource === 'supervisor' ||
+    querySource === 'speculation'
+  ) {
+    return 'subagent'
+  }
+  return 'main'
+}
+
+/**
+ * Resolve the subagent context window override from env var or settings.
+ * Returns undefined if no override is configured (falls through to default).
+ */
+function getSubagentContextWindowOverride(): number | undefined {
+  // 1. Env var takes precedence
+  const envOverride = process.env.CLAUDE_CODE_SUBAGENT_MAX_CONTEXT_TOKENS
+  if (envOverride) {
+    const parsed = parseInt(envOverride, 10)
+    if (!isNaN(parsed) && parsed > 0) return parsed
+  }
+  // 2. Settings fallback
+  try {
+    const { getInitialSettings } =
+      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
+    const v = getInitialSettings().subagentContextWindow
+    if (v && v > 0) return v
+  } catch {
+    // Settings not available (circular dep guard or early startup)
+  }
+  return undefined
+}
+
+function getAdvisorContextWindowOverride(): number | undefined {
+  // 1. Env var takes precedence
+  const envOverride = process.env.CLAUDE_CODE_ADVISOR_MAX_CONTEXT_TOKENS
+  if (envOverride) {
+    const parsed = parseInt(envOverride, 10)
+    if (!isNaN(parsed) && parsed > 0) return parsed
+  }
+  // 2. Settings fallback
+  try {
+    const { getInitialSettings } =
+      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
+    const v = getInitialSettings().advisorContextWindow
+    if (v && v > 0) return v
+  } catch {
+    // Settings not available
+  }
+  return undefined
+}
+
+function getSubagentBufferOverride(): number | undefined {
+  const envOverride = process.env.CLAUDE_CODE_SUBAGENT_BUFFER_TOKENS
+  if (envOverride) {
+    const parsed = parseInt(envOverride, 10)
+    if (!isNaN(parsed) && parsed > 0) return parsed
+  }
+  try {
+    const { getInitialSettings } =
+      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
+    const v = getInitialSettings().subagentBufferTokens
+    if (v && v > 0) return v
+  } catch {
+    // Settings not available
+  }
+  return undefined
+}
+
+function getAdvisorBufferOverride(): number | undefined {
+  const envOverride = process.env.CLAUDE_CODE_ADVISOR_BUFFER_TOKENS
+  if (envOverride) {
+    const parsed = parseInt(envOverride, 10)
+    if (!isNaN(parsed) && parsed > 0) return parsed
+  }
+  try {
+    const { getInitialSettings } =
+      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
+    const v = getInitialSettings().advisorBufferTokens
+    if (v && v > 0) return v
+  } catch {
+    // Settings not available
+  }
+  return undefined
+}
+
+function getSubagentSummaryOutputOverride(): number | undefined {
+  try {
+    const { getInitialSettings } =
+      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
+    const v = getInitialSettings().subagentSummaryOutputTokens
+    if (v && v > 0) return v
+  } catch {
+    // Settings not available
+  }
+  return undefined
+}
+
+function getAdvisorSummaryOutputOverride(): number | undefined {
+  try {
+    const { getInitialSettings } =
+      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
+    const v = getInitialSettings().advisorSummaryOutputTokens
+    if (v && v > 0) return v
+  } catch {
+    // Settings not available
+  }
+  return undefined
+}
+
+export function getAutoCompactBufferTokens(querySource?: string): number {
+  // Allow context-specific overrides first
+  const ctxType = getContextType(querySource)
+  if (ctxType === 'subagent') {
+    const override = getSubagentBufferOverride()
+    if (override !== undefined) return override
+  } else if (ctxType === 'advisor') {
+    const override = getAdvisorBufferOverride()
+    if (override !== undefined) return override
+  }
+
   // Allow overriding autocompact buffer size via environment variable.
   // If the env var is defined, use the provided value directly.
   const envBuffer = process.env.CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS
@@ -89,10 +301,16 @@ export function getAutoCompactBufferTokens(): number {
 // in a single session, wasting ~250K API calls/day globally.
 const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3
 
-export function getAutoCompactThreshold(model: string): number {
-  const effectiveContextWindow = getEffectiveContextWindowSize(model)
+export function getAutoCompactThreshold(
+  model: string,
+  querySource?: string,
+): number {
+  const effectiveContextWindow = getEffectiveContextWindowSize(
+    model,
+    querySource,
+  )
 
-  const autocompactBufferTokens = getAutoCompactBufferTokens()
+  const autocompactBufferTokens = getAutoCompactBufferTokens(querySource)
   const autocompactThreshold =
     effectiveContextWindow - autocompactBufferTokens
 
@@ -114,6 +332,7 @@ export function getAutoCompactThreshold(model: string): number {
 export function calculateTokenWarningState(
   tokenUsage: number,
   model: string,
+  querySource?: string,
 ): {
   percentLeft: number
   isAboveWarningThreshold: boolean
@@ -121,10 +340,10 @@ export function calculateTokenWarningState(
   isAboveAutoCompactThreshold: boolean
   isAtBlockingLimit: boolean
 } {
-  const autoCompactThreshold = getAutoCompactThreshold(model)
+  const autoCompactThreshold = getAutoCompactThreshold(model, querySource)
   const threshold = isAutoCompactEnabled()
     ? autoCompactThreshold
-    : getEffectiveContextWindowSize(model)
+    : getEffectiveContextWindowSize(model, querySource)
 
   const percentLeft = Math.max(
     0,
@@ -140,7 +359,7 @@ export function calculateTokenWarningState(
   const isAboveAutoCompactThreshold =
     isAutoCompactEnabled() && tokenUsage >= autoCompactThreshold
 
-  const actualContextWindow = getEffectiveContextWindowSize(model)
+  const actualContextWindow = getEffectiveContextWindowSize(model, querySource)
   const defaultBlockingLimit =
     actualContextWindow - MANUAL_COMPACT_BUFFER_TOKENS
 
@@ -244,8 +463,8 @@ export async function shouldAutoCompact(
   }
 
   const tokenCount = tokenCountWithEstimation(messages) - snipTokensFreed
-  const threshold = getAutoCompactThreshold(model)
-  const effectiveWindow = getEffectiveContextWindowSize(model)
+  const threshold = getAutoCompactThreshold(model, querySource)
+  const effectiveWindow = getEffectiveContextWindowSize(model, querySource)
 
   logForDebugging(
     `autocompact: tokens=${tokenCount} threshold=${threshold} effectiveWindow=${effectiveWindow}${snipTokensFreed > 0 ? ` snipFreed=${snipTokensFreed}` : ''}`,
@@ -254,6 +473,7 @@ export async function shouldAutoCompact(
   const { isAboveAutoCompactThreshold } = calculateTokenWarningState(
     tokenCount,
     model,
+    querySource,
   )
 
   return isAboveAutoCompactThreshold
@@ -301,7 +521,7 @@ export async function autoCompactIfNeeded(
     isRecompactionInChain: tracking?.compacted === true,
     turnsSincePreviousCompact: tracking?.turnCounter ?? -1,
     previousCompactTurnId: tracking?.turnId,
-    autoCompactThreshold: getAutoCompactThreshold(model),
+    autoCompactThreshold: getAutoCompactThreshold(model, querySource),
     querySource,
   }
 

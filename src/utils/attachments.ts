@@ -174,6 +174,8 @@ import {
 } from './mcpInstructionsDelta.js'
 import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from './claudeInChrome/common.js'
 import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from './claudeInChrome/prompt.js'
+import { isAdvisorEnabled } from './advisor.js'
+import { ADVISOR_TOOL_INSTRUCTIONS } from '../tools/AdvisorTool/prompt.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import type {
   HookEvent,
@@ -715,6 +717,12 @@ export type Attachment =
       warningCount: number
       sample: string
     }
+  | {
+      type: 'advisor_instructions'
+      instructions: string
+      /** Missing on legacy attachments; treat undefined as enabled. */
+      enabled?: boolean
+    }
 
 export type TeammateMailboxAttachment = {
   type: 'teammate_mailbox'
@@ -943,6 +951,11 @@ export async function getAttachments(
   // Attachments which are semantically only for the main conversation or don't have concurrency-safe implementations
   const mainThreadAttachments = isMainThread
     ? [
+        // Executor-only instructions. Never inject into Advisor or other
+        // subagent queries, where the Advisor tool is unavailable.
+        maybe('advisor_instructions', () =>
+          Promise.resolve(getAdvisorInstructionsAttachment(messages)),
+        ),
         maybe('ide_selection', async () =>
           getSelectedLinesFromIDE(ideSelection, toolUseContext),
         ),
@@ -1582,6 +1595,49 @@ export function getMcpInstructionsDeltaAttachment(
   const delta = getMcpInstructionsDelta(mcpClients, messages ?? [], clientSide)
   if (!delta) return []
   return [{ type: 'mcp_instructions_delta', ...delta }]
+}
+
+export function getAdvisorInstructionsAttachment(
+  messages: Message[] | undefined,
+): Attachment[] {
+  const previous = (messages ?? []).findLast(
+    msg =>
+      msg.type === 'attachment' &&
+      msg.attachment.type === 'advisor_instructions',
+  )
+  const previousAttachment =
+    previous?.type === 'attachment' &&
+    previous.attachment.type === 'advisor_instructions'
+      ? previous.attachment
+      : undefined
+  const enabled = isAdvisorEnabled()
+
+  if (!enabled) {
+    // No announcement to retract, or already retracted.
+    if (!previousAttachment || previousAttachment.enabled === false) return []
+    return [
+      {
+        type: 'advisor_instructions',
+        instructions: '',
+        enabled: false,
+      },
+    ]
+  }
+
+  if (
+    previousAttachment?.enabled !== false &&
+    previousAttachment?.instructions === ADVISOR_TOOL_INSTRUCTIONS
+  ) {
+    return []
+  }
+
+  return [
+    {
+      type: 'advisor_instructions',
+      instructions: ADVISOR_TOOL_INSTRUCTIONS,
+      enabled: true,
+    },
+  ]
 }
 
 function getCriticalSystemReminderAttachment(

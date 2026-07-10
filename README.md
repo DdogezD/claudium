@@ -310,8 +310,63 @@ export CLAUDE_CODE_USE_OPENAI=1
 | `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
 | `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |
 | `CLAUDE_CODE_ADVISOR_MODEL` | Set the advisor/reviewer model (provider-agnostic) |
+| `CLAUDE_CODE_SUBAGENT_MAX_CONTEXT_TOKENS` | Override max context window size for subagents |
+| `CLAUDE_CODE_SUBAGENT_BUFFER_TOKENS` | Override auto-compact buffer size for subagents |
+| `CLAUDE_CODE_SUBAGENT_SUMMARY_OUTPUT_TOKENS` | Override summary output token reservation for subagents |
+| `CLAUDE_CODE_ADVISOR_MAX_CONTEXT_TOKENS` | Override max context window size for the advisor tool |
+| `CLAUDE_CODE_ADVISOR_BUFFER_TOKENS` | Override auto-compact buffer size for the advisor tool |
+| `CLAUDE_CODE_ADVISOR_SUMMARY_OUTPUT_TOKENS` | Override summary output token reservation for the advisor tool |
 
 **Autocompact buffer** = `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` + `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS`
+
+#### Subagent & Advisor Context Configuration
+
+Subagents (spawned via the `Agent` tool) and the `Advisor` tool each run their own
+query loops with independent context management. By default they inherit the same
+context window, auto-compact buffer, and summary output reservation as the main
+agent. You can override these independently using env vars or `settings.json`.
+
+**Env vars (highest priority):**
+```bash
+# Subagent overrides
+export CLAUDE_CODE_SUBAGENT_MAX_CONTEXT_TOKENS=100000
+export CLAUDE_CODE_SUBAGENT_BUFFER_TOKENS=5000
+export CLAUDE_CODE_SUBAGENT_SUMMARY_OUTPUT_TOKENS=8000
+
+# Advisor overrides
+export CLAUDE_CODE_ADVISOR_MAX_CONTEXT_TOKENS=150000
+export CLAUDE_CODE_ADVISOR_BUFFER_TOKENS=10000
+export CLAUDE_CODE_ADVISOR_SUMMARY_OUTPUT_TOKENS=16000
+```
+
+**settings.json (persistent config):**
+```json
+{
+  "subagentContextWindow": 100000,
+  "subagentBufferTokens": 5000,
+  "subagentSummaryOutputTokens": 8000,
+  "advisorContextWindow": 150000,
+  "advisorBufferTokens": 10000,
+  "advisorSummaryOutputTokens": 16000
+}
+```
+
+**Priority chain** (each parameter independently):
+1. context-specific env var (e.g. `CLAUDE_CODE_SUBAGENT_MAX_CONTEXT_TOKENS`)
+2. context-specific `settings.json` field (e.g. `subagentContextWindow`)
+3. general env var (e.g. `CLAUDE_CODE_MAX_CONTEXT_TOKENS`)
+4. model default
+
+Context window overrides use `min()` semantics — they only cap downward, never
+expand beyond what the model supports.
+
+**Calculation reminder:**
+```
+effectiveWindow = min(modelContextWindow, contextWindowOverride, AUTO_COMPACT_WINDOW)
+                   - summaryOutputTokens
+compactThreshold = effectiveWindow - bufferTokens
+totalBuffer       = summaryOutputTokens + bufferTokens  (default: 20000 + 13000 = 33000)
+```
 
 Use `OPENAI_MODEL` when you want to pin the whole session to one exact model. Use `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` when you want aliases such as `opus`, `sonnet`, and `haiku` to resolve to your own provider-specific model IDs.
 

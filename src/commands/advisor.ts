@@ -1,12 +1,12 @@
+import chalk from 'chalk'
 import type { Command } from '../commands.js'
 import type { LocalCommandCall } from '../types/command.js'
-import { isAdvisorEnabled } from '../utils/advisor.js'
+import { getAdvisorModel } from '../utils/advisor.js'
 import {
   normalizeModelStringForAPI,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
 import { validateModel } from '../utils/model/validateModel.js'
-import { updateSettingsForSource } from '../utils/settings/settings.js'
 
 const call: LocalCommandCall = async (args, context) => {
   const arg = args.trim().toLowerCase()
@@ -24,7 +24,7 @@ const call: LocalCommandCall = async (args, context) => {
     }
     return {
       type: 'text',
-      value: `Advisor: ${current}\nUse "/advisor unset" to disable or "/advisor <model>" to change.`,
+      value: `Advisor: ${chalk.bold(current)}\nUse "/advisor unset" to disable or "/advisor <model>" to change.`,
     }
   }
 
@@ -34,11 +34,10 @@ const call: LocalCommandCall = async (args, context) => {
       if (s.advisorModel === undefined) return s
       return { ...s, advisorModel: undefined }
     })
-    updateSettingsForSource('userSettings', { advisorModel: undefined })
     return {
       type: 'text',
       value: prev
-        ? `Advisor disabled (was ${prev}).`
+        ? `Set advisor model to ${chalk.bold('default')} (was ${chalk.bold(prev)})`
         : 'Advisor already unset.',
     }
   }
@@ -60,21 +59,23 @@ const call: LocalCommandCall = async (args, context) => {
     if (s.advisorModel === normalizedModel) return s
     return { ...s, advisorModel: normalizedModel }
   })
-  updateSettingsForSource('userSettings', { advisorModel: normalizedModel })
 
   return {
     type: 'text',
-    value: `Advisor set to ${normalizedModel}.`,
+    value: `Set advisor model to ${chalk.bold(normalizedModel)}`,
   }
 }
 
 const advisor = {
   type: 'local',
   name: 'advisor',
-  description:
-    'Configure the advisor model',
+  get description() {
+    const model = getAdvisorModel()
+    return model
+      ? `Configure advisor model (currently ${model})`
+      : 'Configure advisor model (currently disabled)'
+  },
   argumentHint: '[<model>|off]',
-  isEnabled: () => isAdvisorEnabled(),
   get isHidden() {
     return false
   },

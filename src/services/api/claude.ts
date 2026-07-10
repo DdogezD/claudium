@@ -147,7 +147,8 @@ import { addToTotalSessionCost } from 'src/cost-tracker.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics-stub.js'
 import type { AgentId } from 'src/types/ids.js'
 import { isAdvisorEnabled } from 'src/utils/advisor.js'
-import { ADVISOR_TOOL_INSTRUCTIONS } from 'src/tools/AdvisorTool/prompt.js'
+// ADVISOR_TOOL_INSTRUCTIONS now delivered via attachments.ts (advisor_instructions delta)
+// to avoid busting the system prompt cache.
 import { getAgentContext } from 'src/utils/agentContext.js'
 import { isClaudeAISubscriber } from 'src/utils/auth.js'
 import {
@@ -1368,7 +1369,6 @@ async function* queryModel(
         hasAppendSystemPrompt: options.hasAppendSystemPrompt,
       }),
       ...systemPrompt,
-      ...(advisorModel ? [ADVISOR_TOOL_INSTRUCTIONS] : []),
       ...(injectChromeHere ? [CHROME_TOOL_SEARCH_INSTRUCTIONS] : []),
     ].filter(Boolean),
   )
@@ -1452,7 +1452,12 @@ async function* queryModel(
     }
   }
 
-  const effort = resolveAppliedEffort(options.model, options.effortValue)
+  const effortScope = options.querySource === 'advisor'
+    ? 'advisor'
+    : options.querySource.startsWith('agent:')
+      ? 'subagent'
+      : undefined
+  const effort = resolveAppliedEffort(options.model, options.effortValue, effortScope)
 
   if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
     // Exclude defer_loading tools from the hash -- the API strips them from the

@@ -637,6 +637,7 @@ async function* queryLoop(
       const { isAtBlockingLimit } = calculateTokenWarningState(
         tokenCountWithEstimation(messagesForQuery) - snipTokensFreed,
         toolUseContext.options.mainLoopModel,
+        querySource,
       )
       if (isAtBlockingLimit) {
         yield createAssistantAPIErrorMessage({

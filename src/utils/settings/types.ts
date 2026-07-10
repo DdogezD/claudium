@@ -713,6 +713,76 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe('Advisor model for the server-side advisor tool.'),
+      // Override context window size (max tokens) for subagents.
+      // When set, subagents use this as their effective context window cap,
+      // overriding the model's default context window. Useful for limiting
+      // subagent token usage.
+      subagentContextWindow: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Override the context window size (max tokens) for subagents. ' +
+            'When set, subagents use this as their effective context window cap.',
+        ),
+      // Override auto-compact buffer size for subagents.
+      // The buffer determines how many tokens before the context limit triggers
+      // automatic compaction. Larger values compact more aggressively.
+      subagentBufferTokens: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Override the auto-compact buffer size (tokens) for subagents.',
+        ),
+      // Override context window size (max tokens) for the advisor tool.
+      // When set, the advisor uses this as its effective context window cap,
+      // overriding the model's default context window.
+      advisorContextWindow: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Override the context window size (max tokens) for the advisor tool. ' +
+            'When set, the advisor uses this as its effective context window cap.',
+        ),
+      // Override auto-compact buffer size for the advisor tool.
+      // The buffer determines how many tokens before the context limit triggers
+      // automatic compaction for the advisor.
+      advisorBufferTokens: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Override the auto-compact buffer size (tokens) for the advisor tool.',
+        ),
+      // Override the summary output token reservation for subagents.
+      // During compaction, this many tokens are reserved for the compaction
+      // model's output. A larger reservation reduces the effective context
+      // window but protects against compaction output truncation.
+      subagentSummaryOutputTokens: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Override the summary output token reservation for subagent compaction.',
+        ),
+      // Override the summary output token reservation for the advisor tool.
+      // During advisor compaction, this many tokens are reserved for the
+      // compaction model's output.
+      advisorSummaryOutputTokens: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'Override the summary output token reservation for advisor compaction.',
+        ),
       fastMode: z
         .boolean()
         .optional()

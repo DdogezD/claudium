@@ -111,6 +111,13 @@ export function onChangeAppState({
     setMainLoopModelOverride(newState.mainLoopModel)
   }
 
+  // advisorModel: sync to settings
+  if (newState.advisorModel !== oldState.advisorModel) {
+    updateSettingsForSource('userSettings', {
+      advisorModel: newState.advisorModel ?? undefined,
+    })
+  }
+
   // expandedView → persist as showExpandedTodos + showSpinnerTree for backwards compat
   if (newState.expandedView !== oldState.expandedView) {
     const showExpandedTodos = newState.expandedView === 'tasks'

@@ -2820,12 +2820,16 @@ async function run(): Promise<CommanderCommand> {
       /* eslint-enable @typescript-eslint/no-require-imports */
       ccrMirrorEnabled = isCcrMirrorEnabled();
     }
+    const initialSettings = getInitialSettings()
     const initialState: AppState = {
-      settings: getInitialSettings(),
+      settings: initialSettings,
       tasks: {},
       agentNameRegistry: new Map(),
       verbose: verbose ?? getGlobalConfig().verbose ?? false,
       mainLoopModel: initialMainLoopModel,
+      advisorModel:
+        process.env.CLAUDE_CODE_ADVISOR_MODEL?.trim() ||
+        initialSettings.advisorModel,
       mainLoopModelForSession: null,
       isBriefOnly: initialIsBriefOnly,
       expandedView: getGlobalConfig().showSpinnerTree ? 'teammates' : getGlobalConfig().showExpandedTodos ? 'tasks' : 'none',

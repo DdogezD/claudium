@@ -465,9 +465,14 @@ export function getDefaultAppState(): AppState {
       ? 'plan'
       : 'default'
 
+  const initialSettings = getInitialSettings()
+
   return {
-    settings: getInitialSettings(),
+    settings: initialSettings,
     tasks: {},
+    advisorModel:
+      process.env.CLAUDE_CODE_ADVISOR_MODEL?.trim() ||
+      initialSettings.advisorModel,
     agentNameRegistry: new Map(),
     verbose: false,
     mainLoopModel: null, // alias, full name (as with --model or env var), or null (default)

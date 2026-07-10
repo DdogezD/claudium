@@ -82,8 +82,9 @@ export function UserToolSuccessMessage({
   // so MarkdownTable's SAFETY_MARGIN=4 (tuned for the assistant-text 2-col
   // dot gutter) holds — otherwise tables wrap their box-drawing chars.
   const rendersAsAssistantText = tool.userFacingName(undefined) === '';
+  const useFullWidth = rendersAsAssistantText || tool.name === 'Advisor';
   return <Box flexDirection="column">
-      <Box flexDirection="column" width={rendersAsAssistantText ? undefined : width}>
+      <Box flexDirection="column" width={useFullWidth ? undefined : width}>
         {renderedMessage}
         {feature('BASH_CLASSIFIER') ? classifierRule && <MessageResponse height={1}>
                 <Text dimColor>

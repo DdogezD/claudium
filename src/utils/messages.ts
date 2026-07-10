@@ -4229,6 +4229,15 @@ You have exited auto mode. The user may now want to interact more directly. You 
         createUserMessage({ content: parts.join('\n\n'), isMeta: true }),
       ])
     }
+    case 'advisor_instructions': {
+      const content =
+        attachment.enabled === false
+          ? 'Advisor is now disabled. Ignore any earlier Advisor Tool instructions in this conversation and do not call the Advisor tool.'
+          : attachment.instructions
+      return wrapMessagesInSystemReminder([
+        createUserMessage({ content, isMeta: true }),
+      ])
+    }
     case 'companion_intro': {
       return wrapMessagesInSystemReminder([
         createUserMessage({

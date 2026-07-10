@@ -34,6 +34,7 @@ import type {
 import {
   createAttachmentMessage,
   generateFileAttachment,
+  getAdvisorInstructionsAttachment,
   getAgentListingDeltaAttachment,
   getDeferredToolsDeltaAttachment,
   getMcpInstructionsDeltaAttachment,
@@ -205,21 +206,24 @@ export function stripImagesFromMessages(messages: Message[]): Message[] {
  * + the next turn's discovery signal, so feeding them to the summarizer
  * wastes tokens and pollutes the summary with stale skill suggestions.
  *
- * No-op when EXPERIMENTAL_SKILL_SEARCH is off (the attachment types
- * don't exist on external builds).
+ * Skill attachment stripping is disabled when EXPERIMENTAL_SKILL_SEARCH
+ * is off (the attachment types don't exist on external builds).
+ * advisor_instructions are always stripped — re-injected post-compact
+ * from current state so stale summarized advice doesn't conflict.
  */
 export function stripReinjectedAttachments(messages: Message[]): Message[] {
-  if (feature('EXPERIMENTAL_SKILL_SEARCH')) {
-    return messages.filter(
-      m =>
-        !(
-          m.type === 'attachment' &&
-          (m.attachment.type === 'skill_discovery' ||
-            m.attachment.type === 'skill_listing')
-        ),
-    )
-  }
-  return messages
+  const stripTypes = feature('EXPERIMENTAL_SKILL_SEARCH')
+    ? ['skill_discovery', 'skill_listing']
+    : []
+  // Always strip advisor_instructions: re-injected post-compact from current state.
+  return messages.filter(
+    m =>
+      !(
+        m.type === 'attachment' &&
+        (stripTypes.includes(m.attachment.type) ||
+          m.attachment.type === 'advisor_instructions')
+      ),
+  )
 }
 
 export const ERROR_MESSAGE_NOT_ENOUGH_MESSAGES =
@@ -582,6 +586,12 @@ export async function compactConversation(
       [],
     )) {
       postCompactFileAttachments.push(createAttachmentMessage(att))
+    }
+    // Advisor instructions are executor-only — never inject into subagents.
+    if (!context.agentId) {
+      for (const att of getAdvisorInstructionsAttachment([])) {
+        postCompactFileAttachments.push(createAttachmentMessage(att))
+      }
     }
 
     context.onCompactProgress?.({
@@ -972,6 +982,12 @@ export async function partialCompactConversation(
       messagesToKeep,
     )) {
       postCompactFileAttachments.push(createAttachmentMessage(att))
+    }
+    // Advisor instructions are executor-only — never inject into subagents.
+    if (!context.agentId) {
+      for (const att of getAdvisorInstructionsAttachment(messagesToKeep)) {
+        postCompactFileAttachments.push(createAttachmentMessage(att))
+      }
     }
 
     context.onCompactProgress?.({
