@@ -1,5 +1,6 @@
 import type { ChildProcess, ExecFileException } from 'child_process'
 import { execFile, spawn } from 'child_process'
+import { accessSync, constants as fsConstants } from 'fs'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
@@ -26,6 +27,15 @@ type RipgrepConfig = {
   command: string
   args: string[]
   argv0?: string
+}
+
+function isBuiltinUsable(command: string): boolean {
+  try {
+    accessSync(command, fsConstants.X_OK)
+    return true
+  } catch {
+    return false
+  }
 }
 
 const getRipgrepConfig = memoize((): RipgrepConfig => {
@@ -60,6 +70,22 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
     process.platform === 'win32'
       ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
       : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
+
+  // In a Bun-compiled binary, import.meta.url uses virtual /$bunfs/ paths,
+  // which makes __dirname point to a nonexistent location. isInBundledMode()
+  // now catches this case and returns embedded mode before we reach here.
+  // This fallback handles the remaining case: the vendored binary is genuinely
+  // missing or not executable (incomplete install, missing platform build,
+  // incorrect file permissions, etc).
+  if (!isBuiltinUsable(command)) {
+    const { cmd: systemPath } = findExecutable('rg', [])
+    if (systemPath !== 'rg') {
+      return { mode: 'system', command: 'rg', args: [] }
+    }
+    logForDebugging(
+      `Builtin ripgrep not available at ${command} and no system rg found`,
+    )
+  }
 
   return { mode: 'builtin', command, args: [] }
 })

@@ -11,12 +11,15 @@ export function isRunningWithBun(): boolean {
 
 /**
  * Detects if running as a Bun-compiled standalone executable.
- * This checks for embedded files which are present in compiled binaries.
+ *
+ * Bun build --compile embeds source as bytecode, NOT as embedded files.
+ * Bun.embeddedFiles only lists assets embedded via --asset or import.meta.resolve.
+ * In compiled binaries, all module URLs use the virtual /$bunfs/ filesystem.
  */
 export function isInBundledMode(): boolean {
-  return (
-    typeof Bun !== 'undefined' &&
-    Array.isArray(Bun.embeddedFiles) &&
-    Bun.embeddedFiles.length > 0
-  )
+  if (typeof Bun === 'undefined') return false
+  // Assets embedded via --asset / import.meta.resolve
+  if (Array.isArray(Bun.embeddedFiles) && Bun.embeddedFiles.length > 0) return true
+  // Source bytecode in a compiled binary — virtual /$bunfs/ filesystem
+  return import.meta.url.includes('/$bunfs/')
 }
