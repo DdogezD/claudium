@@ -37,7 +37,6 @@ _________   .__                         .___ .__
 
 ART
   printf "${RESET}"
-  printf "${DIM}  Claudium - provider-agnostic CLI for Claude${RESET}\n"
   echo ""
 }
 
@@ -198,6 +197,7 @@ printf "    ${CYAN}claudium -p \"your prompt\"${RESET}          # one-shot mode\
 echo ""
 printf "  ${BOLD}Set your Anthropic Messages API key:${RESET}\n"
 printf "    ${CYAN}export ANTHROPIC_API_KEY=\"sk-ant-...\"${RESET}\n"
+echo ""
 printf "  ${BOLD}Also support OpenAI Chat Completions APIs:${RESET}\n"
 printf "    ${CYAN}export CLAUDE_CODE_USE_OPENAI=1${RESET}\n"
 printf "    ${CYAN}export OPENAI_BASE_URL=http://.../v1${RESET}\n"
