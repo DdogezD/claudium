@@ -159,12 +159,16 @@ export function AssistantToolUseMessage(t0) {
     return null;
   }
   let t4;
-  if ($[24] !== commands || $[25] !== input_0.data || $[26] !== input_0.success || $[27] !== theme || $[28] !== tool_0 || $[29] !== verbose) {
+  if ($[24] !== commands || $[25] !== input_0.data || $[26] !== input_0.success || $[27] !== theme || $[28] !== tool_0 || $[29] !== verbose || $[42] !== param.input) {
     t4 = input_0.success ? renderToolUseMessage(tool_0, input_0.data, {
       theme,
       verbose,
       commands
-    }) : null;
+    }) : renderToolUseMessage(tool_0, param.input, {
+      theme,
+      verbose,
+      commands,
+    });
     $[24] = commands;
     $[25] = input_0.data;
     $[26] = input_0.success;
@@ -172,11 +176,13 @@ export function AssistantToolUseMessage(t0) {
     $[28] = tool_0;
     $[29] = verbose;
     $[30] = t4;
+    $[42] = param.input;
   } else {
     t4 = $[30];
   }
   const renderedToolUseMessage = t4;
-  if (renderedToolUseMessage === null) {
+  if (renderedToolUseMessage === null
+    || (typeof renderedToolUseMessage === 'string' && renderedToolUseMessage.trim() === '')) {
     return null;
   }
   const t5 = addMargin ? 1 : 0;
@@ -312,10 +318,7 @@ function renderToolUseMessage(tool: Tool, input: unknown, {
 }): React.ReactNode {
   try {
     const parsed = tool.inputSchema.safeParse(input);
-    if (!parsed.success) {
-      return '';
-    }
-    return tool.renderToolUseMessage(parsed.data, {
+    return tool.renderToolUseMessage(parsed.success ? parsed.data : (input as any), {
       theme,
       verbose,
       commands
