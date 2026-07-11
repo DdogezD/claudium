@@ -22,9 +22,31 @@ import {
   ADVISOR_TOOL_DESCRIPTION,
   CONVERSATION_LOG_TOOL_NAME,
 } from './prompt.js'
+import { BashTool } from '../BashTool/BashTool.js'
+import { FileReadTool } from '../FileReadTool/FileReadTool.js'
+import { GrepTool } from '../GrepTool/GrepTool.js'
+import { GlobTool } from '../GlobTool/GlobTool.js'
+import { WebSearchTool } from '../WebSearchTool/WebSearchTool.js'
+import { WebFetchTool } from '../WebFetchTool/WebFetchTool.js'
+import { ListMcpResourcesTool } from '../ListMcpResourcesTool/ListMcpResourcesTool.js'
+import { ReadMcpResourceTool } from '../ReadMcpResourceTool/ReadMcpResourceTool.js'
 
-// Read-only built-in tool names the advisor subagent can use.
-// MCP tools with the same names are excluded via mcpInfo check.
+// Read-only built-in tools the advisor subagent can use.
+// Canonical identity check first (Set.has via reference equality) — catches MCP
+// tools and plugins even if they share the name. Falls back to name matching
+// with structural guards for provider-wrapped tools (e.g. OpenAI compat layer
+// rewraps tools into `functions.Read` objects with different references).
+const READ_ONLY_BUILTIN_TOOLS = new Set<Tool>([
+  BashTool,
+  FileReadTool,
+  GrepTool,
+  GlobTool,
+  WebSearchTool,
+  WebFetchTool,
+  ListMcpResourcesTool,
+  ReadMcpResourceTool,
+])
+
 const READ_ONLY_BUILTIN_TOOL_NAMES = new Set([
   'Bash',
   'Read',
@@ -38,9 +60,9 @@ const READ_ONLY_BUILTIN_TOOL_NAMES = new Set([
 
 /** Returns true when a tool is a built-in (non-MCP) read-only tool the advisor may use. */
 function isAdvisorAllowedBuiltin(tool: Tool): boolean {
-  // MCP tools have mcpInfo; built-in tools don't. Reject MCP tools even if
-  // their name collides with a built-in, to prevent permission bypass.
-  // Also reject tools with isMcp flag set (incomplete MCP wrapper objects).
+  // Canonical identity: exact singleton reference (catches MCP spoofing).
+  if (READ_ONLY_BUILTIN_TOOLS.has(tool)) return true
+  // Provider-wrapped tools (e.g. OpenAI compat): check name + structural guards.
   if ((tool as any).mcpInfo !== undefined) return false
   if ((tool as any).isMcp === true) return false
   return READ_ONLY_BUILTIN_TOOL_NAMES.has(tool.name)
