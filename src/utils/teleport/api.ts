@@ -2,8 +2,6 @@
  * Stub: OAuth has been stripped. Teleport/remote session API is unavailable.
  */
 
-export const CCR_BYOC_BETA = ''
-
 export function isTransientNetworkError(_error: unknown): boolean {
   return false
 }

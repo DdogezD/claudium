@@ -3,9 +3,6 @@ import { Box, Text } from '../ink.js';
 
 type Props = {
   onDone(): void;
-  startingMessage?: string;
-  mode?: 'login' | 'setup-token';
-  forceLoginMethod?: 'claudeai' | 'console';
 };
 
 export function ConsoleOAuthFlow(props: Props): React.ReactElement {

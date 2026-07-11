@@ -135,7 +135,7 @@ export function TeleportError(t0) {
         if (isLoggingIn) {
           let t9;
           if ($[14] !== handleLoginComplete) {
-            t9 = <ConsoleOAuthFlow onDone={handleLoginComplete} mode="login" forceLoginMethod="claudeai" />;
+            t9 = <ConsoleOAuthFlow onDone={handleLoginComplete} />;
             $[14] = handleLoginComplete;
             $[15] = t9;
           } else {
