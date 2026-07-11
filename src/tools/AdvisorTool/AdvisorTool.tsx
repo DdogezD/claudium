@@ -276,11 +276,11 @@ function createConversationLogTool(entries: ConversationEntry[]) {
     name: CONVERSATION_LOG_TOOL_NAME,
 
     async description() {
-      return `Read the main agent's recent conversation history. Use action="index" first, then action="read" with message IDs.`
+      return `Read the main agent's conversation history after the latest compact boundary. Use action="index" first, then action="read" with message IDs.`
     },
 
     async prompt() {
-      return `Read conversation history of the main agent. The log contains the most recent messages. Use action: "index" to list them, then action: "read" with message_ids to fetch full details for the ones you need.`
+      return `Read conversation history of the main agent. The log contains all post-compaction user and assistant messages. Use action: "index" to list them, then action: "read" with message_ids to fetch details for the ones you need.`
     },
 
     inputSchema: z.strictObject({

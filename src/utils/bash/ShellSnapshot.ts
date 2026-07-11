@@ -66,25 +66,12 @@ export function createRipgrepShellIntegration(): {
   type: 'alias' | 'function'
   snippet: string
 } {
-  const rgCommand = ripgrepCommand()
+  const { rgPath, rgArgs } = ripgrepCommand()
 
-  // For embedded ripgrep (bun-internal), we need a shell function that sets argv0
-  if (rgCommand.argv0) {
-    return {
-      type: 'function',
-      snippet: createArgv0ShellFunction(
-        'rg',
-        rgCommand.argv0,
-        rgCommand.rgPath,
-      ),
-    }
-  }
-
-  // For regular ripgrep, use a simple alias target
-  const quotedPath = quote([rgCommand.rgPath])
-  const quotedArgs = rgCommand.rgArgs.map(arg => quote([arg]))
+  const quotedPath = quote([rgPath])
+  const quotedArgs = rgArgs.map(arg => quote([arg]))
   const aliasTarget =
-    rgCommand.rgArgs.length > 0
+    rgArgs.length > 0
       ? `${quotedPath} ${quotedArgs.join(' ')}`
       : quotedPath
 
