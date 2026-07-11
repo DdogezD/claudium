@@ -256,15 +256,46 @@ function doSerializeConversationLog(
   return entries
 }
 
-function formatConversationIndex(entries: ConversationEntry[]): string {
+function formatConversationIndex(
+  entries: ConversationEntry[],
+  offset?: number,
+  limit?: number,
+): string {
   if (entries.length === 0) return 'No conversation history available.'
-  const lines = entries.map(e => {
+
+  // Default: show the most recent messages (newest first = highest IDs).
+  const effectiveLimit = Math.max(1, Math.min(limit ?? 200, 500))
+  const effectiveOffset = Math.max(0, offset ?? 0)
+  const total = entries.length
+
+  // Slice from the end so the most recent messages appear first
+  const startIdx = Math.max(0, total - effectiveOffset - effectiveLimit)
+  const endIdx = total - effectiveOffset
+  const page = entries.slice(startIdx, endIdx).reverse()
+
+  const hasMorePages = startIdx > 0
+  const hasNewer = effectiveOffset > 0
+  const nextOffset = effectiveOffset + effectiveLimit
+
+  const header = hasNewer
+    ? `# Conversation log manifest (${total} messages available, ${effectiveOffset} skipped, showing ${startIdx}-${endIdx - 1})`
+    : `# Conversation log manifest (${total} messages available, showing ${startIdx}-${endIdx - 1})`
+
+  const lines = page.map(e => {
     const role = e.role === 'user' ? 'USER' : 'ASSISTANT'
     const toolInfo = e.tools ? ` [tools: ${e.tools.join(', ')}]` : ''
     const trunc = e.truncated ? ' (truncated)' : ''
     return `[${e.id}] ${role} (${e.charLength} chars)${toolInfo}${trunc}`
   })
-  return `# Conversation log manifest (${entries.length} messages available)\n\n${lines.join('\n')}`
+
+  if (hasNewer) {
+    lines.unshift(`↑ ${effectiveOffset} newer messages above (use offset=0 to go back to latest)`)
+  }
+  if (hasMorePages) {
+    lines.push(`↓ ${startIdx} earlier messages below (use offset=${nextOffset} to page further back)`)
+  }
+
+  return `${header}\n\n${lines.join('\n')}`
 }
 
 function createConversationLogTool(entries: ConversationEntry[]) {
@@ -285,13 +316,26 @@ function createConversationLogTool(entries: ConversationEntry[]) {
 
     inputSchema: z.strictObject({
       action: z.enum(['index', 'read']).describe(
-        '"index" lists available messages with roles, lengths and tools. "read" fetches full content for specific message IDs.',
+        '"index" lists available messages (newest first, most recent 200 by default). Use offset/limit to page. "read" fetches full content for specific message IDs.',
       ),
       message_ids: z
         .array(z.number().int().min(0))
         .max(CONVERSATION_LOG_READ_LIMIT)
         .optional()
         .describe(`Message IDs to read. Maximum ${CONVERSATION_LOG_READ_LIMIT} per call.`),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe('Number of most recent messages to skip (for paging back in history). Default 0.'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe('Number of messages to show in the index. Default 200, max 500.'),
     }),
 
     maxResultSizeChars: CONVERSATION_LOG_TOTAL_CHARS,
@@ -315,9 +359,9 @@ function createConversationLogTool(entries: ConversationEntry[]) {
       return <Text>{`Reading ${count} ${count === 1 ? 'message' : 'messages'} from log`}</Text>
     },
 
-    async call(input: { action: 'index' | 'read'; message_ids?: number[] }) {
+    async call(input: { action: 'index' | 'read'; message_ids?: number[]; offset?: number; limit?: number }) {
       if (input.action === 'index') {
-        return { data: formatConversationIndex(entries) }
+        return { data: formatConversationIndex(entries, input.offset, input.limit) }
       }
       if (input.action === 'read') {
         const ids = input.message_ids ?? []
