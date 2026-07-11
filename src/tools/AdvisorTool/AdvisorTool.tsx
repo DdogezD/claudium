@@ -16,6 +16,7 @@ import { CtrlOToExpand } from '../../components/CtrlOToExpand.js'
 import { formatDuration, formatNumber } from '../../utils/format.js'
 import { isAbortError } from '../../utils/errors.js'
 import { checkReadOnlyConstraints } from '../BashTool/readOnlyValidation.js'
+import { commandHasAnyCd } from '../BashTool/bashPermissions.js'
 import {
   ADVISOR_SYSTEM_PROMPT,
   ADVISOR_TOOL_NAME,
@@ -683,12 +684,15 @@ async function runAdvisorQuery(
         // Enforce read-only for Bash — prompt-level instructions are not a
         // security boundary. Uses the same read-only classifier as BashTool.
         if ((tool as Tool).name === 'Bash') {
-          const roCheck = checkReadOnlyConstraints(input as any, false)
+          const cmd =
+            typeof input === 'object' && input !== null && 'command' in input
+              ? (input as any).command
+              : ''
+          const roCheck = checkReadOnlyConstraints(
+            input as any,
+            commandHasAnyCd(typeof cmd === 'string' ? cmd : ''),
+          )
           if (roCheck.behavior !== 'allow') {
-            const cmd =
-              typeof input === 'object' && input !== null && 'command' in input
-                ? (input as any).command
-                : undefined
             return {
               behavior: 'deny' as const,
               updatedInput: input,
