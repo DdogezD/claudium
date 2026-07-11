@@ -80,36 +80,17 @@ const inputSchema = z.strictObject({
         'what you have already tried, any constraints, and what you specifically ' +
         'want the advisor to answer.',
     ),
-  contextMessages: z
-    .number()
-    .int()
-    .min(0)
-    .max(20)
-    .default(0)
-    .describe(
-      'Number of recent conversation messages made available to the advisor (0-20, default 0). ' +
-        'The advisor accesses them via ReadConversationLog, not pre-sent. ' +
-        '0 = no history available. 3-8 = recent back-and-forth. ' +
-        '10-20 = broad context. Be conservative.',
-    ),
 })
 
 type InputSchema = typeof inputSchema
 
 const outputSchema = z.strictObject({
   advice: z.string().describe('The advice from the advisor model'),
-  contextMessagesFetched: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe('Deprecated. Use contextMessagesAvailable instead.'),
   contextMessagesAvailable: z
     .number()
     .int()
     .min(0)
-    .optional()
-    .describe('Number of conversation messages made available to the advisor.'),
+    .describe('Number of conversation messages available for the advisor to read via ReadConversationLog.'),
   conversationsRead: z
     .number()
     .int()
@@ -175,7 +156,23 @@ type ConversationEntry = {
   truncated: boolean
 }
 
+// Serialization cache: fingerprint = all UUIDs joined.
+// A middle-message change or reorder changes the UUID sequence.
+let _cachedEntries: ConversationEntry[] | null = null
+let _cachedFingerprint = ''
+
 function serializeConversationLog(
+  messages: readonly Message[],
+): ConversationEntry[] {
+  const fp = messages.map((m: any) => m.uuid ?? '').join(':')
+  if (fp === _cachedFingerprint && _cachedEntries) return _cachedEntries
+  const entries = doSerializeConversationLog(messages)
+  _cachedEntries = entries
+  _cachedFingerprint = fp
+  return entries
+}
+
+function doSerializeConversationLog(
   messages: readonly Message[],
 ): ConversationEntry[] {
   const entries: ConversationEntry[] = []
@@ -395,7 +392,6 @@ function formatToolInput(toolName: string, input: unknown): string {
 
 type LiveAdvisorInfo = {
   model: string
-  contextCount: number
   conversationMessagesRead: number
   toolUseCount: number
   fileReadCount: number
@@ -436,17 +432,15 @@ function buildLiveBox(info: LiveAdvisorInfo): { jsx: JSX.Element; shouldHideProm
 
 function selectAdvisorHistory(
   messages: readonly Message[],
-  requested: number,
 ): { messages: readonly Message[]; actualCount: number } {
-  if (requested <= 0 || messages.length === 0) {
+  if (messages.length === 0) {
     return { messages: [], actualCount: 0 }
   }
   const afterBoundary = getMessagesAfterCompactBoundary(messages)
   const filtered = afterBoundary.filter(
     m => m.type === 'user' || m.type === 'assistant',
   )
-  const sliced = filtered.slice(-requested)
-  return { messages: sliced, actualCount: sliced.length }
+  return { messages: filtered, actualCount: filtered.length }
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +510,6 @@ export const AdvisorTool = buildTool({
   ) {
     const advice = content.advice || ''
     const model = content.model ?? getAdvisorModel() ?? 'advisor'
-    const ctxAvailable = content.contextMessagesAvailable ?? content.contextMessagesFetched ?? 0
     const conversationsRead = content.conversationsRead ?? 0
     const filesRead = content.filesRead ?? 0
     const toolsCalled = content.toolsCalled ?? 0
@@ -573,14 +566,13 @@ export const AdvisorTool = buildTool({
     )
   },
 
-  async call({ question, contextMessages }, context) {
+  async call({ question }, context) {
     const model = getAdvisorModel()
     if (!model) {
       throw new Error('Advisor is not configured. Set CLAUDE_CODE_ADVISOR_MODEL.')
     }
 
-    const requested = contextMessages ?? 0
-    const history = selectAdvisorHistory(context.messages, requested)
+    const history = selectAdvisorHistory(context.messages)
 
     try {
       const result = await runAdvisorQuery(question, history, model, context)
@@ -588,7 +580,7 @@ export const AdvisorTool = buildTool({
         data: {
           ...result,
           contextMessagesAvailable: history.actualCount,
-          contextMessagesFetched: history.actualCount,
+
         },
       }
     } finally {
@@ -598,7 +590,7 @@ export const AdvisorTool = buildTool({
 } satisfies ToolDef<InputSchema, Output>)
 
 // ---------------------------------------------------------------------------
-// Advisor as lightweight subagent — direct query() call, one turn, no tools
+// Advisor as lightweight subagent — multi-turn, tool-enabled query
 // ---------------------------------------------------------------------------
 
 async function runAdvisorQuery(
@@ -662,7 +654,6 @@ async function runAdvisorQuery(
   const messages: any[] = []
   const info: LiveAdvisorInfo = {
     model: advisorModel,
-    contextCount: history.actualCount,
     conversationMessagesRead: 0,
     toolUseCount: 0,
     fileReadCount: 0,
