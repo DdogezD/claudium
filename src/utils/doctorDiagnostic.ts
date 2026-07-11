@@ -31,7 +31,7 @@ import {
   getPackageManager,
 } from './nativeInstaller/packageManagers.js'
 import { getPlatform } from './platform.js'
-import { getRipgrepStatus } from './ripgrep.js'
+
 import { SandboxManager } from './sandbox/sandbox-adapter.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { CUSTOMIZATION_SURFACES } from './settings/types.js'
@@ -65,8 +65,6 @@ export type DiagnosticInfo = {
   packageManager?: string
   ripgrepStatus: {
     working: boolean
-    mode: 'system' | 'builtin' | 'embedded'
-    systemPath: string | null
   }
 }
 
@@ -585,15 +583,16 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     }
   }
 
-  // Get ripgrep status and configuration
-  const ripgrepStatusRaw = getRipgrepStatus()
+  // Get ripgrep availability
+  let ripgrepWorking = false
+  try {
+    const { findExecutable } = await import('./findExecutable.js')
+    const { cmd } = findExecutable('rg', [])
+    ripgrepWorking = cmd !== 'rg'
+  } catch {}
 
-  // Provide simple ripgrep status info
   const ripgrepStatus = {
-    working: ripgrepStatusRaw.working ?? true, // Assume working if not yet tested
-    mode: ripgrepStatusRaw.mode,
-    systemPath:
-      ripgrepStatusRaw.mode === 'system' ? ripgrepStatusRaw.path : null,
+    working: ripgrepWorking,
   }
 
   // Get package manager info if running from package manager
