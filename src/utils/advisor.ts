@@ -1,5 +1,3 @@
-import { isEnvTruthy } from './envUtils.js'
-
 // ---------------------------------------------------------------------------
 // Types and isAdvisorBlock — retained for stripAdvisorBlocks (called from claude.ts)
 // ---------------------------------------------------------------------------
@@ -43,7 +41,6 @@ export function getAdvisorModel(): string | undefined {
 }
 
 export function isAdvisorEnabled(): boolean {
-  if (isEnvTruthy(process.env.CLAUDE_CODE_FORCE_ADVISOR)) return true
   return !!getAdvisorModel()
 }
 
