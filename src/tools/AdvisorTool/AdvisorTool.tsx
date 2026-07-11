@@ -666,11 +666,15 @@ async function runAdvisorQuery(
         if ((tool as Tool).name === 'Bash') {
           const roCheck = checkReadOnlyConstraints(input as any, false)
           if (roCheck.behavior !== 'allow') {
+            const cmd =
+              typeof input === 'object' && input !== null && 'command' in input
+                ? (input as any).command
+                : undefined
             return {
               behavior: 'deny' as const,
               updatedInput: input,
               message: `The advisor can only run read-only Bash commands. ` +
-                `"${typeof bashInput.command === 'string' ? bashInput.command.slice(0, 100) : 'this command'}" was denied.`,
+                `"${typeof cmd === 'string' ? cmd.slice(0, 100) : 'this command'}" was denied.`,
               decisionReason: {
                 type: 'other' as const,
                 reason: 'Advisor is restricted to read-only Bash commands.',
