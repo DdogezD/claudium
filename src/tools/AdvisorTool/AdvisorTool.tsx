@@ -153,10 +153,16 @@ type Output = z.infer<typeof outputSchema>
 
 type ConversationEntry = {
   id: number
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'tool_result'
   text: string
   charLength: number
   tools?: string[]
+  toolResults?: {
+    toolUseId: string
+    toolName?: string
+    isError: boolean
+  }[]
+  hasThinking?: boolean
   truncated: boolean
 }
 
@@ -170,7 +176,21 @@ function serializeConversationLog(
 ): ConversationEntry[] {
   const fp = messages.map((m: any) => m.uuid ?? '').join(':')
   if (fp === _cachedFingerprint && _cachedEntries) return _cachedEntries
-  const entries = doSerializeConversationLog(messages)
+
+  // Map tool_use_id → tool name for per-result metadata
+  const toolNameMap = new Map<string, string>()
+  for (const msg of messages) {
+    if (msg.type !== 'assistant') continue
+    const content = (msg.message as any)?.content
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      if (block.type === 'tool_use' && block.id && block.name) {
+        toolNameMap.set(block.id, block.name)
+      }
+    }
+  }
+
+  const entries = doSerializeConversationLog(messages, toolNameMap)
   _cachedEntries = entries
   _cachedFingerprint = fp
   return entries
@@ -178,6 +198,7 @@ function serializeConversationLog(
 
 function doSerializeConversationLog(
   messages: readonly Message[],
+  toolNameMap: Map<string, string>,
 ): ConversationEntry[] {
   const entries: ConversationEntry[] = []
   for (let i = 0; i < messages.length; i++) {
@@ -209,6 +230,8 @@ function doSerializeConversationLog(
     const content = rawContent as any[]
     const textParts: string[] = []
     const tools: string[] = []
+    const toolResults: { toolUseId: string; toolName?: string; isError: boolean }[] = []
+    let hasThinking = false
     let truncated = false
 
     for (const block of content) {
@@ -217,6 +240,11 @@ function doSerializeConversationLog(
       } else if (block.type === 'tool_use') {
         tools.push(block.name || 'unknown')
       } else if (block.type === 'tool_result') {
+        toolResults.push({
+          toolUseId: block.tool_use_id ?? '',
+          toolName: toolNameMap.get(block.tool_use_id),
+          isError: !!block.is_error,
+        })
         // tool_result.content can be string | ContentBlockParam[]
         const tc = block.content
         let resultText = ''
@@ -231,6 +259,8 @@ function doSerializeConversationLog(
         } else if (block.is_error) {
           textParts.push(`[tool_result_error]`)
         }
+      } else if (block.type === 'thinking' || block.type === 'redacted_thinking') {
+        hasThinking = true
       } else if (block.type === 'image' || block.type === 'image_url') {
         // Emit a compact marker — actual base64 data is too large for the log
         textParts.push(`[${block.type}]`)
@@ -246,10 +276,12 @@ function doSerializeConversationLog(
 
     entries.push({
       id: i,
-      role: msg.type,
+      role: msg.type === 'user' && toolResults.length > 0 ? 'tool_result' : msg.type,
       text,
       charLength,
       tools: tools.length > 0 ? tools : undefined,
+      toolResults: toolResults.length > 0 ? toolResults : undefined,
+      hasThinking: hasThinking || undefined,
       truncated,
     })
   }
@@ -282,10 +314,29 @@ function formatConversationIndex(
     : `# Conversation log manifest (${total} messages available, showing ${startIdx}-${endIdx - 1})`
 
   const lines = page.map(e => {
-    const role = e.role === 'user' ? 'USER' : 'ASSISTANT'
+    // Role label
+    let roleLabel: string
+    if (e.role === 'user') {
+      roleLabel = 'USER'
+    } else if (e.role === 'assistant') {
+      // Thinking-only: has thinking blocks, no text, no tool_use blocks
+      const isThinkingOnly = e.hasThinking && e.charLength === 0 && !e.tools && !e.toolResults
+      roleLabel = isThinkingOnly ? 'ASSISTANT(thinking)' : 'ASSISTANT'
+    } else {
+      roleLabel = 'TOOL_RESULT'
+    }
     const toolInfo = e.tools ? ` [tools: ${e.tools.join(', ')}]` : ''
     const trunc = e.truncated ? ' (truncated)' : ''
-    return `[${e.id}] ${role} (${e.charLength} chars)${toolInfo}${trunc}`
+    // Show tool name and pass/fail for tool_result entries
+    let statusInfo = ''
+    if (e.toolResults && e.toolResults.length > 0) {
+      const parts = e.toolResults.map(r => {
+        const prefix = r.toolName ?? '?'
+        return `${prefix} ${r.isError ? '\u2717' : '\u2713'}`
+      })
+      statusInfo = ` ${parts.join(', ')}`
+    }
+    return `[${e.id}] ${roleLabel}${statusInfo} (${e.charLength} chars)${toolInfo}${trunc}`
   })
 
   if (hasNewer) {
