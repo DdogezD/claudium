@@ -1,29 +1,4 @@
 // ---------------------------------------------------------------------------
-// Types and isAdvisorBlock — retained for stripAdvisorBlocks (called from claude.ts)
-// ---------------------------------------------------------------------------
-
-export type AdvisorBlock =
-  | { type: 'server_tool_use'; id: string; name: 'advisor'; input: { [key: string]: unknown } }
-  | {
-      type: 'advisor_tool_result'
-      tool_use_id: string
-      content:
-        | { type: 'advisor_result'; text: string }
-        | { type: 'advisor_redacted_result'; encrypted_content: string }
-        | { type: 'advisor_tool_result_error'; error_code: string }
-    }
-
-export function isAdvisorBlock(param: {
-  type: string
-  name?: string
-}): param is AdvisorBlock {
-  return (
-    param.type === 'advisor_tool_result' ||
-    (param.type === 'server_tool_use' && param.name === 'advisor')
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
