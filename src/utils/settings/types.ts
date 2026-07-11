@@ -712,7 +712,7 @@ export const SettingsSchema = lazySchema(() =>
       advisorModel: z
         .string()
         .optional()
-        .describe('Advisor model for the server-side advisor tool.'),
+        .describe('Advisor model for the client-side advisor tool.'),
       // Override context window size (max tokens) for subagents.
       // When set, subagents use this as their effective context window cap,
       // overriding the model's default context window. Useful for limiting
