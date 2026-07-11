@@ -616,7 +616,13 @@ async function runAdvisorQuery(
     getSystemContext(),
   ])
 
-  const systemPrompt = asSystemPrompt([ADVISOR_SYSTEM_PROMPT])
+  const { getCwd } = await import('../../utils/cwd.js')
+  const cwd = getCwd()
+
+  const systemPrompt = asSystemPrompt([
+    `# Environment\nYou are running in the following environment:\nWorking directory: ${cwd}`,
+    ADVISOR_SYSTEM_PROMPT,
+  ])
 
   // Build conversation log snapshot + lazy-read tool
   const conversationEntries = serializeConversationLog(history.messages)
