@@ -40,10 +40,8 @@ export type ListSessionsResponse = {
   has_more: boolean
 }
 
-export async function prepareApiRequest(): Promise<{
-  headers: Record<string, string>
-}> {
-  return { headers: {} }
+export async function prepareApiRequest(): Promise<never> {
+  throw new Error('OAuth has been stripped. Set ANTHROPIC_API_KEY instead.')
 }
 
 export async function fetchCodeSessionsFromSessionsAPI(): Promise<
