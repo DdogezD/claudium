@@ -9,10 +9,13 @@ import {
 import { createSubagentContext } from '../../utils/forkedAgent.js'
 import {
   createUserMessage,
+  extractTag,
   extractTextContent,
   getMessagesAfterCompactBoundary,
 } from '../../utils/messages.js'
 import { CtrlOToExpand } from '../../components/CtrlOToExpand.js'
+import { FallbackToolUseErrorMessage } from '../../components/FallbackToolUseErrorMessage.js'
+import { MessageResponse } from '../../components/MessageResponse.js'
 import { formatDuration, formatNumber } from '../../utils/format.js'
 import { isAbortError } from '../../utils/errors.js'
 import { checkReadOnlyConstraints } from '../BashTool/readOnlyValidation.js'
@@ -490,6 +493,13 @@ export const AdvisorTool = buildTool({
       type: 'tool_result' as const,
       content: output.advice,
     }
+  },
+
+  renderToolUseErrorMessage(content, { verbose }) {
+    if (!verbose && typeof content === 'string' && extractTag(content, 'tool_use_error')) {
+      return <MessageResponse><Text color="error">Error calling advisor</Text></MessageResponse>
+    }
+    return <FallbackToolUseErrorMessage result={content} verbose={verbose ?? false} />
   },
 
   renderToolUseMessage(
