@@ -25,6 +25,7 @@ import {
 } from './services/analytics-stub.js'
 import { ImageSizeError } from './utils/imageValidation.js'
 import { ImageResizeError } from './utils/imageResizer.js'
+import { getAdvisorModel } from './utils/advisor.js'
 import { findToolByName, type ToolUseContext } from './Tool.js'
 import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
 import type {
@@ -693,7 +694,7 @@ async function* queryLoop(
               ),
               queryTracking,
               effortValue: appState.effortValue,
-              advisorModel: appState.advisorModel,
+              advisorModel: getAdvisorModel(),
               skipCacheWrite,
               agentId: toolUseContext.agentId,
               addNotification: toolUseContext.addNotification,

@@ -2827,9 +2827,6 @@ async function run(): Promise<CommanderCommand> {
       agentNameRegistry: new Map(),
       verbose: verbose ?? getGlobalConfig().verbose ?? false,
       mainLoopModel: initialMainLoopModel,
-      advisorModel:
-        process.env.CLAUDE_CODE_ADVISOR_MODEL?.trim() ||
-        initialSettings.advisorModel,
       mainLoopModelForSession: null,
       isBriefOnly: initialIsBriefOnly,
       expandedView: getGlobalConfig().showSpinnerTree ? 'teammates' : getGlobalConfig().showExpandedTodos ? 'tasks' : 'none',

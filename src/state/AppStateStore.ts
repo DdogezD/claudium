@@ -421,8 +421,6 @@ export type AppState = DeepImmutable<{
   activeOverlays: ReadonlySet<string>
   // Fast mode
   fastMode?: boolean
-  // Advisor model for client-side advisor tool (undefined = disabled).
-  advisorModel?: string
   // Effort value
   effortValue?: EffortValue
   // Set synchronously in launchUltraplan before the detached flow starts.
@@ -470,9 +468,6 @@ export function getDefaultAppState(): AppState {
   return {
     settings: initialSettings,
     tasks: {},
-    advisorModel:
-      process.env.CLAUDE_CODE_ADVISOR_MODEL?.trim() ||
-      initialSettings.advisorModel,
     agentNameRegistry: new Map(),
     verbose: false,
     mainLoopModel: null, // alias, full name (as with --model or env var), or null (default)
