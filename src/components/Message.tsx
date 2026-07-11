@@ -558,7 +558,6 @@ function AssistantMessageBlock(t0) {
         return t2;
       }
     case "server_tool_use":
-    case "advisor_tool_result":
       return null;
     default:
       {
