@@ -62,6 +62,16 @@ check_git() {
   ok "git: $(git --version | head -1)"
 }
 
+check_rg() {
+  if ! command -v rg &>/dev/null; then
+    warn "ripgrep (rg) not found — install it for best results:
+    macOS:  brew install ripgrep
+    Linux:  sudo apt install ripgrep"
+  else
+    ok "rg: $(rg --version | head -1)"
+  fi
+}
+
 # Compare semver: returns 0 if $1 >= $2
 version_gte() {
   local newer
@@ -180,6 +190,7 @@ echo ""
 check_os
 check_git
 check_bun
+check_rg
 echo ""
 
 clone_repo
