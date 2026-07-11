@@ -816,8 +816,11 @@ async function runAdvisorQuery(
     }
   }
 
-  const assistantBlocks = messages.flatMap((m: any) =>
-    m.type === 'assistant' ? m.message.content : [],
+  const assistantMessages = messages.filter(
+    (m: any) => m.type === 'assistant',
+  )
+  const assistantBlocks = assistantMessages.flatMap(
+    (m: any) => m.message.content,
   )
   const toolUses = assistantBlocks.filter((b: any) => b.type === 'tool_use')
   const filesRead = toolUses.filter((t: any) => t.name === 'Read').length
@@ -826,12 +829,10 @@ async function runAdvisorQuery(
 
   // Aggregate token usage deduplicated by API response ID (message.message.id).
   // Multi-block API responses produce multiple assistant messages per round;
-  // usage is per-response, not per-block. We take the max of each field across
-  // messages sharing the same message.id, then sum once per unique response.
+  // usage is per-response, not per-block.
   let tokens = 0
   const seenResponseIds = new Set<string>()
-  for (const m of messages) {
-    if (m.type !== 'assistant') continue
+  for (const m of assistantMessages) {
     const usage = (m as any).message?.usage
     if (!usage) continue
     const responseId = (m as any).message?.id as string | undefined
@@ -844,7 +845,23 @@ async function runAdvisorQuery(
       (usage.output_tokens ?? 0)
   }
 
-  const advice = extractTextContent(assistantBlocks, '\n\n').trim()
+  // Extract advice from the final logical API response only.
+  // Multi-block responses produce several assistant messages sharing one
+  // message.id — grouping by response ID gives the complete final answer.
+  const lastAssistant = assistantMessages.at(-1)
+  const finalResponseId = lastAssistant?.message?.id
+  const finalMessages =
+    finalResponseId !== undefined
+      ? assistantMessages.filter(
+          (m: any) => m.message?.id === finalResponseId,
+        )
+      : lastAssistant
+        ? [lastAssistant]
+        : []
+  const finalBlocks = finalMessages.flatMap(
+    (m: any) => m.message?.content ?? [],
+  )
+  const advice = extractTextContent(finalBlocks, '\n\n').trim()
   const durationMs = Date.now() - info.startTime
   const conversationsRead = (conversationTool as any).__uniqueReadIds instanceof Set
     ? (conversationTool as any).__uniqueReadIds.size
