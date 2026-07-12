@@ -377,7 +377,7 @@ function buildSearchExcerpt(
       const start = Math.max(0, idx - 30)
       const end = Math.min(lower.length, idx + token.length + 30)
       const excerpt = doc.entry.text.slice(start, end).replace(/\s+/g, ' ')
-      return `"${excerpt}"`
+      return excerpt
     }
   }
   // 2. All matches are in displayed metadata (tool names, result status)
@@ -395,7 +395,7 @@ function buildSearchExcerpt(
         const start = Math.max(0, idx - 30)
         const end = Math.min(lower.length, idx + token.length + 30)
         const excerpt = doc.entry.searchText.slice(start, end).replace(/\s+/g, ' ')
-        return `tool input: "${excerpt}"`
+        return `tool input: ${excerpt}`
       }
     }
   }

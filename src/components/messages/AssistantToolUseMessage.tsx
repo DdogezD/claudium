@@ -178,6 +178,15 @@ export function AssistantToolUseMessage(t0) {
     $[30] = t4;
   } else {
     t4 = $[30];
+    // When previous parse failed, raw param.input may differ even though
+    // input_0.success and input_0.data stayed the same. Re-render directly.
+    if (!input_0.success) {
+      t4 = renderToolUseMessage(tool_0, param.input, {
+        theme,
+        verbose,
+        commands,
+      });
+    }
   }
   const renderedToolUseMessage = t4;
   if (renderedToolUseMessage === null
