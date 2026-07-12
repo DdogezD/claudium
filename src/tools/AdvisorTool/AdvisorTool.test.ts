@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   tokenize,
   tokenizeQuery,
-} from './AdvisorTool'
+} from './conversationLog/tokenizer.js'
 
 describe('tokenize', () => {
   it('splits camelCase identifiers', () => {
