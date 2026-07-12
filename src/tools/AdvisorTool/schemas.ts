@@ -1,6 +1,5 @@
 import { z } from 'zod/v4'
-
-const CONVERSATION_LOG_READ_LIMIT = 20
+import { CONVERSATION_LOG_READ_LIMIT } from './conversationLog/constants.js'
 
 export const conversationLogIndexSchema = z.strictObject({
   action: z.literal('index').describe('List available messages.'),
@@ -140,3 +139,4 @@ export const outputSchema = z.strictObject({
 })
 
 export type Output = z.infer<typeof outputSchema>
+export type TerminationReason = Output['terminationReason']

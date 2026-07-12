@@ -54,10 +54,7 @@ export function formatToolInput(toolName: string, input: unknown): string {
 
 export interface AdvisorProgress {
   model: string
-  conversationMessagesRead: number
   toolUseCount: number
-  fileReadCount: number
-  webSearched: boolean
   lastTool: string
   lastInput: Record<string, unknown>
   startTime: number
@@ -70,10 +67,7 @@ export function buildAdvisorLiveBox(info: AdvisorProgress): {
   showSpinner: true
 } {
   const parts: string[] = []
-  if (info.webSearched) parts.push('web searched')
-  if (info.conversationMessagesRead > 0) parts.push(`${info.conversationMessagesRead} ${info.conversationMessagesRead === 1 ? 'message read' : 'messages read'}`)
   if (info.toolUseCount > 0) parts.push(`${info.toolUseCount} ${info.toolUseCount === 1 ? 'tool use' : 'tool uses'}`)
-  if (info.fileReadCount > 0) parts.push(`${info.fileReadCount} ${info.fileReadCount === 1 ? 'file read' : 'files read'}`)
   const elapsed = Date.now() - info.startTime
   if (elapsed > 1000) parts.push(formatDuration(elapsed))
   const header = parts.length > 0 ? `${info.model} (${parts.join(' · ')})` : info.model

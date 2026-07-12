@@ -55,3 +55,17 @@ export type CachedSnapshot = {
   entries: ConversationEntry[]
   index: SearchIndex
 }
+
+export interface AdvisorRunResult {
+  advice: string
+  filesRead: number
+  toolsCalled: number
+  tokens: number
+  durationMs: number
+  webSearched: boolean
+  blocks: Array<{ type: 'tool' | 'text'; text: string }>
+  interrupted: boolean
+  terminationReason: import('./schemas.js').TerminationReason
+  model: string
+  conversationsRead: number
+}
