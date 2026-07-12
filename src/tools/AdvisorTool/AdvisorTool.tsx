@@ -27,7 +27,6 @@ import {
   ADVISOR_SYSTEM_PROMPT,
   ADVISOR_TOOL_NAME,
   ADVISOR_TOOL_DESCRIPTION,
-  CONVERSATION_LOG_TOOL_NAME,
 } from './prompt.js'
 import { inputSchema, outputSchema, type InputSchema, type Output } from './schemas.js'
 import {
@@ -39,6 +38,7 @@ import {
   renderAdvisorToolResultMessage,
   type AdvisorProgress,
 } from './ui.js'
+import type { AdvisorRunResult } from './types.js'
 import { getConversationSnapshot } from './conversationLog/snapshot.js'
 import { createConversationLogTool } from './conversationLog/ConversationLogTool.js'
 
@@ -174,19 +174,7 @@ async function runAdvisorQuery(
   history: { messages: readonly Message[]; actualCount: number },
   advisorModel: string,
   context: ToolUseContext,
-): Promise<{
-  advice: string
-  filesRead: number
-  toolsCalled: number
-  tokens: number
-  durationMs: number
-  webSearched: boolean
-  blocks: Array<{ type: 'tool' | 'text'; text: string }>
-  interrupted: boolean
-  terminationReason: Output['terminationReason']
-  model: string
-  conversationsRead: number
-}> {
+): Promise<AdvisorRunResult> {
   const { query } = await import('../../query.js')
   const { getUserContext, getSystemContext } = await import('../../context.js')
   const { asSystemPrompt } = await import('../../utils/systemPromptType.js')
@@ -245,10 +233,7 @@ async function runAdvisorQuery(
   const messages: any[] = []
   const info: AdvisorProgress = {
     model: advisorModel,
-    conversationMessagesRead: 0,
     toolUseCount: 0,
-    fileReadCount: 0,
-    webSearched: false,
     lastTool: '',
     lastInput: {} as Record<string, unknown>,
     startTime: Date.now(),
@@ -339,11 +324,6 @@ async function runAdvisorQuery(
           for (const b of blocks_) {
             if (b.type === 'tool_use') {
               info.toolUseCount++
-              if (b.name === 'Read') info.fileReadCount++
-              if (b.name === 'WebSearch') info.webSearched = true
-              if (b.name === CONVERSATION_LOG_TOOL_NAME && b.input?.action === 'read') {
-                info.conversationMessagesRead += (b.input?.message_ids as any[])?.length ?? 0
-              }
               info.lastTool = b.name
               info.lastInput = (b.input as Record<string, unknown>) ?? {}
               updated = true

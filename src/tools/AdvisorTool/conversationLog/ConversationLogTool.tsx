@@ -4,7 +4,7 @@ import { conversationLogInputSchema, type ConversationLogInput } from '../schema
 import type { ConversationEntry, SearchIndex, AppendResult } from '../types.js'
 import { formatSearchResults, formatEntryLabel, bm25Search, buildSearchIndex } from './search.js'
 import { tokenizeQuery } from './tokenizer.js'
-import { CONVERSATION_LOG_TOTAL_CHARS } from './snapshot.js'
+import { CONVERSATION_LOG_TOTAL_CHARS, CONVERSATION_LOG_INDEX_CHARS } from './constants.js'
 import { CONVERSATION_LOG_TOOL_NAME } from '../prompt.js'
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,6 @@ function formatConversationIndex(
 ): string {
   if (entries.length === 0) return 'No conversation history available.'
 
-  // Default: show the most recent messages (newest first = highest IDs).
   const effectiveLimit = Math.max(1, Math.min(limit ?? 200, 500))
   const effectiveOffset = Math.max(0, offset ?? 0)
   const total = entries.length
@@ -27,36 +26,58 @@ function formatConversationIndex(
     return `Offset ${effectiveOffset} is beyond the ${total} available messages.`
   }
 
-  // Slice from the end so the most recent messages appear first
   const startIdx = Math.max(0, total - effectiveOffset - effectiveLimit)
   const endIdx = Math.max(0, total - effectiveOffset)
   const page = entries.slice(startIdx, endIdx).reverse()
-
-  const hasMorePages = startIdx > 0
   const hasNewer = effectiveOffset > 0
-  const nextOffset = effectiveOffset + effectiveLimit
 
-  const firstId = page.length > 0 ? page[0]!.id : 0
-  const lastId = page.length > 0 ? page[page.length - 1]!.id : 0
-  const header = hasNewer
-    ? `# Conversation log manifest (${total} messages available, ${effectiveOffset} skipped, showing [${firstId}]-[${lastId}])`
-    : `# Conversation log manifest (${total} messages available, showing [${firstId}]-[${lastId}])`
-
-  const lines = page.map(e => {
+  // Build message lines
+  const msgLines: string[] = []
+  for (const e of page) {
     const label = formatEntryLabel(e)
-    const toolInfo = e.tools ? ` [tools: ${e.tools.join(', ')}]` : ''
+    const toolInfo = e.tools ? ` [tools: ${e.tools.join(', ').slice(0, 200)}]` : ''
     const trunc = e.truncated ? ' (truncated)' : ''
-    return `[${e.id}] ${label} (${e.charLength} chars)${toolInfo}${trunc}`
-  })
-
-  if (hasNewer) {
-    lines.unshift(`↑ ${effectiveOffset} newer messages above (use offset=0 to go back to latest)`)
-  }
-  if (hasMorePages) {
-    lines.push(`↓ ${startIdx} earlier messages below (use offset=${nextOffset} to page further back)`)
+    msgLines.push(`[${e.id}] ${label} (${e.charLength} chars)${toolInfo}${trunc}`)
   }
 
-  return `${header}\n\n${lines.join('\n')}`
+  // Build complete output, then trim from end if over budget.
+  // This is O(page.length) reconstruction — bounded by 500 entries.
+  const newerLine = hasNewer ? `↑ ${effectiveOffset} newer messages above (use offset=0 to go back to latest)` : null
+
+  function assemble(shown: number): { text: string; firstId: number; lastId: number; nextOffset: number; hasMorePages: boolean } {
+    const nextOffset = effectiveOffset + shown
+    const hasMorePages = effectiveOffset + shown < total
+    const remaining = total - effectiveOffset - shown
+    const firstId = shown > 0 ? page[0]!.id : 0
+    const lastId = shown > 0 ? page[shown - 1]!.id : 0
+
+    const header = hasNewer
+      ? `# Conversation log manifest (${total} messages available, ${effectiveOffset} skipped, showing [${firstId}]-[${lastId}])`
+      : `# Conversation log manifest (${total} messages available, showing [${firstId}]-[${lastId}])`
+
+    const parts: string[] = [header]
+    if (newerLine) parts.push(newerLine)
+    for (let i = 0; i < shown; i++) parts.push(msgLines[i]!)
+    if (shown < msgLines.length) parts.push('[...index truncated]')
+    if (hasMorePages) {
+      parts.push(`↓ ${remaining} earlier messages below (use offset=${nextOffset} to page further back)`)
+    }
+
+    return { text: parts.join('\n\n'), firstId, lastId, nextOffset, hasMorePages }
+  }
+
+  // Start with all messages, trim back until within budget
+  let shown = msgLines.length
+  while (shown > 0) {
+    const { text } = assemble(shown)
+    if (text.length <= CONVERSATION_LOG_INDEX_CHARS) break
+    shown--
+  }
+
+  // If even the header + nav lines exceed budget, show at least that
+  if (shown === 0) shown = 0
+  const result = assemble(shown)
+  return result.text
 }
 
 // ---------------------------------------------------------------------------

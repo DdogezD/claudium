@@ -2,26 +2,11 @@ import type { Message } from '../../../types/message.js'
 import { extractTextContent } from '../../../utils/messages.js'
 import { buildSearchIndex } from './search.js'
 import type { ConversationEntry, CachedSnapshot, SearchIndex } from '../types.js'
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const CONVERSATION_LOG_READ_LIMIT = 20
-const CONVERSATION_LOG_TOTAL_CHARS = 80_000
-const CONVERSATION_LOG_RESULT_CHARS = 8_000    // Per tool-result cap
-const CONVERSATION_LOG_SEARCH_SNIPPET_CHARS = 2_000
-const CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS = 16_000  // Aggregate per-entry cap for all snippets
-const ADVISOR_MAX_TURNS = 200
-
-export {
-  CONVERSATION_LOG_READ_LIMIT,
-  CONVERSATION_LOG_TOTAL_CHARS,
+import {
   CONVERSATION_LOG_RESULT_CHARS,
   CONVERSATION_LOG_SEARCH_SNIPPET_CHARS,
   CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS,
-  ADVISOR_MAX_TURNS,
-}
+} from './constants.js'
 
 // ---------------------------------------------------------------------------
 // Serialization cache (atomic snapshot: entries + search index)
@@ -284,9 +269,4 @@ function doSerializeConversationLog(
   return entries
 }
 
-export {
-  buildSnapshotFingerprint,
-  clampVisible,
-  getConversationSnapshot,
-  doSerializeConversationLog,
-}
+export { getConversationSnapshot }

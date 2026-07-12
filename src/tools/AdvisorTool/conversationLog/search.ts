@@ -263,12 +263,8 @@ export function formatSearchResults(
       ? `searched ${totalIndexed} messages; ${totalMatches} ${totalMatches === 1 ? 'match' : 'matches'}`
       : `searched ${totalIndexed} messages`
 
-  const header =
-    `# Search results for ${quotedQuery}${modeNote} — showing ${results.length} results (${matchInfo})`
-
-  const lines: string[] = []
-  let outputChars = header.length + exclusionNote.length + 3  // +3 for \n\n\n
-  let shown = 0
+  // Build all result lines first
+  const resultLines: string[] = []
   for (const r of results) {
     const label = formatEntryLabel(r.entry)
     const toolInfo = r.entry.tools ? ` [tools: ${r.entry.tools.join(', ')}]` : ''
@@ -279,18 +275,29 @@ export function formatSearchResults(
         ? ` ${JSON.stringify(r.excerpt.slice(0, EXCERPT_MAX_CHARS) + '\u2026')}`
         : ` ${JSON.stringify(r.excerpt)}`
       : ''
-    const line = `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}${excerptStr}`
-    if (outputChars + line.length > SEARCH_OUTPUT_CHARS) {
-      lines.push('[...results truncated]')
-      break
-    }
-    outputChars += line.length + 1  // +1 for \n
-    lines.push(line)
-    shown++
+    resultLines.push(`[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}${excerptStr}`)
   }
-  const ids = results.slice(0, shown).map(r => r.entry.id)
-  const hint = ids.length > 0
-    ? `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
-    : ''
-  return `${header}\n\n${exclusionNote}\n\n${lines.join('\n')}${hint}`
+
+  // Build complete output, then trim from end if over budget.
+  function assemble(shown: number): string {
+    const ids = results.slice(0, shown).map(r => r.entry.id)
+    const shownHeader =
+      `# Search results for ${quotedQuery}${modeNote} — showing ${shown} results (${matchInfo})`
+    const hint = ids.length > 0
+      ? `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
+      : ''
+
+    const parts: string[] = [shownHeader, exclusionNote]
+    for (let i = 0; i < shown; i++) parts.push(resultLines[i]!)
+    if (shown < resultLines.length) parts.push('[...results truncated]')
+
+    return parts.join('\n\n') + hint
+  }
+
+  let shown = resultLines.length
+  while (shown > 0) {
+    if (assemble(shown).length <= SEARCH_OUTPUT_CHARS) break
+    shown--
+  }
+  return assemble(shown)
 }
