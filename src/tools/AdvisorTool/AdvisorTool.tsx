@@ -651,13 +651,44 @@ let _cachedSnapshot: CachedSnapshot | null = null
 function buildSnapshotFingerprint(messages: readonly Message[]): string {
   const parts = messages.map(m => {
     const uuid = (m as any).uuid ?? ''
+    const msgType = (m as any).type ?? '?'
     const content = (m as any).message?.content
-    if (typeof content === 'string') return `${uuid}:s${content.length}`
-    if (Array.isArray(content)) {
-      const summary = content.map((b: any) => `${b.type ?? '?'}:${typeof b.text === 'string' ? b.text.length : 0}`).join(',')
-      return `${uuid}:[${summary}]`
+    if (typeof content === 'string') {
+      // Include content prefix + length to detect same-length replacements
+      const prefix = content.slice(0, 80)
+      return `${msgType}:${uuid}:s${content.length}:${prefix}`
     }
-    return uuid
+    if (Array.isArray(content)) {
+      const summary = content.map((b: any, idx: number) => {
+        const type = b.type ?? '?'
+        if (type === 'text' && typeof b.text === 'string') {
+          const prefix = b.text.slice(0, 80)
+          return `t${idx}:${b.text.length}:${prefix}`
+        }
+        if (type === 'tool_use') {
+          const input = b.input != null ? JSON.stringify(b.input) : ''
+          return `tu${idx}:${b.id ?? ''}:${b.name ?? ''}:${input}`
+        }
+        if (type === 'tool_result') {
+          const tc = b.content
+          let clen = 0
+          let cprefix = ''
+          if (typeof tc === 'string') {
+            clen = tc.length
+            cprefix = tc.slice(0, 60)
+          } else if (Array.isArray(tc)) {
+            clen = tc.length
+          }
+          return `tr${idx}:${b.tool_use_id ?? ''}:${b.is_error ? 'e' : 'ok'}:${clen}:${cprefix}`
+        }
+        if (type === 'thinking' || type === 'redacted_thinking') {
+          return `th${idx}:${typeof b.thinking === 'string' ? b.thinking.length : 0}`
+        }
+        return `${type}${idx}`
+      }).join(',')
+      return `${msgType}:${uuid}:[${summary}]`
+    }
+    return `${msgType}:${uuid}`
   })
   return parts.join('|')
 }
@@ -703,16 +734,18 @@ function doSerializeConversationLog(
     if (typeof rawContent === 'string') {
       const charLength = rawContent.length
       let text = rawContent
+      let searchBody = rawContent
       let truncated = false
       if (charLength > 16000) {
         text = rawContent.slice(0, 16000) + '\n\n[...truncated]'
+        searchBody = rawContent.slice(0, 16000)
         truncated = true
       }
       entries.push({
         id: i,
         role: msg.type,
         text,
-        searchBody: text,
+        searchBody,
         charLength,
         truncated,
       })
@@ -729,11 +762,15 @@ function doSerializeConversationLog(
     const toolResults: { toolName?: string; isError: boolean }[] = []
     let hasThinking = false
     let truncated = false
+    // Track original (pre-truncation) display length separately from the
+    // actual textParts content (which may be per-result-capped).
+    let originalDisplayLen = 0
 
     for (const block of content) {
       if (block.type === 'text' && block.text) {
         textParts.push(block.text)
         bodyParts.push(block.text)
+        originalDisplayLen += block.text.length
       } else if (block.type === 'tool_use') {
         tools.push(block.name || 'unknown')
         // Capture tool-use input for BM25 search (bounded to prevent bloat)
@@ -761,26 +798,32 @@ function doSerializeConversationLog(
           }
           textParts.push(`[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`)
           bodyParts.push(resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS))
+          originalDisplayLen += `[${label}: ${resultText}]`.length
         } else if (block.is_error) {
           textParts.push(`[tool_result_error]`)
+          originalDisplayLen += '[tool_result_error]'.length
         }
       } else if (block.type === 'thinking' || block.type === 'redacted_thinking') {
         hasThinking = true
       } else if (block.type === 'image' || block.type === 'image_url') {
         // Emit a compact marker — actual base64 data is too large for the log
         textParts.push(`[${block.type}]`)
+        originalDisplayLen += `[${block.type}]`.length
       }
     }
 
     let text = textParts.join('\n')
-    const searchBody = bodyParts.join('\n')
-    // Record the original displayed length before any entry-level cap.
-    // Per-result truncation already happened above; this tracks the
-    // assembled entry length.
-    let charLength = text.length
+    let searchBody = bodyParts.join('\n')
+    // Original display length: sum of all part lengths + newline separators
+    const separatorOverhead = Math.max(0, textParts.length - 1)
+    let charLength = originalDisplayLen + separatorOverhead
     if (charLength > 16000) {
       text = text.slice(0, 16000) + '\n\n[...truncated]'
       truncated = true
+    }
+    // Cap searchBody to stay within read-visible range
+    if (searchBody.length > 16000) {
+      searchBody = searchBody.slice(0, 16000)
     }
 
     entries.push({
@@ -899,30 +942,29 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       }
       // action === 'read'
       const ids = input.message_ids
-      if (ids.length === 0) return { data: 'No message IDs specified.' }
-        const seen = new Set<number>()
-        // De-duplicate while preserving order; count unique valid IDs
-        let totalChars = 0
-        const results: string[] = []
-        for (const id of ids) {
-          if (seen.has(id)) continue
-          seen.add(id)
-          const entry = entryMap.get(id)
-          if (!entry) {
-            results.push(`[${id}] NOT FOUND — ID out of range`)
-            continue
-          }
-          uniqueReadIds.add(id)
-          const truncTag = entry.truncated ? ' [truncated]' : ''
-          const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
-          totalChars += line.length
-          if (totalChars > CONVERSATION_LOG_TOTAL_CHARS) {
-            results.push(line.slice(0, CONVERSATION_LOG_TOTAL_CHARS - totalChars + line.length) + '\n\n[...output truncated]')
-            break
-          }
-          results.push(line)
+      const seen = new Set<number>()
+      // De-duplicate while preserving order; count unique valid IDs
+      let totalChars = 0
+      const results: string[] = []
+      for (const id of ids) {
+        if (seen.has(id)) continue
+        seen.add(id)
+        const entry = entryMap.get(id)
+        if (!entry) {
+          results.push(`[${id}] NOT FOUND — ID out of range`)
+          continue
         }
-        return { data: results.join('\n\n---\n\n') }
+        uniqueReadIds.add(id)
+        const truncTag = entry.truncated ? ' [truncated]' : ''
+        const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
+        totalChars += line.length
+        if (totalChars > CONVERSATION_LOG_TOTAL_CHARS) {
+          results.push(line.slice(0, CONVERSATION_LOG_TOTAL_CHARS - totalChars + line.length) + '\n\n[...output truncated]')
+          break
+        }
+        results.push(line)
+      }
+      return { data: results.join('\n\n---\n\n') }
     },
 
     userFacingName() { return CONVERSATION_LOG_TOOL_NAME },
