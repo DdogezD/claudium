@@ -1149,6 +1149,7 @@ export const AdvisorTool = buildTool({
   ) {
     const q = input.question || ''
     if (options?.verbose) return <Text>{q}</Text>
+    if (!q) return ''
     const firstLine = q.split('\n')[0]
     const truncated = firstLine.length > 100 ? firstLine.slice(0, 100) : firstLine
     const needsTruncation = q.length > 100
