@@ -746,7 +746,7 @@ function buildSnapshotFingerprint(messages: readonly Message[]): string {
     return [msg.type ?? null, msg.uuid ?? null, projectedContent]
   })
 
-  return JSON.stringify(projection)
+  return Bun.hash(JSON.stringify(projection)).toString(36)
 }
 
 /**
@@ -899,6 +899,11 @@ function doSerializeConversationLog(
           textParts.push(`[tool_result_error]`)
           originalDisplayLen += '[tool_result_error]'.length
           displayPos += '[tool_result_error]'.length + 1
+        } else {
+          // Non-text tool_result: array content with no text blocks
+          textParts.push('[tool_result: non-text content omitted]')
+          originalDisplayLen += '[tool_result: non-text content omitted]'.length
+          displayPos += '[tool_result: non-text content omitted]'.length + 1
         }
       } else if (block.type === 'thinking' || block.type === 'redacted_thinking') {
         hasThinking = true
@@ -922,7 +927,8 @@ function doSerializeConversationLog(
 
     entries.push({
       id: i,
-      role: msg.type === 'user' && toolResults.length > 0 ? 'tool_result' : msg.type,
+      role: msg.type === 'user' && content.length > 0 && content.every((b: any) => b?.type === 'tool_result')
+        ? 'tool_result' : msg.type,
       text,
       searchBody,
       charLength,
@@ -1613,61 +1619,60 @@ async function runAdvisorQuery(
     (m: any) => m.message.content,
   )
   const toolUses = assistantBlocks.filter((b: any) => b.type === 'tool_use')
+  const toolsCalled = toolUses.length
+
+  // filesRead: unique Read file paths with a successful (non-error) tool_result
+  const successfulToolUseIds = new Set(
+    messages
+      .filter((m: any) => m.type === 'user')
+      .flatMap((m: any) => m.message?.content ?? [])
+      .filter((b: any) => b.type === 'tool_result' && !b.is_error)
+      .map((b: any) => b.tool_use_id)
+      .filter(Boolean),
+  )
   const filesRead = new Set(
     toolUses
-      .filter((t: any) => t.name === 'Read')
+      .filter((t: any) => t.name === 'Read' && successfulToolUseIds.has(t.id))
       .map((t: any) => t.input?.file_path)
       .filter((p: unknown): p is string => typeof p === 'string'),
   ).size
-  const toolsCalled = toolUses.length
-  const webSearched = toolUses.some((t: any) => t.name === 'WebSearch')
+  const webSearched = toolUses.some(
+    (t: any) => t.name === 'WebSearch' && successfulToolUseIds.has(t.id),
+  )
 
-  // Aggregate token usage deduplicated by API response ID (message.message.id).
-  // Multi-block API responses produce multiple assistant messages per round;
-  // usage is per-response, not per-block. Usage is set only on the LAST block
-  // via message_delta, so we use component-wise max per response ID to avoid
-  // taking a zero/preliminary value from an earlier block.
-  const usageByResponse = new Map<string, { input: number; output: number; cacheCreation: number; cacheRead: number }>()
-  let unkeyedTokens = 0
-  for (const m of assistantMessages) {
-    const usage = (m as any).message?.usage
-    if (!usage) continue
-    const input = usage.input_tokens ?? 0
-    const output = usage.output_tokens ?? 0
-    const cacheCreation = usage.cache_creation_input_tokens ?? 0
-    const cacheRead = usage.cache_read_input_tokens ?? 0
-    const responseId = (m as any).message?.id as string | undefined
-    if (!responseId) {
-      unkeyedTokens += input + output + cacheCreation + cacheRead
-      continue
+  // Group consecutive assistant messages into logical API responses. iterate messages in order, split on non-assistant boundaries
+  const responseGroups: any[][] = []
+  let currentGroup: any[] = []
+  for (const m of messages) {
+    if (m.type === 'assistant') {
+      currentGroup.push(m)
+    } else if (currentGroup.length > 0) {
+      responseGroups.push(currentGroup)
+      currentGroup = []
     }
-    const prev = usageByResponse.get(responseId)
-    usageByResponse.set(responseId, {
-      input: Math.max(prev?.input ?? 0, input),
-      output: Math.max(prev?.output ?? 0, output),
-      cacheCreation: Math.max(prev?.cacheCreation ?? 0, cacheCreation),
-      cacheRead: Math.max(prev?.cacheRead ?? 0, cacheRead),
-    })
   }
-  const tokens = unkeyedTokens +
-    [...usageByResponse.values()].reduce(
-      (sum, u) => sum + u.input + u.output + u.cacheCreation + u.cacheRead, 0
-    )
+  if (currentGroup.length > 0) responseGroups.push(currentGroup)
 
-  // Extract advice from the final logical API response only.
-  // Multi-block responses produce several assistant messages sharing one
-  // message.id — grouping by response ID gives the complete final answer.
-  const lastAssistant = assistantMessages.at(-1)
-  const finalResponseId = lastAssistant?.message?.id
-  const finalMessages =
-    finalResponseId !== undefined
-      ? assistantMessages.filter(
-          (m: any) => m.message?.id === finalResponseId,
-        )
-      : lastAssistant
-        ? [lastAssistant]
-        : []
-  const finalBlocks = finalMessages.flatMap(
+  // Aggregate token usage: component-wise max per logical response group.
+  // For groups with a response ID, deduplicate by ID. For groups without,
+  // use component-wise max within the group as a best-effort approximation.
+  let tokens = 0
+  for (const group of responseGroups) {
+    const maxUsage = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 }
+    for (const m of group) {
+      const usage = (m as any).message?.usage
+      if (!usage) continue
+      maxUsage.input = Math.max(maxUsage.input, usage.input_tokens ?? 0)
+      maxUsage.output = Math.max(maxUsage.output, usage.output_tokens ?? 0)
+      maxUsage.cacheCreation = Math.max(maxUsage.cacheCreation, usage.cache_creation_input_tokens ?? 0)
+      maxUsage.cacheRead = Math.max(maxUsage.cacheRead, usage.cache_read_input_tokens ?? 0)
+    }
+    tokens += maxUsage.input + maxUsage.output + maxUsage.cacheCreation + maxUsage.cacheRead
+  }
+
+  // Extract advice from the final logical response group
+  const lastResponseGroup = responseGroups.at(-1) ?? []
+  const finalBlocks = lastResponseGroup.flatMap(
     (m: any) => m.message?.content ?? [],
   )
   const advice = extractTextContent(finalBlocks, '\n\n').trim()
