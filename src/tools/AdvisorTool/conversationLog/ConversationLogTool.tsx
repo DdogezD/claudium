@@ -90,19 +90,73 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
   // Track which unique IDs were successfully read (for conversationsRead stats)
   const uniqueReadIds = new Set<number>()
 
+  // Shared read implementation reused by read and around actions
+  function doRead(ids: number[], charOffset: number = 0, charLimit?: number): string {
+    const seen = new Set<number>()
+    const TRUNCATION_MARKER = '\n\n[...output truncated]'
+    const SEPARATOR = '\n\n---\n\n'
+    const effectiveCap = charLimit ?? CONVERSATION_LOG_TOTAL_CHARS
+    let totalChars = 0
+    const results: string[] = []
+
+    function appendLine(line: string): AppendResult {
+      const separatorCost = results.length > 0 ? SEPARATOR.length : 0
+      const cost = line.length + separatorCost
+      if (totalChars + cost > effectiveCap) {
+        const remaining = effectiveCap - totalChars - separatorCost - TRUNCATION_MARKER.length
+        if (remaining > 0) {
+          results.push(line.slice(0, remaining) + TRUNCATION_MARKER)
+        }
+        totalChars = effectiveCap
+        return remaining > 0 ? 'partial' : 'none'
+      }
+      totalChars += cost
+      results.push(line)
+      return 'full'
+    }
+
+    for (const id of ids) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      const entry = entryMap.get(id)
+      if (!entry) {
+        if (appendLine(`[${id}] NOT FOUND — ID out of range`) !== 'full') break
+        continue
+      }
+      const visibleText = charOffset > 0 ? entry.text.slice(charOffset) : entry.text
+      const offsetTag = charOffset > 0 ? ` [offset=${charOffset}]` : ''
+      const truncTag = entry.truncated ? ' [truncated]' : ''
+      const searchTextInfo = entry.searchText
+        ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]`
+        : ''
+      const line = `[${id}] ${entry.role} (${entry.charLength} chars)${offsetTag}${truncTag}:\n\n${visibleText}${searchTextInfo}`
+      const result = appendLine(line)
+      if (result === 'full' && charOffset === 0) {
+        uniqueReadIds.add(id)
+      } else if (result === 'partial') {
+        uniqueReadIds.add(id)
+        break
+      } else {
+        break
+      }
+    }
+
+    return results.join(SEPARATOR)
+  }
+
   const tool = buildTool({
     name: CONVERSATION_LOG_TOOL_NAME,
 
     async description() {
-      return `Read the main agent's conversation history after the latest compact boundary. Use action="index" to browse, "search" to find messages by keyword, then "read" with message IDs.`
+      return `Read the main agent's conversation history after the latest compact boundary. Actions: "index" (browse), "search" (keyword with role/ID filters), "read" (fetch messages, support char_offset for continuation), "around" (context around a message).`
     },
 
     async prompt() {
-      return `Read conversation history of the main agent. All post-compaction user and assistant messages are available. Use action: "index" to list recent messages, action: "search" to locate messages by keyword, and action: "read" with message_ids to fetch details for the ones you need.`
+      return `Read conversation history of the main agent. All post-compaction user and assistant messages are available. Use action: "index" to list recent messages, action: "search" to locate messages by keyword (optionally filtered by roles, after_id, before_id), action: "read" with message_ids to fetch details (use char_offset + char_limit for long messages), and action: "around" to read context around a message.`
     },
 
     inputSchema: conversationLogInputSchema,
-    // Bypass 50K persistence threshold — index/search/read each enforce
+    // Bypass 50K persistence threshold — index/search/read/around each enforce
     // their own explicit budget.  Letting the framework persist would
     // break lazy-read: the model would only get a file path, not content.
     maxResultSizeChars: Infinity,
@@ -122,6 +176,7 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
     renderToolUseMessage(input: ConversationLogInput) {
       if (input.action === 'index') return <Text>Reading conversation index</Text>
       if (input.action === 'search') return <Text>Searching conversation log</Text>
+      if (input.action === 'around') return <Text>Reading context around message</Text>
       return <Text>{`Reading ${input.message_ids.length} ${input.message_ids.length === 1 ? 'message' : 'messages'} from log`}</Text>
     },
 
@@ -135,55 +190,36 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
           return { data: `Query has ${queryTokens.length} unique tokens; max 64 supported. Please narrow your search.` }
         }
         const response = bm25Search(input.query, searchIndex, input.top_k, input.match_mode)
-        return { data: formatSearchResults(input.query, response.results, searchIndex.N, response.totalMatches, input.match_mode) }
+
+        // Apply role/ID filters post-search
+        let results = response.results
+        if (input.roles && input.roles.length > 0) {
+          const roleSet = new Set(input.roles)
+          results = results.filter(r => roleSet.has(r.entry.role))
+        }
+        if (input.after_id !== undefined) {
+          results = results.filter(r => r.entry.id > input.after_id!)
+        }
+        if (input.before_id !== undefined) {
+          results = results.filter(r => r.entry.id < input.before_id!)
+        }
+
+        return { data: formatSearchResults(input.query, results, searchIndex.N, results.length === response.results.length ? response.totalMatches : results.length, input.match_mode) }
+      }
+      if (input.action === 'around') {
+        const target = input.message_id
+        const allIds = entries.map(e => e.id).sort((a, b) => a - b)
+        const idx = allIds.indexOf(target)
+        if (idx === -1) {
+          return { data: `Message [${target}] not found in conversation log.` }
+        }
+        const start = Math.max(0, idx - input.before)
+        const end = Math.min(allIds.length, idx + input.after + 1)
+        const aroundIds = allIds.slice(start, end)
+        return { data: doRead(aroundIds) }
       }
       // action === 'read'
-      const ids = input.message_ids
-      const seen = new Set<number>()
-      const TRUNCATION_MARKER = '\n\n[...output truncated]'
-      const SEPARATOR = '\n\n---\n\n'
-      let totalChars = 0
-      const results: string[] = []
-
-      function appendLine(line: string): AppendResult {
-        const separatorCost = results.length > 0 ? SEPARATOR.length : 0
-        const cost = line.length + separatorCost
-        if (totalChars + cost > CONVERSATION_LOG_TOTAL_CHARS) {
-          const remaining = CONVERSATION_LOG_TOTAL_CHARS - totalChars - separatorCost - TRUNCATION_MARKER.length
-          if (remaining > 0) {
-            results.push(line.slice(0, remaining) + TRUNCATION_MARKER)
-          }
-          totalChars = CONVERSATION_LOG_TOTAL_CHARS
-          return remaining > 0 ? 'partial' : 'none'
-        }
-        totalChars += cost
-        results.push(line)
-        return 'full'
-      }
-
-      for (const id of ids) {
-        if (seen.has(id)) continue
-        seen.add(id)
-        const entry = entryMap.get(id)
-        if (!entry) {
-          if (appendLine(`[${id}] NOT FOUND — ID out of range`) !== 'full') break
-          continue
-        }
-        const truncTag = entry.truncated ? ' [truncated]' : ''
-        const searchTextInfo = entry.searchText
-          ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]`
-          : ''
-        const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}${searchTextInfo}`
-        const result = appendLine(line)
-        if (result === 'full') {
-          uniqueReadIds.add(id)
-        } else {
-          // Partial: entry was truncated but some content was included — count as read.
-          if (result === 'partial') uniqueReadIds.add(id)
-          break
-        }
-      }
-      return { data: results.join(SEPARATOR) }
+      return { data: doRead(input.message_ids, input.char_offset, input.char_limit) }
     },
 
     userFacingName() { return CONVERSATION_LOG_TOOL_NAME },
