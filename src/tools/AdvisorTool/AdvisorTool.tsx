@@ -228,6 +228,9 @@ type ConversationEntry = {
 
 const HAN_RUN_RE = /[\u4e00-\u9fff\u3400-\u4dbf]+/g
 
+// Non-ASCII, non-Han letter/number runs (accented Latin, Cyrillic, Kana, Hangul, etc.)
+const UNICODE_WORD_RE = /[\p{L}\p{N}]+/gu
+
 export function tokenize(text: string): string[] {
   // Split camelCase and acronym boundaries before lowercasing
   const camelSplit = text.replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -248,7 +251,10 @@ export function tokenize(text: string): string[] {
     }
   }
 
-  return [...asciiTokens, ...hanTokens]
+  // Non-ASCII/non-Han Unicode words
+  const unicodeTokens = extractUnicodeWords(text)
+
+  return [...asciiTokens, ...hanTokens, ...unicodeTokens]
 }
 
 /** Query-mode tokenizer: single-char Han run → unigram; multi-char → bigrams only. */
@@ -272,9 +278,23 @@ export function tokenizeQuery(text: string): string[] {
     }
   }
 
-  return [...asciiTokens, ...hanTokens]
+  const unicodeTokens = extractUnicodeWords(text)
+  return [...asciiTokens, ...hanTokens, ...unicodeTokens]
 }
 
+// Shared Unicode word scanner used by all tokenizers
+function extractUnicodeWords(text: string): string[] {
+  const tokens: string[] = []
+  UNICODE_WORD_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = UNICODE_WORD_RE.exec(text)) !== null) {
+    const word = match[0]
+    if (/^[a-zA-Z0-9]+$/.test(word)) continue
+    if (/^[\u4e00-\u9fff\u3400-\u4dbf]+$/.test(word)) continue
+    tokens.push(word.toLowerCase())
+  }
+  return tokens
+}
 /**
  * Tokenize text with character offsets — used by buildSearchExcerpt to
  * locate match positions without relying on naive indexOf().
@@ -317,6 +337,15 @@ function tokenizeWithOffsets(text: string): Array<{ token: string; start: number
     for (let i = 0; i < run.length - 1; i++) {
       results.push({ token: run.slice(i, i + 2).toLowerCase(), start: runStart + i, end: runStart + i + 2 })
     }
+  }
+
+  // Non-ASCII/non-Han Unicode words with offsets
+  UNICODE_WORD_RE.lastIndex = 0
+  while ((m = UNICODE_WORD_RE.exec(text)) !== null) {
+    const word = m[0]
+    if (/^[a-zA-Z0-9]+$/.test(word)) continue
+    if (/^[\u4e00-\u9fff\u3400-\u4dbf]+$/.test(word)) continue
+    results.push({ token: word.toLowerCase(), start: m.index, end: m.index + word.length })
   }
 
   return results
@@ -593,16 +622,20 @@ function formatSearchResults(
   totalMatches?: number,
   matchMode?: 'or' | 'all',
 ): string {
+  const SEARCH_OUTPUT_CHARS = 60_000
+  const EXCERPT_MAX_CHARS = 200
   const exclusionNote =
     'Note: Entries without searchable tokens or metadata are excluded from search.'
 
+  const quotedQuery = JSON.stringify(query)
+  const modeNote = matchMode === 'all' ? ' (mode: all)' : ''
+
   if (results.length === 0) {
-    const modeNote = matchMode === 'all' ? ' (mode: all)' : ''
     const searched = totalIndexed > 0
       ? ` Searched ${totalIndexed} messages.`
       : ''
     return (
-      `No conversation messages matched "${query}"${modeNote}.${searched}\n\n${exclusionNote}`
+      `No conversation messages matched ${quotedQuery}${modeNote}.${searched}\n\n${exclusionNote}`
     )
   }
 
@@ -611,20 +644,35 @@ function formatSearchResults(
       ? `searched ${totalIndexed} messages; ${totalMatches} ${totalMatches === 1 ? 'match' : 'matches'}`
       : `searched ${totalIndexed} messages`
 
-  const modeNote = matchMode === 'all' ? ' (mode: all)' : ''
   const header =
-    `# Search results for "${query}"${modeNote} — showing ${results.length} results (${matchInfo})`
+    `# Search results for ${quotedQuery}${modeNote} — showing ${results.length} results (${matchInfo})`
 
-  const lines = results.map(r => {
+  const lines: string[] = []
+  let outputChars = header.length + exclusionNote.length + 3  // +3 for \n\n\n
+  let shown = 0
+  for (const r of results) {
     const label = formatEntryLabel(r.entry)
     const toolInfo = r.entry.tools ? ` [tools: ${r.entry.tools.join(', ')}]` : ''
     const trunc = r.entry.truncated ? ' (truncated)' : ''
     const matchedInfo = ` [matched: ${r.matchedTokens.join(', ')}]`
-    const excerpt = r.excerpt ? ` '${r.excerpt}'` : ''
-    return `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}${excerpt}`
-  })
-  const ids = results.map(r => r.entry.id)
-  const hint = `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
+    const excerptStr = r.excerpt
+      ? r.excerpt.length > EXCERPT_MAX_CHARS
+        ? ` ${JSON.stringify(r.excerpt.slice(0, EXCERPT_MAX_CHARS) + '…')}`
+        : ` ${JSON.stringify(r.excerpt)}`
+      : ''
+    const line = `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}${excerptStr}`
+    if (outputChars + line.length > SEARCH_OUTPUT_CHARS) {
+      lines.push('[...results truncated]')
+      break
+    }
+    outputChars += line.length + 1  // +1 for \n
+    lines.push(line)
+    shown++
+  }
+  const ids = results.slice(0, shown).map(r => r.entry.id)
+  const hint = ids.length > 0
+    ? `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
+    : ''
   return `${header}\n\n${exclusionNote}\n\n${lines.join('\n')}${hint}`
 }
 
