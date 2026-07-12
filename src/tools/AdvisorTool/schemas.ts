@@ -36,21 +36,46 @@ export const conversationLogSearchSchema = z.strictObject({
     .enum(['or', 'all'])
     .default('or')
     .describe('"or" returns messages matching any term (default). "all" requires every term to match.'),
+  roles: z
+    .array(z.enum(['user', 'assistant', 'tool_result']))
+    .optional()
+    .describe('Only search messages with these roles.'),
+  after_id: z.number().int().min(0).optional()
+    .describe('Only search messages with id > this value.'),
+  before_id: z.number().int().min(0).optional()
+    .describe('Only search messages with id < this value.'),
 })
 
 export const conversationLogReadSchema = z.strictObject({
-  action: z.literal('read').describe('Fetch full content for specific message IDs.'),
+  action: z.literal('read').describe('Fetch content for specific message IDs. Long entries may be truncated; use char_offset + char_limit to continue reading.'),
   message_ids: z
     .array(z.number().int().min(0))
     .min(1)
     .max(CONVERSATION_LOG_READ_LIMIT)
     .describe(`Message IDs to read. Maximum ${CONVERSATION_LOG_READ_LIMIT} per call.`),
+  char_offset: z
+    .number().int().min(0).default(0)
+    .describe('Start reading from this character offset within the serialized entry. Default 0.'),
+  char_limit: z
+    .number().int().min(1).max(80000).optional()
+    .describe('Maximum characters to return. If omitted, the full entry fits within the 80K budget.'),
+})
+
+export const conversationLogAroundSchema = z.strictObject({
+  action: z.literal('around').describe('Read context around a specific message.'),
+  message_id: z.number().int().min(0)
+    .describe('The central message to read around.'),
+  before: z.number().int().min(0).max(20).default(3)
+    .describe('Number of messages to include before the target. Default 3, max 20.'),
+  after: z.number().int().min(0).max(20).default(3)
+    .describe('Number of messages to include after the target. Default 3, max 20.'),
 })
 
 export const conversationLogInputSchema = z.discriminatedUnion('action', [
   conversationLogIndexSchema,
   conversationLogSearchSchema,
   conversationLogReadSchema,
+  conversationLogAroundSchema,
 ])
 
 export type ConversationLogInput = z.infer<typeof conversationLogInputSchema>

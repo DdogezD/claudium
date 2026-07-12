@@ -204,6 +204,20 @@ describe('ConversationLogTool search', () => {
     expect(result.data).toContain('max 64')
   })
 
+  it('filters by role', async () => {
+    const entries: ConversationEntry[] = [
+      { id: 1, role: 'user', text: 'user query', searchBody: 'user query', charLength: 10, truncated: false },
+      { id: 2, role: 'assistant', text: 'assistant reply', searchBody: 'assistant reply', charLength: 15, truncated: false },
+      { id: 3, role: 'tool_result', text: 'tool result', searchBody: 'tool result', charLength: 11, truncated: false },
+    ]
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'search', query: 'query reply result', top_k: 10, roles: ['user'] })
+    expect(result.data).toContain('[1]')
+    expect(result.data).not.toContain('[2]')
+    expect(result.data).not.toContain('[3]')
+  })
+
   it('search output fits within 60K budget', async () => {
     const entries: ConversationEntry[] = Array.from({ length: 100 }, (_, i) => ({
       id: i + 1,
@@ -320,5 +334,88 @@ describe('formatEntryLabel', () => {
     const label = formatEntryLabel(entry)
     expect(label).toContain('Read')
     expect(label).toContain('\u2717')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ConversationLogTool: around action
+// ---------------------------------------------------------------------------
+
+describe('ConversationLogTool around', () => {
+  const entries: ConversationEntry[] = Array.from({ length: 10 }, (_, i) => ({
+    id: i + 1,
+    role: 'assistant' as const,
+    text: `Message ${i + 1} body content.`,
+    searchBody: `message ${i + 1}`,
+    charLength: 25,
+    truncated: false,
+  }))
+
+  it('reads context around a message', async () => {
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'around', message_id: 5, before: 2, after: 2 })
+    expect(result.data).toContain('[3]')
+    expect(result.data).toContain('[4]')
+    expect(result.data).toContain('[5]')
+    expect(result.data).toContain('[6]')
+    expect(result.data).toContain('[7]')
+    // Should not include IDs outside range
+    expect(result.data).not.toContain('[1]')
+    expect(result.data).not.toContain('[10]')
+  })
+
+  it('clamps around range at boundaries', async () => {
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'around', message_id: 1, before: 5, after: 2 })
+    expect(result.data).toContain('[1]')
+    expect(result.data).toContain('[3]')
+    expect(result.data).not.toContain('[0]')
+  })
+
+  it('reports not found for missing ID', async () => {
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'around', message_id: 999 })
+    expect(result.data).toContain('not found')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ConversationLogTool: read continuation
+// ---------------------------------------------------------------------------
+
+describe('ConversationLogTool read continuation', () => {
+  const longText = 'A'.repeat(500) + 'B'.repeat(500)
+  const entries: ConversationEntry[] = [{
+    id: 1,
+    role: 'assistant',
+    text: longText,
+    searchBody: 'long message',
+    charLength: longText.length,
+    truncated: false,
+  }]
+
+  it('reads from char_offset', async () => {
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result1 = await tool.call({ action: 'read', message_ids: [1] })
+    const result2 = await tool.call({ action: 'read', message_ids: [1], char_offset: 500 })
+
+    // First read should contain A...A content
+    expect(result1.data).toContain('AAA')
+    // Continuation should start from the B region
+    expect(result2.data).toContain('BBB')
+    expect(result2.data).toContain('[offset=500]')
+  })
+
+  it('respects char_limit', async () => {
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 200 })
+    expect(typeof result.data).toBe('string')
+    // Should be well under the limit considering header overhead
+    expect((result.data as string).length).toBeLessThan(400)
   })
 })

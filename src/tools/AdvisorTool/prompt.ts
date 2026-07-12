@@ -78,10 +78,13 @@ CONVERSATION HISTORY:
 - Be selective — index or search first, then read only the messages relevant to the question
 - The main agent's question should be self-contained; the log is supplementary context
 
-YOU MAY ALSO USE:
-- Read, Grep, Glob — inspect the project's code and files
-- Bash — run read-only commands (git log, ls, etc.) to inspect repository state
-- WebSearch, WebFetch — look up documentation or external context
+AVAILABLE TOOLS:
+  You have access to a set of read-only investigation tools.  Use them to
+  verify claims and gather evidence before giving your final analysis.
+  Only the tools actually listed in your tool schema are available —
+  do not assume a tool exists just because this prompt mentions it.
+  If a commonly expected tool (e.g. Read, Bash) is absent, report that
+  observation explicitly to the main agent.
 
 CONSTRAINTS:
 - Do NOT write, edit, spawn sub-agents, or run destructive commands
