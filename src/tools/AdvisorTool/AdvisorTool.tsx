@@ -74,6 +74,8 @@ function isAdvisorAllowedBuiltin(tool: Tool): boolean {
 
 const CONVERSATION_LOG_READ_LIMIT = 20
 const CONVERSATION_LOG_TOTAL_CHARS = 80_000
+const CONVERSATION_LOG_RESULT_CHARS = 4_000    // Per tool-result cap
+const CONVERSATION_LOG_SEARCH_SNIPPET_CHARS = 2_000
 const ADVISOR_MAX_TURNS = 200
 
 const inputSchema = z.strictObject({
@@ -446,7 +448,7 @@ function doSerializeConversationLog(
         // Capture tool-use input for BM25 search (bounded to prevent bloat)
         if (block.input && typeof block.input === 'object') {
           const inputStr = JSON.stringify(block.input)
-          searchSnippets.push(inputStr.slice(0, 500))
+          searchSnippets.push(inputStr.slice(0, CONVERSATION_LOG_SEARCH_SNIPPET_CHARS))
         }
       } else if (block.type === 'tool_result') {
         toolResults.push({
@@ -464,7 +466,7 @@ function doSerializeConversationLog(
         }
         if (resultText) {
           const label = block.is_error ? 'tool_result_error' : 'tool_result'
-          textParts.push(`[${label}: ${resultText.slice(0, 500)}]`)
+          textParts.push(`[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`)
         } else if (block.is_error) {
           textParts.push(`[tool_result_error]`)
         }
