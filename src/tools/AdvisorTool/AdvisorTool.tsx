@@ -74,7 +74,7 @@ function isAdvisorAllowedBuiltin(tool: Tool): boolean {
 
 const CONVERSATION_LOG_READ_LIMIT = 20
 const CONVERSATION_LOG_TOTAL_CHARS = 80_000
-const CONVERSATION_LOG_RESULT_CHARS = 4_000    // Per tool-result cap
+const CONVERSATION_LOG_RESULT_CHARS = 8_000    // Per tool-result cap
 const CONVERSATION_LOG_SEARCH_SNIPPET_CHARS = 2_000
 const ADVISOR_MAX_TURNS = 200
 
@@ -353,6 +353,7 @@ interface SearchResult {
   entry: ConversationEntry
   score: number
   matchedTokens: string[]
+  excerpt?: string
 }
 
 interface SearchResponse {
@@ -360,23 +361,68 @@ interface SearchResponse {
   totalMatches: number
 }
 
+function buildSearchExcerpt(
+  doc: SearchDoc,
+  matchedTokens: string[],
+): string | undefined {
+  // Try visible text first
+  if (matchedTokens.some(t => doc.displayedTokens.has(t)) && doc.entry.text.length > 0) {
+    const lower = doc.entry.text.toLowerCase()
+    for (const token of matchedTokens) {
+      const idx = lower.indexOf(token)
+      if (idx !== -1) {
+        const start = Math.max(0, idx - 30)
+        const end = Math.min(lower.length, idx + token.length + 30)
+        return doc.entry.text.slice(start, end)
+      }
+    }
+    // No direct match found — show first N chars
+    return doc.entry.text.slice(0, 60)
+  }
+  // Tool metadata match (name in index label) — no excerpt needed
+  const allMatchedDisplayed = matchedTokens.every(
+    t => doc.displayedTokens.has(t) && !doc.searchTextTokens.has(t),
+  )
+  if (allMatchedDisplayed) return undefined
+  // Hidden tool-input match
+  if (doc.entry.searchText) {
+    const lower = doc.entry.searchText.toLowerCase()
+    for (const token of matchedTokens) {
+      const idx = lower.indexOf(token)
+      if (idx !== -1) {
+        const start = Math.max(0, idx - 30)
+        const end = Math.min(lower.length, idx + token.length + 30)
+        return `tool input: …${doc.entry.searchText.slice(start, end)}…`
+      }
+    }
+  }
+  return undefined
+}
+
 function bm25Search(
   query: string,
   index: SearchIndex,
   topK: number,
+  matchMode: 'or' | 'all' = 'or',
 ): SearchResponse {
   if (index.docs.length === 0) return { results: [], totalMatches: 0 }
 
   const queryTokens = [...new Set(tokenize(query))]
   if (queryTokens.length === 0) return { results: [], totalMatches: 0 }
 
-  const scores = index.docs.map(doc => ({
+  const scored = index.docs.map(doc => ({
+    doc,
     entry: doc.entry,
     score: bm25Score(queryTokens, doc, index),
     matchedTokens: queryTokens.filter(token => doc.tf.has(token)),
   }))
 
-  const matched = scores.filter(s => s.score > 0)
+  let matched = scored.filter(s => s.score > 0)
+
+  // 'all' mode: only documents where every query token matched
+  if (matchMode === 'all') {
+    matched = matched.filter(s => s.matchedTokens.length === queryTokens.length)
+  }
   if (matched.length === 0) return { results: [], totalMatches: 0 }
 
   matched.sort((a, b) => b.score - a.score || b.entry.id - a.entry.id)
@@ -390,6 +436,7 @@ function bm25Search(
         ? s.score / maxScore
         : 0,
       matchedTokens: s.matchedTokens,
+      excerpt: buildSearchExcerpt(s.doc, s.matchedTokens),
     })),
     totalMatches: matched.length,
   }
@@ -446,7 +493,8 @@ function formatSearchResults(
     const toolInfo = r.entry.tools ? ` [tools: ${r.entry.tools.join(', ')}]` : ''
     const trunc = r.entry.truncated ? ' (truncated)' : ''
     const matchedInfo = ` [matched: ${r.matchedTokens.join(', ')}]`
-    return `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}`
+    const excerpt = r.excerpt ? ` "${r.excerpt}"` : ''
+    return `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}${excerpt}`
   })
   const ids = results.map(r => r.entry.id)
   const hint = results.length > 0
@@ -661,6 +709,11 @@ function createConversationLogTool(entries: ConversationEntry[]) {
         .default(10)
         .optional()
         .describe('Number of search results to return. Default 10, max 50.'),
+      match_mode: z
+        .enum(['or', 'all'])
+        .default('or')
+        .optional()
+        .describe('"or" returns messages matching any query term (default). "all" requires every term to match.'),
       message_ids: z
         .array(z.number().int().min(0))
         .max(CONVERSATION_LOG_READ_LIMIT)
@@ -703,13 +756,13 @@ function createConversationLogTool(entries: ConversationEntry[]) {
       return <Text>{`Reading ${count} ${count === 1 ? 'message' : 'messages'} from log`}</Text>
     },
 
-    async call(input: { action: 'index' | 'read' | 'search'; message_ids?: number[]; offset?: number; limit?: number; query?: string; top_k?: number }) {
+    async call(input: { action: 'index' | 'read' | 'search'; message_ids?: number[]; offset?: number; limit?: number; query?: string; top_k?: number; match_mode?: 'or' | 'all' }) {
       if (input.action === 'index') {
         return { data: formatConversationIndex(entries, input.offset, input.limit) }
       }
       if (input.action === 'search') {
         if (!input.query) return { data: 'Query is required for search action.' }
-        const response = bm25Search(input.query, searchIndex, input.top_k ?? 10)
+        const response = bm25Search(input.query, searchIndex, input.top_k ?? 10, input.match_mode ?? 'or')
         return { data: formatSearchResults(input.query, response.results, searchIndex.N, response.totalMatches) }
       }
       if (input.action === 'read') {
@@ -1238,7 +1291,12 @@ async function runAdvisorQuery(
     (m: any) => m.message.content,
   )
   const toolUses = assistantBlocks.filter((b: any) => b.type === 'tool_use')
-  const filesRead = toolUses.filter((t: any) => t.name === 'Read').length
+  const filesRead = new Set(
+    toolUses
+      .filter((t: any) => t.name === 'Read')
+      .map((t: any) => t.input?.file_path)
+      .filter((p: unknown): p is string => typeof p === 'string'),
+  ).size
   const toolsCalled = toolUses.length
   const webSearched = toolUses.some((t: any) => t.name === 'WebSearch')
 
@@ -1309,6 +1367,25 @@ async function runAdvisorQuery(
             `(${toolNames || 'none'}), read ${filesRead} ${filesRead === 1 ? 'file' : 'files'}, ` +
             `and consumed ${formatNumber(tokens)} tokens. ` +
             `\n\nTry re-asking with a narrower question.`,
+          filesRead,
+          toolsCalled,
+          tokens,
+          durationMs,
+          webSearched,
+          blocks,
+          interrupted: true,
+          model: advisorModel,
+          conversationsRead,
+        }
+      }
+      if (terminalResult?.reason === 'aborted_tools') {
+        return {
+          advice:
+            `Advisor was interrupted while running tools. ` +
+            `It made ${toolsCalled} tool ${toolsCalled === 1 ? 'call' : 'calls'} ` +
+            `(${toolNames || 'none'}) and read ${filesRead} ${filesRead === 1 ? 'file' : 'files'} ` +
+            `before being stopped. ` +
+            `\n\nTry re-asking or narrow the scope.`,
           filesRead,
           toolsCalled,
           tokens,
