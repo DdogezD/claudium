@@ -648,49 +648,64 @@ type CachedSnapshot = {
 
 let _cachedSnapshot: CachedSnapshot | null = null
 
+/**
+ * Build a lossless fingerprint from the subset of message fields that affect
+ * serialization output (entry text, searchBody, tools, toolResults, searchText,
+ * truncated, hasThinking, charLength) and entry-id assignment.
+ *
+ * Uses a structured tuple projection + JSON.stringify — no prefixes, no hashes.
+ * Two snapshots share the same fingerprint **iff** they produce identical
+ * observable output.  This is the invariant the cache depends on.
+ *
+ * Coupling: if doSerializeConversationLog starts reading a new block field,
+ * the corresponding case below MUST be updated in the same commit.
+ */
 function buildSnapshotFingerprint(messages: readonly Message[]): string {
-  const parts = messages.map(m => {
-    const uuid = (m as any).uuid ?? ''
-    const msgType = (m as any).type ?? '?'
-    const content = (m as any).message?.content
+  const projection = messages.map(m => {
+    const msg = m as any
+    const content = msg.message?.content
+
+    let projectedContent: unknown
+
     if (typeof content === 'string') {
-      // Include content prefix + length to detect same-length replacements
-      const prefix = content.slice(0, 80)
-      return `${msgType}:${uuid}:s${content.length}:${prefix}`
-    }
-    if (Array.isArray(content)) {
-      const summary = content.map((b: any, idx: number) => {
-        const type = b.type ?? '?'
-        if (type === 'text' && typeof b.text === 'string') {
-          const prefix = b.text.slice(0, 80)
-          return `t${idx}:${b.text.length}:${prefix}`
-        }
-        if (type === 'tool_use') {
-          const input = b.input != null ? JSON.stringify(b.input) : ''
-          return `tu${idx}:${b.id ?? ''}:${b.name ?? ''}:${input}`
-        }
-        if (type === 'tool_result') {
-          const tc = b.content
-          let clen = 0
-          let cprefix = ''
-          if (typeof tc === 'string') {
-            clen = tc.length
-            cprefix = tc.slice(0, 60)
-          } else if (Array.isArray(tc)) {
-            clen = tc.length
+      projectedContent = ['s', content]
+    } else if (Array.isArray(content)) {
+      projectedContent = [
+        'a',
+        content.map((block: any) => {
+          switch (block?.type) {
+            case 'text':
+              return ['t', block.text]
+
+            case 'tool_use':
+              return ['u', block.id, block.name, block.input]
+
+            case 'tool_result':
+              return ['r', block.tool_use_id, !!block.is_error, block.content]
+
+            case 'thinking':
+            case 'redacted_thinking':
+              return ['h', typeof block.thinking === 'string' ? block.thinking.length : 0]
+
+            case 'image':
+            case 'image_url':
+              // Serializer emits only the block-type marker; content is opaque.
+              return [block.type]
+
+            default:
+              // Serializer currently ignores unknown block contents.
+              return [block?.type ?? null]
           }
-          return `tr${idx}:${b.tool_use_id ?? ''}:${b.is_error ? 'e' : 'ok'}:${clen}:${cprefix}`
-        }
-        if (type === 'thinking' || type === 'redacted_thinking') {
-          return `th${idx}:${typeof b.thinking === 'string' ? b.thinking.length : 0}`
-        }
-        return `${type}${idx}`
-      }).join(',')
-      return `${msgType}:${uuid}:[${summary}]`
+        }),
+      ]
+    } else {
+      projectedContent = null
     }
-    return `${msgType}:${uuid}`
+
+    return [msg.type ?? null, msg.uuid ?? null, projectedContent]
   })
-  return parts.join('|')
+
+  return JSON.stringify(projection)
 }
 
 function getConversationSnapshot(
@@ -798,7 +813,8 @@ function doSerializeConversationLog(
           }
           textParts.push(`[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`)
           bodyParts.push(resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS))
-          originalDisplayLen += `[${label}: ${resultText}]`.length
+          // [label: resultText] = 4 chars of framing + label + resultText
+          originalDisplayLen += label.length + resultText.length + 4
         } else if (block.is_error) {
           textParts.push(`[tool_result_error]`)
           originalDisplayLen += '[tool_result_error]'.length
@@ -821,7 +837,10 @@ function doSerializeConversationLog(
       text = text.slice(0, 16000) + '\n\n[...truncated]'
       truncated = true
     }
-    // Cap searchBody to stay within read-visible range
+    // Cap searchBody: text includes tool-result wrappers / image markers that
+    // searchBody doesn't, so text.length >= searchBody.length.  The first 16K
+    // of searchBody covers at least the semantic content visible in the first
+    // 16K of text (the offset is bounded by wrapper overhead, typically <500 chars).
     if (searchBody.length > 16000) {
       searchBody = searchBody.slice(0, 16000)
     }
