@@ -164,10 +164,213 @@ type ConversationEntry = {
   }[]
   hasThinking?: boolean
   truncated: boolean
+  /** Tool input text for BM25 search (not displayed in read output). */
+  searchText?: string
 }
 
-// Serialization cache: fingerprint = all UUIDs joined.
-// A middle-message change or reorder changes the UUID sequence.
+// ---------------------------------------------------------------------------
+// BM25 search index
+// ---------------------------------------------------------------------------
+
+function tokenize(text: string): string[] {
+  // Split camelCase and acronym boundaries before lowercasing
+  const camelSplit = text.replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+  const lowered = camelSplit.toLowerCase()
+  const asciiTokens = lowered.split(/[^a-z0-9]+/).filter(t => t.length > 0)
+
+  // CJK bigrams for basic Chinese/Japanese/Korean substring matching.
+  // A single unspaced CJK sentence is one token under ascii rules; bigrams
+  // allow multi-character queries like "分页" to match "实现分页功能".
+  const cjkTokens: string[] = []
+  const cjkOnly = text.replace(/[^\u4e00-\u9fff\u3400-\u4dbf]/g, '')
+  if (cjkOnly.length >= 2) {
+    for (let i = 0; i < cjkOnly.length - 1; i++) {
+      cjkTokens.push(cjkOnly.slice(i, i + 2).toLowerCase())
+    }
+  }
+
+  return [...asciiTokens, ...cjkTokens]
+}
+
+/** Tokenize a tool name — must use the same tokenizer as queries. */
+function tokenizeToolName(name: string): string[] {
+  return tokenize(name)
+}
+
+interface SearchDoc {
+  entry: ConversationEntry
+  tokens: string[]
+  tf: Map<string, number>
+}
+
+interface SearchIndex {
+  docs: SearchDoc[]
+  df: Map<string, number>
+  avgdl: number
+  N: number
+}
+
+function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
+  const docs: SearchDoc[] = []
+  const df = new Map<string, number>()
+  let totalTokens = 0
+
+  for (const entry of entries) {
+    const tokens: string[] = []
+
+    // Entry text
+    for (const t of tokenize(entry.text)) tokens.push(t)
+
+    // Tool-use input snippets (commands, file paths, URLs, etc.)
+    if (entry.searchText) {
+      for (const t of tokenize(entry.searchText)) tokens.push(t)
+    }
+
+    // Tool names (use the same tokenizer so camelCase splitting matches)
+    if (entry.tools) {
+      for (const name of entry.tools) {
+        for (const t of tokenizeToolName(name)) tokens.push(t)
+      }
+    }
+
+    // Tool result names + error status
+    if (entry.toolResults) {
+      for (const r of entry.toolResults) {
+        if (r.toolName) {
+          for (const t of tokenizeToolName(r.toolName)) tokens.push(t)
+        }
+        if (r.isError) tokens.push('error')
+      }
+    }
+
+    if (tokens.length === 0) continue
+
+    const tf = new Map<string, number>()
+    for (const t of tokens) {
+      tf.set(t, (tf.get(t) ?? 0) + 1)
+    }
+
+    const termSet = new Set(tokens)
+    for (const t of termSet) {
+      df.set(t, (df.get(t) ?? 0) + 1)
+    }
+
+    docs.push({ entry, tokens, tf })
+    totalTokens += tokens.length
+  }
+
+  return {
+    docs,
+    df,
+    avgdl: docs.length > 0 ? totalTokens / docs.length : 0,
+    N: docs.length,
+  }
+}
+
+const BM25_K1 = 1.2
+const BM25_B = 0.75
+
+function bm25Score(
+  queryTokens: string[],
+  doc: SearchDoc,
+  index: SearchIndex,
+): number {
+  let score = 0
+  const dl = doc.tokens.length
+
+  for (const qt of queryTokens) {
+    const df = index.df.get(qt)
+    if (!df) continue
+    const tf = doc.tf.get(qt)
+    if (!tf) continue
+
+    // Positive IDF variant
+    const idf = Math.log(1 + (index.N - df + 0.5) / (df + 0.5))
+    const numerator = tf * (BM25_K1 + 1)
+    const denominator = tf + BM25_K1 * (1 - BM25_B + BM25_B * (dl / index.avgdl))
+    score += idf * (numerator / denominator)
+  }
+
+  return score
+}
+
+function bm25Search(
+  query: string,
+  index: SearchIndex,
+  topK: number,
+): { entry: ConversationEntry; relevance: number }[] {
+  if (index.docs.length === 0) return []
+
+  const queryTokens = [...new Set(tokenize(query))]
+  if (queryTokens.length === 0) return []
+
+  const scores = index.docs.map(doc => ({
+    entry: doc.entry,
+    score: bm25Score(queryTokens, doc, index),
+  }))
+
+  const matched = scores.filter(s => s.score > 0)
+  if (matched.length === 0) return []
+
+  matched.sort((a, b) => b.score - a.score || b.entry.id - a.entry.id)
+  const top = matched.slice(0, topK)
+  const maxScore = top[0]!.score
+
+  return top.map(s => ({
+    entry: s.entry,
+    relevance: Number.isFinite(maxScore as number) && maxScore > 0
+      ? s.score / maxScore
+      : 0,
+  }))
+}
+
+// Shared helper for role/tool-status labels used by both formatConversationIndex and formatSearchResults
+function formatEntryLabel(e: ConversationEntry): string {
+  let status = ''
+  if (e.role === 'tool_result' && e.toolResults && e.toolResults.length > 0) {
+    const parts = e.toolResults.map(r => {
+      const prefix = r.toolName ?? '?'
+      return `${prefix} ${r.isError ? '\u2717' : '\u2713'}`
+    })
+    status = ` ${parts.join(', ')}`
+  }
+  const roleLabel =
+    e.role === 'user' ? 'USER'
+    : e.role === 'assistant'
+      ? (e.hasThinking && e.charLength === 0 && !e.tools && !e.toolResults
+        ? 'ASSISTANT(thinking)' : 'ASSISTANT')
+    : `TOOL_RESULT${status}`
+  return roleLabel
+}
+
+function formatSearchResults(
+  query: string,
+  results: { entry: ConversationEntry; relevance: number }[],
+  totalIndexed: number,
+): string {
+  if (results.length === 0) {
+    return `No conversation messages matched "${query}".`
+  }
+  const header =
+    `# Search results for "${query}" — showing ${results.length} ` +
+    `of ${totalIndexed > 0 ? totalIndexed + ' indexed ' : ''}messages`
+  const lines = results.map(r => {
+    const label = formatEntryLabel(r.entry)
+    const toolInfo = r.entry.tools ? ` [tools: ${r.entry.tools.join(', ')}]` : ''
+    const trunc = r.entry.truncated ? ' (truncated)' : ''
+    return `[${r.entry.id}] ${label} (${r.relevance.toFixed(3)} relevance) (${r.entry.charLength} chars)${toolInfo}${trunc}`
+  })
+  const ids = results.map(r => r.entry.id)
+  const hint = results.length > 0
+    ? `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
+    : ''
+  return `${header}\n\n${lines.join('\n')}${hint}`
+}
+
+// ---------------------------------------------------------------------------
+// Serialization cache
+// ---------------------------------------------------------------------------
 let _cachedEntries: ConversationEntry[] | null = null
 let _cachedFingerprint = ''
 
@@ -230,6 +433,7 @@ function doSerializeConversationLog(
     const content = rawContent as any[]
     const textParts: string[] = []
     const tools: string[] = []
+    const searchSnippets: string[] = []
     const toolResults: { toolUseId: string; toolName?: string; isError: boolean }[] = []
     let hasThinking = false
     let truncated = false
@@ -239,6 +443,11 @@ function doSerializeConversationLog(
         textParts.push(block.text)
       } else if (block.type === 'tool_use') {
         tools.push(block.name || 'unknown')
+        // Capture tool-use input for BM25 search (bounded to prevent bloat)
+        if (block.input && typeof block.input === 'object') {
+          const inputStr = JSON.stringify(block.input)
+          searchSnippets.push(inputStr.slice(0, 500))
+        }
       } else if (block.type === 'tool_result') {
         toolResults.push({
           toolUseId: block.tool_use_id ?? '',
@@ -282,6 +491,7 @@ function doSerializeConversationLog(
       tools: tools.length > 0 ? tools : undefined,
       toolResults: toolResults.length > 0 ? toolResults : undefined,
       hasThinking: hasThinking || undefined,
+      searchText: searchSnippets.length > 0 ? searchSnippets.join(' ') : undefined,
       truncated,
     })
   }
@@ -314,29 +524,10 @@ function formatConversationIndex(
     : `# Conversation log manifest (${total} messages available, showing ${startIdx}-${endIdx - 1})`
 
   const lines = page.map(e => {
-    // Role label
-    let roleLabel: string
-    if (e.role === 'user') {
-      roleLabel = 'USER'
-    } else if (e.role === 'assistant') {
-      // Thinking-only: has thinking blocks, no text, no tool_use blocks
-      const isThinkingOnly = e.hasThinking && e.charLength === 0 && !e.tools && !e.toolResults
-      roleLabel = isThinkingOnly ? 'ASSISTANT(thinking)' : 'ASSISTANT'
-    } else {
-      roleLabel = 'TOOL_RESULT'
-    }
+    const label = formatEntryLabel(e)
     const toolInfo = e.tools ? ` [tools: ${e.tools.join(', ')}]` : ''
     const trunc = e.truncated ? ' (truncated)' : ''
-    // Show tool name and pass/fail for tool_result entries
-    let statusInfo = ''
-    if (e.toolResults && e.toolResults.length > 0) {
-      const parts = e.toolResults.map(r => {
-        const prefix = r.toolName ?? '?'
-        return `${prefix} ${r.isError ? '\u2717' : '\u2713'}`
-      })
-      statusInfo = ` ${parts.join(', ')}`
-    }
-    return `[${e.id}] ${roleLabel}${statusInfo} (${e.charLength} chars)${toolInfo}${trunc}`
+    return `[${e.id}] ${label} (${e.charLength} chars)${toolInfo}${trunc}`
   })
 
   if (hasNewer) {
@@ -351,6 +542,7 @@ function formatConversationIndex(
 
 function createConversationLogTool(entries: ConversationEntry[]) {
   const entryMap = new Map(entries.map(e => [e.id, e]))
+  const searchIndex = buildSearchIndex(entries)
   // Track which unique IDs were successfully read (for conversationsRead stats)
   const uniqueReadIds = new Set<number>()
 
@@ -358,17 +550,30 @@ function createConversationLogTool(entries: ConversationEntry[]) {
     name: CONVERSATION_LOG_TOOL_NAME,
 
     async description() {
-      return `Read the main agent's conversation history after the latest compact boundary. Use action="index" first, then action="read" with message IDs.`
+      return `Read the main agent's conversation history after the latest compact boundary. Use action="index" to browse, "search" to find messages by keyword, then "read" with message IDs.`
     },
 
     async prompt() {
-      return `Read conversation history of the main agent. The log contains all post-compaction user and assistant messages. Use action: "index" to list them, then action: "read" with message_ids to fetch details for the ones you need.`
+      return `Read conversation history of the main agent. All post-compaction user and assistant messages are available. Use action: "index" to list recent messages, action: "search" to locate messages by keyword, and action: "read" with message_ids to fetch details for the ones you need.`
     },
 
     inputSchema: z.strictObject({
-      action: z.enum(['index', 'read']).describe(
-        '"index" lists available messages (newest first, most recent 200 by default). Use offset/limit to page. "read" fetches full content for specific message IDs.',
+      action: z.enum(['index', 'read', 'search']).describe(
+        '"index" lists available messages (newest first, most recent 200 by default). Use offset/limit to page. "read" fetches full content for specific message IDs. "search" finds messages matching a query via keyword-based ranking.',
       ),
+      query: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('Text to search for. Required when action is "search".'),
+      top_k: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .default(10)
+        .optional()
+        .describe('Number of search results to return. Default 10, max 50.'),
       message_ids: z
         .array(z.number().int().min(0))
         .max(CONVERSATION_LOG_READ_LIMIT)
@@ -404,15 +609,21 @@ function createConversationLogTool(entries: ConversationEntry[]) {
     },
 
     renderToolUseMessage(input) {
-      const inp = input as Partial<{ action: string; message_ids?: number[] }>
+      const inp = input as Partial<{ action: string; message_ids?: number[]; query?: string }>
       if (inp.action === 'index') return <Text>Reading conversation index</Text>
+      if (inp.action === 'search') return <Text>Searching conversation log</Text>
       const count = inp.message_ids?.length ?? 0
       return <Text>{`Reading ${count} ${count === 1 ? 'message' : 'messages'} from log`}</Text>
     },
 
-    async call(input: { action: 'index' | 'read'; message_ids?: number[]; offset?: number; limit?: number }) {
+    async call(input: { action: 'index' | 'read' | 'search'; message_ids?: number[]; offset?: number; limit?: number; query?: string; top_k?: number }) {
       if (input.action === 'index') {
         return { data: formatConversationIndex(entries, input.offset, input.limit) }
+      }
+      if (input.action === 'search') {
+        if (!input.query) return { data: 'Query is required for search action.' }
+        const results = bm25Search(input.query, searchIndex, input.top_k ?? 10)
+        return { data: formatSearchResults(input.query, results, searchIndex.N) }
       }
       if (input.action === 'read') {
         const ids = input.message_ids ?? []
@@ -441,7 +652,7 @@ function createConversationLogTool(entries: ConversationEntry[]) {
         }
         return { data: results.join('\n\n---\n\n') }
       }
-      return { data: 'Unknown action. Use "index" or "read".' }
+      return { data: 'Unknown action. Use "index", "read", or "search".' }
     },
 
     userFacingName() { return CONVERSATION_LOG_TOOL_NAME },
@@ -463,7 +674,10 @@ function toolLabel(name: string): string {
   if (name === 'WebSearch') return 'Searching web'
   if (name === 'WebFetch') return 'Fetching URL'
   if (name === 'Bash') return 'Running'
-  if (name === CONVERSATION_LOG_TOOL_NAME) return 'Reading log'
+  if (name === CONVERSATION_LOG_TOOL_NAME) {
+    // renderToolUseMessage already handles index/search/read visually
+    return 'Reading log'
+  }
   return name
 }
 
@@ -482,6 +696,7 @@ function formatToolInput(toolName: string, input: unknown): string {
   if (toolName === 'Glob' && typeof obj.pattern === 'string') return obj.pattern
   if (toolName === 'Bash' && typeof obj.command === 'string') return truncateInput(obj.command, 80)
   if (toolName === CONVERSATION_LOG_TOOL_NAME) {
+    if (obj.action === 'search') return `"${truncateInput(obj.query, 60)}"`
     if (obj.action === 'index') return '(index)'
     if (obj.action === 'read' && Array.isArray(obj.message_ids)) return `[${(obj.message_ids as number[]).join(', ')}]`
     return '(log)'
