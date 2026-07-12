@@ -204,8 +204,10 @@ interface SearchDoc {
   entry: ConversationEntry
   tokens: string[]
   tf: Map<string, number>
-  /** Tokens represented in visible message text or displayed metadata. */
-  displayedTokens: Set<string>
+  /** Tokens from visible message text (displayed in read output). */
+  bodyTokens: Set<string>
+  /** Tokens from tool names / tool-result metadata (visible in index labels). */
+  metadataTokens: Set<string>
   /** Tokens found in hidden tool-use input/searchText. */
   searchTextTokens: Set<string>
 }
@@ -224,13 +226,14 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
 
   for (const entry of entries) {
     const tokens: string[] = []
-    const displayedTokens = new Set<string>()
+    const bodyTokens = new Set<string>()
+    const metadataTokens = new Set<string>()
     const searchTextTokens = new Set<string>()
 
     // Entry text — displayed in read output
     for (const t of tokenize(entry.text)) {
       tokens.push(t)
-      displayedTokens.add(t)
+      bodyTokens.add(t)
     }
 
     // Tool-use input snippets — searchable but hidden
@@ -241,12 +244,12 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
       }
     }
 
-    // Tool names — displayed in index/search result labels
+    // Tool names — displayed in index/search result labels (visible metadata)
     if (entry.tools) {
       for (const name of entry.tools) {
         for (const t of tokenizeToolName(name)) {
           tokens.push(t)
-          displayedTokens.add(t)
+          metadataTokens.add(t)
         }
       }
     }
@@ -257,12 +260,12 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
         if (r.toolName) {
           for (const t of tokenizeToolName(r.toolName)) {
             tokens.push(t)
-            displayedTokens.add(t)
+            metadataTokens.add(t)
           }
         }
         if (r.isError) {
           tokens.push('error')
-          displayedTokens.add('error')
+          metadataTokens.add('error')
         }
       }
     }
@@ -279,7 +282,7 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
       df.set(t, (df.get(t) ?? 0) + 1)
     }
 
-    docs.push({ entry, tokens, tf, displayedTokens, searchTextTokens })
+    docs.push({ entry, tokens, tf, bodyTokens, metadataTokens, searchTextTokens })
     totalTokens += tokens.length
   }
 
@@ -326,14 +329,14 @@ function bm25Score(
   }
 
   // Hidden-input penalty: a document where every matched token comes from
-  // tool-input/searchText only (none from visible text or displayed metadata)
+  // tool-input/searchText only (none from visible body text or metadata)
   // should not outrank messages with visible explanatory content.
   let matchedAny = false
   let allFromSearchText = true
   for (const qt of queryTokens) {
     if (!doc.tf.has(qt)) continue
     matchedAny = true
-    if (doc.displayedTokens.has(qt)) {
+    if (doc.bodyTokens.has(qt) || doc.metadataTokens.has(qt)) {
       allFromSearchText = false
       break
     }
@@ -365,34 +368,34 @@ function buildSearchExcerpt(
   doc: SearchDoc,
   matchedTokens: string[],
 ): string | undefined {
-  // Try visible text first
-  if (matchedTokens.some(t => doc.displayedTokens.has(t)) && doc.entry.text.length > 0) {
+  // 1. Matches in body text — show context around the first matching token
+  for (const token of matchedTokens) {
+    if (!doc.bodyTokens.has(token)) continue
     const lower = doc.entry.text.toLowerCase()
-    for (const token of matchedTokens) {
-      const idx = lower.indexOf(token)
-      if (idx !== -1) {
-        const start = Math.max(0, idx - 30)
-        const end = Math.min(lower.length, idx + token.length + 30)
-        return doc.entry.text.slice(start, end)
-      }
+    const idx = lower.indexOf(token)
+    if (idx !== -1) {
+      const start = Math.max(0, idx - 30)
+      const end = Math.min(lower.length, idx + token.length + 30)
+      const excerpt = doc.entry.text.slice(start, end).replace(/\s+/g, ' ')
+      return `"${excerpt}"`
     }
-    // No direct match found — show first N chars
-    return doc.entry.text.slice(0, 60)
   }
-  // Tool metadata match (name in index label) — no excerpt needed
-  const allMatchedDisplayed = matchedTokens.every(
-    t => doc.displayedTokens.has(t) && !doc.searchTextTokens.has(t),
-  )
-  if (allMatchedDisplayed) return undefined
-  // Hidden tool-input match
-  if (doc.entry.searchText) {
-    const lower = doc.entry.searchText.toLowerCase()
-    for (const token of matchedTokens) {
+  // 2. All matches are in displayed metadata (tool names, result status)
+  // — no excerpt needed; the index label already shows this
+  if (matchedTokens.every(t => doc.metadataTokens.has(t))) {
+    return undefined
+  }
+  // 3. Matches in hidden tool input
+  for (const token of matchedTokens) {
+    if (!doc.searchTextTokens.has(token)) continue
+    if (doc.entry.searchText) {
+      const lower = doc.entry.searchText.toLowerCase()
       const idx = lower.indexOf(token)
       if (idx !== -1) {
         const start = Math.max(0, idx - 30)
         const end = Math.min(lower.length, idx + token.length + 30)
-        return `tool input: …${doc.entry.searchText.slice(start, end)}…`
+        const excerpt = doc.entry.searchText.slice(start, end).replace(/\s+/g, ' ')
+        return `tool input: "${excerpt}"`
       }
     }
   }
