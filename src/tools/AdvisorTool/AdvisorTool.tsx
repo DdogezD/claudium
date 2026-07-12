@@ -1252,19 +1252,21 @@ async function runAdvisorQuery(
   for (const m of assistantMessages) {
     const usage = (m as any).message?.usage
     if (!usage) continue
-    const input = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0)
+    const input = usage.input_tokens ?? 0
     const output = usage.output_tokens ?? 0
+    const cacheCreation = usage.cache_creation_input_tokens ?? 0
+    const cacheRead = usage.cache_read_input_tokens ?? 0
     const responseId = (m as any).message?.id as string | undefined
     if (!responseId) {
-      unkeyedTokens += input + output
+      unkeyedTokens += input + output + cacheCreation + cacheRead
       continue
     }
     const prev = usageByResponse.get(responseId)
     usageByResponse.set(responseId, {
       input: Math.max(prev?.input ?? 0, input),
       output: Math.max(prev?.output ?? 0, output),
-      cacheCreation: Math.max(prev?.cacheCreation ?? 0, usage.cache_creation_input_tokens ?? 0),
-      cacheRead: Math.max(prev?.cacheRead ?? 0, usage.cache_read_input_tokens ?? 0),
+      cacheCreation: Math.max(prev?.cacheCreation ?? 0, cacheCreation),
+      cacheRead: Math.max(prev?.cacheRead ?? 0, cacheRead),
     })
   }
   const tokens = unkeyedTokens +
