@@ -1300,20 +1300,20 @@ export const AdvisorTool = buildTool({
       return <Text dimColor>No response received</Text>
     }
     const children: React.ReactNode[] = []
-    children.push(<Text bold>{`${header}\n`}</Text>)
+    children.push(<Text key="header" bold>{`${header}\n`}</Text>)
 
     if (options?.verbose || options?.isTranscriptMode) {
       const blocks = content.blocks ?? []
       if (blocks.length > 0) {
-        for (const block of blocks) {
+        blocks.forEach((block, i) => {
           if (block.type === 'text') {
-            children.push(<Text>{block.text + '\n'}</Text>)
+            children.push(<Text key={`b-${i}`}>{block.text + '\n'}</Text>)
           } else {
-            children.push(<Text dimColor>{block.text + '\n'}</Text>)
+            children.push(<Text key={`b-${i}`} dimColor>{block.text + '\n'}</Text>)
           }
-        }
+        })
       } else {
-        children.push(<Text>{advice}</Text>)
+        children.push(<Text key="advice">{advice}</Text>)
       }
       return (
         <Box flexDirection="column" borderStyle="round" paddingX={1}>
@@ -1327,7 +1327,7 @@ export const AdvisorTool = buildTool({
     const hasToolBlocks = (content.blocks ?? []).some(b => b.type === 'tool')
     const needsExpand = adviceTruncated || hasToolBlocks
     children.push(
-      <Text dimColor>{preview}{adviceTruncated ? '…' : ''}{needsExpand && <CtrlOToExpand />}</Text>,
+      <Text key="preview" dimColor>{preview}{adviceTruncated ? '…' : ''}{needsExpand && <CtrlOToExpand />}</Text>,
     )
     return (
       <Box flexDirection="column" borderStyle="round" paddingX={1}>
@@ -1549,8 +1549,23 @@ async function runAdvisorQuery(
     }
   } finally {
     if (tickTimer) clearInterval(tickTimer)
-    // Ensure iterator is closed on all paths
-    try { await iterator.return?.() } catch {}
+    // Ensure iterator is closed with a bounded cleanup timeout.
+    if (iterator.return) {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          iterator.return(),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('cleanup timeout')), 5000)
+          }),
+        ])
+      } catch (err) {
+        // Cleanup failure must not mask the primary error; log for diagnostics.
+        if (typeof (console as any)?.debug === 'function') (console as any).debug('Advisor iterator cleanup:', err)
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId)
+      }
+    }
   }
 
   if (terminalResult?.reason === 'model_error') {
