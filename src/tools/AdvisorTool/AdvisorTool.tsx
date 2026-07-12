@@ -76,6 +76,7 @@ const CONVERSATION_LOG_READ_LIMIT = 20
 const CONVERSATION_LOG_TOTAL_CHARS = 80_000
 const CONVERSATION_LOG_RESULT_CHARS = 8_000    // Per tool-result cap
 const CONVERSATION_LOG_SEARCH_SNIPPET_CHARS = 2_000
+const CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS = 16_000  // Aggregate per-entry cap for all snippets
 const ADVISOR_MAX_TURNS = 200
 
 // ---------------------------------------------------------------------------
@@ -708,6 +709,25 @@ function buildSnapshotFingerprint(messages: readonly Message[]): string {
   return JSON.stringify(projection)
 }
 
+/**
+ * Return the portion of `bodyText` that falls within the first `cap` chars
+ * of display output.  `displayStart` is the position of the display part in
+ * the assembled text, and `bodyOffsetInDisplay` is where the body content
+ * starts within that display part (0 for text blocks, ≥0 for wrapped parts).
+ */
+function clampVisible(
+  bodyText: string,
+  displayStart: number,
+  bodyOffsetInDisplay: number,
+  cap: number,
+): string | null {
+  const bodyDisplayStart = displayStart + bodyOffsetInDisplay
+  if (bodyDisplayStart >= cap) return null
+  const available = cap - bodyDisplayStart
+  if (available >= bodyText.length) return bodyText
+  return bodyText.slice(0, Math.max(0, available))
+}
+
 function getConversationSnapshot(
   messages: readonly Message[],
 ): { entries: ConversationEntry[]; index: SearchIndex } {
@@ -771,27 +791,39 @@ function doSerializeConversationLog(
 
     const content = rawContent as any[]
     const textParts: string[] = []
-    const bodyParts: string[] = []
     const tools: string[] = []
     const searchSnippets: string[] = []
+    let searchSnippetsTotal = 0
     const toolResults: { toolName?: string; isError: boolean }[] = []
     let hasThinking = false
     let truncated = false
     // Track original (pre-truncation) display length separately from the
     // actual textParts content (which may be per-result-capped).
     let originalDisplayLen = 0
+    // Build searchBody incrementally so it only includes semantic content
+    // that falls within the read-visible 16K display window.
+    const searchBodyParts: string[] = []
+    const ENTRY_DISPLAY_CAP = 16000
+    let displayPos = 0  // current position in the assembled text (includes newlines)
 
     for (const block of content) {
       if (block.type === 'text' && block.text) {
         textParts.push(block.text)
-        bodyParts.push(block.text)
         originalDisplayLen += block.text.length
+        const visibleBody = clampVisible(block.text, displayPos, 0, ENTRY_DISPLAY_CAP)
+        if (visibleBody) searchBodyParts.push(visibleBody)
+        displayPos += block.text.length + 1  // +1 for newline separator
       } else if (block.type === 'tool_use') {
         tools.push(block.name || 'unknown')
-        // Capture tool-use input for BM25 search (bounded to prevent bloat)
+        // Capture tool-use input for BM25 search (per-snippet + aggregate cap)
         if (block.input && typeof block.input === 'object') {
           const inputStr = JSON.stringify(block.input)
-          searchSnippets.push(inputStr.slice(0, CONVERSATION_LOG_SEARCH_SNIPPET_CHARS))
+          if (searchSnippetsTotal < CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS) {
+            const remaining = CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS - searchSnippetsTotal
+            const snippet = inputStr.slice(0, Math.min(CONVERSATION_LOG_SEARCH_SNIPPET_CHARS, remaining))
+            searchSnippets.push(snippet)
+            searchSnippetsTotal += snippet.length
+          }
         }
       } else if (block.type === 'tool_result') {
         toolResults.push({
@@ -812,12 +844,20 @@ function doSerializeConversationLog(
             truncated = true
           }
           textParts.push(`[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`)
-          bodyParts.push(resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS))
           // [label: resultText] = 4 chars of framing + label + resultText
           originalDisplayLen += label.length + resultText.length + 4
+          // Body text starts after "[label: " in the display string
+          const bodyOffsetInDisplay = label.length + 3  // "[label: "
+          const visibleBody = clampVisible(
+            resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS),
+            displayPos, bodyOffsetInDisplay, ENTRY_DISPLAY_CAP,
+          )
+          if (visibleBody) searchBodyParts.push(visibleBody)
+          displayPos += `[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`.length + 1
         } else if (block.is_error) {
           textParts.push(`[tool_result_error]`)
           originalDisplayLen += '[tool_result_error]'.length
+          displayPos += '[tool_result_error]'.length + 1
         }
       } else if (block.type === 'thinking' || block.type === 'redacted_thinking') {
         hasThinking = true
@@ -825,25 +865,19 @@ function doSerializeConversationLog(
         // Emit a compact marker — actual base64 data is too large for the log
         textParts.push(`[${block.type}]`)
         originalDisplayLen += `[${block.type}]`.length
+        displayPos += `[${block.type}]`.length + 1
       }
     }
 
     let text = textParts.join('\n')
-    let searchBody = bodyParts.join('\n')
     // Original display length: sum of all part lengths + newline separators
     const separatorOverhead = Math.max(0, textParts.length - 1)
     let charLength = originalDisplayLen + separatorOverhead
-    if (charLength > 16000) {
-      text = text.slice(0, 16000) + '\n\n[...truncated]'
+    if (charLength > ENTRY_DISPLAY_CAP) {
+      text = text.slice(0, ENTRY_DISPLAY_CAP) + '\n\n[...truncated]'
       truncated = true
     }
-    // Cap searchBody: text includes tool-result wrappers / image markers that
-    // searchBody doesn't, so text.length >= searchBody.length.  The first 16K
-    // of searchBody covers at least the semantic content visible in the first
-    // 16K of text (the offset is bounded by wrapper overhead, typically <500 chars).
-    if (searchBody.length > 16000) {
-      searchBody = searchBody.slice(0, 16000)
-    }
+    const searchBody = searchBodyParts.join('\n')
 
     entries.push({
       id: i,
@@ -962,7 +996,8 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       // action === 'read'
       const ids = input.message_ids
       const seen = new Set<number>()
-      // De-duplicate while preserving order; count unique valid IDs
+      const TRUNCATION_MARKER = '\n\n[...output truncated]'
+      const SEPARATOR = '\n\n---\n\n'
       let totalChars = 0
       const results: string[] = []
       for (const id of ids) {
@@ -970,20 +1005,26 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
         seen.add(id)
         const entry = entryMap.get(id)
         if (!entry) {
-          results.push(`[${id}] NOT FOUND — ID out of range`)
+          const notFoundLine = `[${id}] NOT FOUND — ID out of range`
+          totalChars += notFoundLine.length + SEPARATOR.length
+          results.push(notFoundLine)
           continue
         }
         uniqueReadIds.add(id)
         const truncTag = entry.truncated ? ' [truncated]' : ''
         const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
-        totalChars += line.length
-        if (totalChars > CONVERSATION_LOG_TOTAL_CHARS) {
-          results.push(line.slice(0, CONVERSATION_LOG_TOTAL_CHARS - totalChars + line.length) + '\n\n[...output truncated]')
+        const cost = line.length + SEPARATOR.length
+        if (totalChars + cost > CONVERSATION_LOG_TOTAL_CHARS) {
+          const remaining = CONVERSATION_LOG_TOTAL_CHARS - totalChars - TRUNCATION_MARKER.length
+          if (remaining > 0) {
+            results.push(line.slice(0, remaining) + TRUNCATION_MARKER)
+          }
           break
         }
+        totalChars += cost
         results.push(line)
       }
-      return { data: results.join('\n\n---\n\n') }
+      return { data: results.join(SEPARATOR) }
     },
 
     userFacingName() { return CONVERSATION_LOG_TOOL_NAME },
