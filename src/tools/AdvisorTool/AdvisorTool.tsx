@@ -128,10 +128,21 @@ export const AdvisorTool = buildTool({
   },
 
   mapToolResultToToolResultBlockParam(output, toolUseID) {
+    const advice = output.advice || ''
+    const isInterrupted = output.interrupted && output.terminationReason !== 'completed'
+
+    let content = advice
+    if (isInterrupted && output.terminationReason) {
+      const banner = `[Advisor interrupted — reason: ${output.terminationReason.replace(/_/g, ' ')}]\n\n`
+      content = banner + (advice || 'No partial advice was produced.')
+    } else if (isInterrupted) {
+      content = `[Advisor interrupted]\n\n${advice || 'No partial advice was produced.'}`
+    }
+
     return {
       tool_use_id: toolUseID,
       type: 'tool_result' as const,
-      content: output.advice,
+      content,
     }
   },
 
