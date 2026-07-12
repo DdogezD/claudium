@@ -43,19 +43,30 @@ import { getConversationSnapshot } from './conversationLog/snapshot.js'
 import { createConversationLogTool } from './conversationLog/ConversationLogTool.js'
 
 // Read-only built-in tools the advisor subagent can use.
-// Only canonical identity (Set.has via reference equality) is trusted —
-// no name-based fallback. Provider-wrapped tools with different references
-// are NOT allowed unless registered through a private provenance registry.
-const READ_ONLY_BUILTIN_TOOLS = new Set<Tool>([
-  BashTool,
-  FileReadTool,
-  GrepTool,
-  GlobTool,
-  WebSearchTool,
-  WebFetchTool,
-  ListMcpResourcesTool,
-  ReadMcpResourceTool,
-])
+// Both the identity Set and name→canonical Map are built lazily on
+// first use, so module initialization order can't leave undefined
+// entries from unresolved circular imports.
+let _readOnlyBuiltinTools: Set<Tool> | null = null
+let _canonicalByName: Map<string, Tool> | null = null
+
+function getReadOnlyBuiltinTools(): Set<Tool> {
+  if (_readOnlyBuiltinTools) return _readOnlyBuiltinTools
+  _readOnlyBuiltinTools = new Set([
+    BashTool,
+    FileReadTool,
+    GrepTool,
+    GlobTool,
+    WebSearchTool,
+    WebFetchTool,
+    ListMcpResourcesTool,
+    ReadMcpResourceTool,
+  ])
+  _canonicalByName = new Map()
+  for (const tool of _readOnlyBuiltinTools) {
+    _canonicalByName.set(tool.name, tool)
+  }
+  return _readOnlyBuiltinTools
+}
 
 const ADVISOR_MAX_TURNS = 200
 
@@ -197,16 +208,27 @@ async function runAdvisorQuery(
   const conversationLog = createConversationLogTool(conversationEntries, conversationIndex)
 
   // Build identity-based allowlist from the current tool set.
-  // Only canonical singletons (Set.has reference equality) are trusted.
+  // Identity check first (canonical singletons), then name-based fallback
+  // for provider-wrapped instances.  canUseTool still enforces identity
+  // against the returned canonical tools.
   const allowedAdvisorTools = new Set<Tool>()
   allowedAdvisorTools.add(conversationLog.tool)
 
+  function resolveAllowedTool(tool: Tool): Tool | null {
+    // Fast path: canonical singletons match by reference
+    if (getReadOnlyBuiltinTools().has(tool)) return tool
+    // Provider-wrapped instances lose identity; resolve by name
+    return _canonicalByName!.get(tool.name) ?? null
+  }
+
   function selectAdvisorTools(allTools: readonly Tool[]): Tool[] {
-    const selected = allTools.filter(
-      tool =>
-        tool.name !== ADVISOR_TOOL_NAME &&
-        READ_ONLY_BUILTIN_TOOLS.has(tool),
-    )
+    const selected: Tool[] = []
+    for (const tool of allTools) {
+      if (tool.name === ADVISOR_TOOL_NAME) continue
+      const canonical = resolveAllowedTool(tool)
+      if (!canonical) continue
+      selected.push(canonical)
+    }
     allowedAdvisorTools.clear()
     for (const tool of selected) allowedAdvisorTools.add(tool)
     allowedAdvisorTools.add(conversationLog.tool)
