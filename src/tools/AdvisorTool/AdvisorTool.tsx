@@ -236,7 +236,7 @@ type ConversationEntry = {
 
 const HAN_RUN_RE = /[\u4e00-\u9fff\u3400-\u4dbf]+/g
 
-function tokenize(text: string): string[] {
+export function tokenize(text: string): string[] {
   // Split camelCase and acronym boundaries before lowercasing
   const camelSplit = text.replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
@@ -260,7 +260,7 @@ function tokenize(text: string): string[] {
 }
 
 /** Query-mode tokenizer: single-char Han run → unigram; multi-char → bigrams only. */
-function tokenizeQuery(text: string): string[] {
+export function tokenizeQuery(text: string): string[] {
   const camelSplit = text.replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
   const lowered = camelSplit.toLowerCase()
