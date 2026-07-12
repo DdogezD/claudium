@@ -204,6 +204,10 @@ interface SearchDoc {
   entry: ConversationEntry
   tokens: string[]
   tf: Map<string, number>
+  /** Tokens represented in visible message text or displayed metadata. */
+  displayedTokens: Set<string>
+  /** Tokens found in hidden tool-use input/searchText. */
+  searchTextTokens: Set<string>
 }
 
 interface SearchIndex {
@@ -220,29 +224,46 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
 
   for (const entry of entries) {
     const tokens: string[] = []
+    const displayedTokens = new Set<string>()
+    const searchTextTokens = new Set<string>()
 
-    // Entry text
-    for (const t of tokenize(entry.text)) tokens.push(t)
-
-    // Tool-use input snippets (commands, file paths, URLs, etc.)
-    if (entry.searchText) {
-      for (const t of tokenize(entry.searchText)) tokens.push(t)
+    // Entry text — displayed in read output
+    for (const t of tokenize(entry.text)) {
+      tokens.push(t)
+      displayedTokens.add(t)
     }
 
-    // Tool names (use the same tokenizer so camelCase splitting matches)
-    if (entry.tools) {
-      for (const name of entry.tools) {
-        for (const t of tokenizeToolName(name)) tokens.push(t)
+    // Tool-use input snippets — searchable but hidden
+    if (entry.searchText) {
+      for (const t of tokenize(entry.searchText)) {
+        tokens.push(t)
+        searchTextTokens.add(t)
       }
     }
 
-    // Tool result names + error status
+    // Tool names — displayed in index/search result labels
+    if (entry.tools) {
+      for (const name of entry.tools) {
+        for (const t of tokenizeToolName(name)) {
+          tokens.push(t)
+          displayedTokens.add(t)
+        }
+      }
+    }
+
+    // Tool result names + error status — displayed in result labels
     if (entry.toolResults) {
       for (const r of entry.toolResults) {
         if (r.toolName) {
-          for (const t of tokenizeToolName(r.toolName)) tokens.push(t)
+          for (const t of tokenizeToolName(r.toolName)) {
+            tokens.push(t)
+            displayedTokens.add(t)
+          }
         }
-        if (r.isError) tokens.push('error')
+        if (r.isError) {
+          tokens.push('error')
+          displayedTokens.add('error')
+        }
       }
     }
 
@@ -258,7 +279,7 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
       df.set(t, (df.get(t) ?? 0) + 1)
     }
 
-    docs.push({ entry, tokens, tf })
+    docs.push({ entry, tokens, tf, displayedTokens, searchTextTokens })
     totalTokens += tokens.length
   }
 
@@ -272,6 +293,8 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
 
 const BM25_K1 = 1.2
 const BM25_B = 0.75
+const BM25_SEARCH_TEXT_ONLY_PENALTY = 0.5
+const BM25_AND_COORDINATION_BONUS = 1.1
 
 function bm25Score(
   queryTokens: string[],
@@ -294,37 +317,81 @@ function bm25Score(
     score += idf * (numerator / denominator)
   }
 
+  // Coordination bonus: slightly prefer docs matching ALL query terms
+  if (queryTokens.length > 1) {
+    const matchedCount = queryTokens.filter(qt => doc.tf.has(qt)).length
+    if (matchedCount === queryTokens.length) {
+      score *= BM25_AND_COORDINATION_BONUS
+    }
+  }
+
+  // Hidden-input penalty: matches exclusively from tool-input/searchText
+  // should not outrank messages with visible explanatory text.
+  let matchedAny = false
+  let allFromSearchText = true
+  for (const qt of queryTokens) {
+    if (!doc.tf.has(qt)) continue
+    matchedAny = true
+    if (!doc.displayedTokens.has(qt) || doc.searchTextTokens.has(qt)) continue
+    allFromSearchText = false
+  }
+  if (
+    matchedAny &&
+    allFromSearchText &&
+    queryTokens.every(
+      qt => !doc.tf.has(qt) || doc.searchTextTokens.has(qt),
+    )
+  ) {
+    score *= BM25_SEARCH_TEXT_ONLY_PENALTY
+  }
+
   return score
+}
+
+interface SearchResult {
+  entry: ConversationEntry
+  score: number
+  matchedTokens: string[]
+}
+
+interface SearchResponse {
+  results: SearchResult[]
+  totalMatches: number
 }
 
 function bm25Search(
   query: string,
   index: SearchIndex,
   topK: number,
-): { entry: ConversationEntry; relevance: number }[] {
-  if (index.docs.length === 0) return []
+): SearchResponse {
+  if (index.docs.length === 0) return { results: [], totalMatches: 0 }
 
   const queryTokens = [...new Set(tokenize(query))]
-  if (queryTokens.length === 0) return []
+  if (queryTokens.length === 0) return { results: [], totalMatches: 0 }
 
   const scores = index.docs.map(doc => ({
     entry: doc.entry,
     score: bm25Score(queryTokens, doc, index),
+    matchedTokens: queryTokens.filter(token => doc.tf.has(token)),
   }))
 
   const matched = scores.filter(s => s.score > 0)
-  if (matched.length === 0) return []
+  if (matched.length === 0) return { results: [], totalMatches: 0 }
 
   matched.sort((a, b) => b.score - a.score || b.entry.id - a.entry.id)
   const top = matched.slice(0, topK)
   const maxScore = top[0]!.score
 
-  return top.map(s => ({
-    entry: s.entry,
-    relevance: Number.isFinite(maxScore as number) && maxScore > 0
-      ? s.score / maxScore
-      : 0,
-  }))
+  return {
+    results: top.map(s => ({
+      entry: s.entry,
+      score: Number.isFinite(maxScore as number) && maxScore > 0
+        ? s.score / maxScore
+        : 0,
+      matchedTokens: s.matchedTokens,
+    })),
+    totalMatches: matched.length,
+  }
 }
 
 // Shared helper for role/tool-status labels used by both formatConversationIndex and formatSearchResults
@@ -348,26 +415,43 @@ function formatEntryLabel(e: ConversationEntry): string {
 
 function formatSearchResults(
   query: string,
-  results: { entry: ConversationEntry; relevance: number }[],
+  results: SearchResult[],
   totalIndexed: number,
+  totalMatches?: number,
 ): string {
+  const exclusionNote =
+    'Note: Thinking-only entries and empty entries without searchable ' +
+    'metadata are excluded from search.'
+
   if (results.length === 0) {
-    return `No conversation messages matched "${query}".`
+    const searched = totalIndexed > 0
+      ? ` Searched ${totalIndexed} messages.`
+      : ''
+    return (
+      `No conversation messages matched "${query}".${searched}\n\n${exclusionNote}`
+    )
   }
+
+  const matchInfo =
+    totalMatches !== undefined
+      ? `searched ${totalIndexed} messages; ${totalMatches} ${totalMatches === 1 ? 'match' : 'matches'}`
+      : `searched ${totalIndexed} messages`
+
   const header =
-    `# Search results for "${query}" — showing ${results.length} ` +
-    `of ${totalIndexed > 0 ? totalIndexed + ' indexed ' : ''}messages`
+    `# Search results for "${query}" — showing ${results.length} results (${matchInfo})`
+
   const lines = results.map(r => {
     const label = formatEntryLabel(r.entry)
     const toolInfo = r.entry.tools ? ` [tools: ${r.entry.tools.join(', ')}]` : ''
     const trunc = r.entry.truncated ? ' (truncated)' : ''
-    return `[${r.entry.id}] ${label} (${r.relevance.toFixed(3)} relevance) (${r.entry.charLength} chars)${toolInfo}${trunc}`
+    const matchedInfo = ` [matched: ${r.matchedTokens.join(', ')}]`
+    return `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}`
   })
   const ids = results.map(r => r.entry.id)
   const hint = results.length > 0
     ? `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
     : ''
-  return `${header}\n\n${lines.join('\n')}${hint}`
+  return `${header}\n\n${exclusionNote}\n\n${lines.join('\n')}${hint}`
 }
 
 // ---------------------------------------------------------------------------
@@ -624,8 +708,8 @@ function createConversationLogTool(entries: ConversationEntry[]) {
       }
       if (input.action === 'search') {
         if (!input.query) return { data: 'Query is required for search action.' }
-        const results = bm25Search(input.query, searchIndex, input.top_k ?? 10)
-        return { data: formatSearchResults(input.query, results, searchIndex.N) }
+        const response = bm25Search(input.query, searchIndex, input.top_k ?? 10)
+        return { data: formatSearchResults(input.query, response.results, searchIndex.N, response.totalMatches) }
       }
       if (input.action === 'read') {
         const ids = input.message_ids ?? []
