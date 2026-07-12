@@ -78,6 +78,64 @@ const CONVERSATION_LOG_RESULT_CHARS = 8_000    // Per tool-result cap
 const CONVERSATION_LOG_SEARCH_SNIPPET_CHARS = 2_000
 const ADVISOR_MAX_TURNS = 200
 
+// ---------------------------------------------------------------------------
+// ReadConversationLog schema (module-level for type export + testing)
+// ---------------------------------------------------------------------------
+
+const conversationLogIndexSchema = z.strictObject({
+  action: z.literal('index').describe('List available messages.'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe('Number of most recent messages to skip (for paging back). Default 0.'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .default(200)
+    .describe('Number of messages to show. Default 200, max 500.'),
+})
+
+const conversationLogSearchSchema = z.strictObject({
+  action: z.literal('search').describe('Search conversation messages by keyword.'),
+  query: z
+    .string()
+    .min(1)
+    .max(2000)
+    .describe('Text to search for.'),
+  top_k: z
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(10)
+    .describe('Number of search results to return. Default 10, max 50.'),
+  match_mode: z
+    .enum(['or', 'all'])
+    .default('or')
+    .describe('"or" returns messages matching any term (default). "all" requires every term to match.'),
+})
+
+const conversationLogReadSchema = z.strictObject({
+  action: z.literal('read').describe('Fetch full content for specific message IDs.'),
+  message_ids: z
+    .array(z.number().int().min(0))
+    .min(1)
+    .max(CONVERSATION_LOG_READ_LIMIT)
+    .describe(`Message IDs to read. Maximum ${CONVERSATION_LOG_READ_LIMIT} per call.`),
+})
+
+const conversationLogInputSchema = z.discriminatedUnion('action', [
+  conversationLogIndexSchema,
+  conversationLogSearchSchema,
+  conversationLogReadSchema,
+])
+
+type ConversationLogInput = z.infer<typeof conversationLogInputSchema>
+
 const inputSchema = z.strictObject({
   question: z
     .string()
@@ -604,6 +662,9 @@ function doSerializeConversationLog(
         }
         if (resultText) {
           const label = block.is_error ? 'tool_result_error' : 'tool_result'
+          if (resultText.length > CONVERSATION_LOG_RESULT_CHARS) {
+            truncated = true
+          }
           textParts.push(`[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`)
         } else if (block.is_error) {
           textParts.push(`[tool_result_error]`)
@@ -617,7 +678,10 @@ function doSerializeConversationLog(
     }
 
     let text = textParts.join('\n')
-    const charLength = text.length
+    // Record the original displayed length before any entry-level cap.
+    // Per-result truncation already happened above; this tracks the
+    // assembled entry length.
+    let charLength = text.length
     if (charLength > 16000) {
       text = text.slice(0, 16000) + '\n\n[...truncated]'
       truncated = true
@@ -650,18 +714,24 @@ function formatConversationIndex(
   const effectiveOffset = Math.max(0, offset ?? 0)
   const total = entries.length
 
+  if (effectiveOffset >= total) {
+    return `Offset ${effectiveOffset} is beyond the ${total} available messages.`
+  }
+
   // Slice from the end so the most recent messages appear first
   const startIdx = Math.max(0, total - effectiveOffset - effectiveLimit)
-  const endIdx = total - effectiveOffset
+  const endIdx = Math.max(0, total - effectiveOffset)
   const page = entries.slice(startIdx, endIdx).reverse()
 
   const hasMorePages = startIdx > 0
   const hasNewer = effectiveOffset > 0
   const nextOffset = effectiveOffset + effectiveLimit
 
+  const firstId = page.length > 0 ? page[0]!.id : 0
+  const lastId = page.length > 0 ? page[page.length - 1]!.id : 0
   const header = hasNewer
-    ? `# Conversation log manifest (${total} messages available, ${effectiveOffset} skipped, showing ${startIdx}-${endIdx - 1})`
-    : `# Conversation log manifest (${total} messages available, showing ${startIdx}-${endIdx - 1})`
+    ? `# Conversation log manifest (${total} messages available, ${effectiveOffset} skipped, showing [${firstId}]-[${lastId}])`
+    : `# Conversation log manifest (${total} messages available, showing [${firstId}]-[${lastId}])`
 
   const lines = page.map(e => {
     const label = formatEntryLabel(e)
@@ -697,48 +767,7 @@ function createConversationLogTool(entries: ConversationEntry[]) {
       return `Read conversation history of the main agent. All post-compaction user and assistant messages are available. Use action: "index" to list recent messages, action: "search" to locate messages by keyword, and action: "read" with message_ids to fetch details for the ones you need.`
     },
 
-    inputSchema: z.strictObject({
-      action: z.enum(['index', 'read', 'search']).describe(
-        '"index" lists available messages (newest first, most recent 200 by default). Use offset/limit to page. "read" fetches full content for specific message IDs. "search" finds messages matching a query via keyword-based ranking.',
-      ),
-      query: z
-        .string()
-        .min(1)
-        .optional()
-        .describe('Text to search for. Required when action is "search".'),
-      top_k: z
-        .number()
-        .int()
-        .min(1)
-        .max(50)
-        .default(10)
-        .optional()
-        .describe('Number of search results to return. Default 10, max 50.'),
-      match_mode: z
-        .enum(['or', 'all'])
-        .default('or')
-        .optional()
-        .describe('"or" returns messages matching any query term (default). "all" requires every term to match.'),
-      message_ids: z
-        .array(z.number().int().min(0))
-        .max(CONVERSATION_LOG_READ_LIMIT)
-        .optional()
-        .describe(`Message IDs to read. Maximum ${CONVERSATION_LOG_READ_LIMIT} per call.`),
-      offset: z
-        .number()
-        .int()
-        .min(0)
-        .optional()
-        .describe('Number of most recent messages to skip (for paging back in history). Default 0.'),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(500)
-        .optional()
-        .describe('Number of messages to show in the index. Default 200, max 500.'),
-    }),
-
+    inputSchema: conversationLogInputSchema,
     maxResultSizeChars: CONVERSATION_LOG_TOTAL_CHARS,
 
     isEnabled() { return true },
@@ -753,26 +782,27 @@ function createConversationLogTool(entries: ConversationEntry[]) {
       }
     },
 
-    renderToolUseMessage(input) {
-      const inp = input as Partial<{ action: string; message_ids?: number[]; query?: string }>
-      if (inp.action === 'index') return <Text>Reading conversation index</Text>
-      if (inp.action === 'search') return <Text>Searching conversation log</Text>
-      const count = inp.message_ids?.length ?? 0
-      return <Text>{`Reading ${count} ${count === 1 ? 'message' : 'messages'} from log`}</Text>
+    renderToolUseMessage(input: ConversationLogInput) {
+      if (input.action === 'index') return <Text>Reading conversation index</Text>
+      if (input.action === 'search') return <Text>Searching conversation log</Text>
+      return <Text>{`Reading ${input.message_ids.length} ${input.message_ids.length === 1 ? 'message' : 'messages'} from log`}</Text>
     },
 
-    async call(input: { action: 'index' | 'read' | 'search'; message_ids?: number[]; offset?: number; limit?: number; query?: string; top_k?: number; match_mode?: 'or' | 'all' }) {
+    async call(input: ConversationLogInput) {
       if (input.action === 'index') {
         return { data: formatConversationIndex(entries, input.offset, input.limit) }
       }
       if (input.action === 'search') {
-        if (!input.query) return { data: 'Query is required for search action.' }
-        const response = bm25Search(input.query, searchIndex, input.top_k ?? 10, input.match_mode ?? 'or')
+        const queryTokens = [...new Set(tokenize(input.query))]
+        if (queryTokens.length > 64) {
+          return { data: `Query has ${queryTokens.length} unique tokens; max 64 supported. Please narrow your search.` }
+        }
+        const response = bm25Search(input.query, searchIndex, input.top_k, input.match_mode)
         return { data: formatSearchResults(input.query, response.results, searchIndex.N, response.totalMatches, input.match_mode) }
       }
-      if (input.action === 'read') {
-        const ids = input.message_ids ?? []
-        if (ids.length === 0) return { data: 'No message IDs specified.' }
+      // action === 'read'
+      const ids = input.message_ids
+      if (ids.length === 0) return { data: 'No message IDs specified.' }
         const seen = new Set<number>()
         // De-duplicate while preserving order; count unique valid IDs
         let totalChars = 0
@@ -796,8 +826,6 @@ function createConversationLogTool(entries: ConversationEntry[]) {
           results.push(line)
         }
         return { data: results.join('\n\n---\n\n') }
-      }
-      return { data: 'Unknown action. Use "index", "read", or "search".' }
     },
 
     userFacingName() { return CONVERSATION_LOG_TOOL_NAME },
