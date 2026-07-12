@@ -214,7 +214,10 @@ type Output = z.infer<typeof outputSchema>
 type ConversationEntry = {
   id: number
   role: 'user' | 'assistant' | 'tool_result'
+  /** Display text (with tool-result wrappers) for read output. */
   text: string
+  /** Semantic body text (without wrappers) for BM25 indexing. */
+  searchBody: string
   charLength: number
   tools?: string[]
   toolResults?: {
@@ -232,6 +235,8 @@ type ConversationEntry = {
 // BM25 search index
 // ---------------------------------------------------------------------------
 
+const HAN_RUN_RE = /[\u4e00-\u9fff\u3400-\u4dbf]+/g
+
 function tokenize(text: string): string[] {
   // Split camelCase and acronym boundaries before lowercasing
   const camelSplit = text.replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -239,23 +244,91 @@ function tokenize(text: string): string[] {
   const lowered = camelSplit.toLowerCase()
   const asciiTokens = lowered.split(/[^a-z0-9]+/).filter(t => t.length > 0)
 
-  // CJK bigrams for basic Chinese/Japanese/Korean substring matching.
-  // A single unspaced CJK sentence is one token under ascii rules; bigrams
-  // allow multi-character queries like "分页" to match "实现分页功能".
-  const cjkTokens: string[] = []
-  const cjkOnly = text.replace(/[^\u4e00-\u9fff\u3400-\u4dbf]/g, '')
-  if (cjkOnly.length >= 2) {
-    for (let i = 0; i < cjkOnly.length - 1; i++) {
-      cjkTokens.push(cjkOnly.slice(i, i + 2).toLowerCase())
+  // Han bigrams by contiguous run (avoids cross-delimiter pseudo-tokens).
+  // Index mode: unigrams + bigrams so single-char queries can match.
+  const hanTokens: string[] = []
+  HAN_RUN_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = HAN_RUN_RE.exec(text)) !== null) {
+    const run = match[0]
+    for (const ch of run) hanTokens.push(ch.toLowerCase())
+    for (let i = 0; i < run.length - 1; i++) {
+      hanTokens.push(run.slice(i, i + 2).toLowerCase())
     }
   }
 
-  return [...asciiTokens, ...cjkTokens]
+  return [...asciiTokens, ...hanTokens]
 }
 
-/** Tokenize a tool name — must use the same tokenizer as queries. */
-function tokenizeToolName(name: string): string[] {
-  return tokenize(name)
+/** Query-mode tokenizer: single-char Han run → unigram; multi-char → bigrams only. */
+function tokenizeQuery(text: string): string[] {
+  const camelSplit = text.replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+  const lowered = camelSplit.toLowerCase()
+  const asciiTokens = lowered.split(/[^a-z0-9]+/).filter(t => t.length > 0)
+
+  const hanTokens: string[] = []
+  HAN_RUN_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = HAN_RUN_RE.exec(text)) !== null) {
+    const run = match[0]
+    if (run.length === 1) {
+      hanTokens.push(run[0]!.toLowerCase())
+    } else {
+      for (let i = 0; i < run.length - 1; i++) {
+        hanTokens.push(run.slice(i, i + 2).toLowerCase())
+      }
+    }
+  }
+
+  return [...asciiTokens, ...hanTokens]
+}
+
+/**
+ * Tokenize text with character offsets — used by buildSearchExcerpt to
+ * locate match positions without relying on naive indexOf().
+ */
+function tokenizeWithOffsets(text: string): Array<{ token: string; start: number; end: number }> {
+  const results: Array<{ token: string; start: number; end: number }> = []
+
+  // ASCII: scan [a-zA-Z0-9]+ runs, split camelCase within each
+  const asciiRe = /[a-zA-Z0-9]+/g
+  let m: RegExpExecArray | null
+  while ((m = asciiRe.exec(text)) !== null) {
+    const word = m[0]
+    const wordStart = m.index
+    const parts = word
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(t => t.length > 0)
+    let pos = 0
+    for (const part of parts) {
+      const idx = word.toLowerCase().indexOf(part, pos)
+      if (idx !== -1) {
+        results.push({ token: part, start: wordStart + idx, end: wordStart + idx + part.length })
+        pos = idx + part.length
+      }
+    }
+  }
+
+  // Han runs
+  HAN_RUN_RE.lastIndex = 0
+  while ((m = HAN_RUN_RE.exec(text)) !== null) {
+    const run = m[0]
+    const runStart = m.index
+    // unigrams
+    for (let i = 0; i < run.length; i++) {
+      results.push({ token: run[i]!.toLowerCase(), start: runStart + i, end: runStart + i + 1 })
+    }
+    // bigrams
+    for (let i = 0; i < run.length - 1; i++) {
+      results.push({ token: run.slice(i, i + 2).toLowerCase(), start: runStart + i, end: runStart + i + 2 })
+    }
+  }
+
+  return results
 }
 
 interface SearchDoc {
@@ -288,8 +361,8 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
     const metadataTokens = new Set<string>()
     const searchTextTokens = new Set<string>()
 
-    // Entry text — displayed in read output
-    for (const t of tokenize(entry.text)) {
+    // Semantic body text (without wrapper labels) for BM25 indexing
+    for (const t of tokenize(entry.searchBody)) {
       tokens.push(t)
       bodyTokens.add(t)
     }
@@ -305,7 +378,7 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
     // Tool names — displayed in index/search result labels (visible metadata)
     if (entry.tools) {
       for (const name of entry.tools) {
-        for (const t of tokenizeToolName(name)) {
+        for (const t of tokenize(name)) {
           tokens.push(t)
           metadataTokens.add(t)
         }
@@ -316,7 +389,7 @@ function buildSearchIndex(entries: ConversationEntry[]): SearchIndex {
     if (entry.toolResults) {
       for (const r of entry.toolResults) {
         if (r.toolName) {
-          for (const t of tokenizeToolName(r.toolName)) {
+          for (const t of tokenize(r.toolName)) {
             tokens.push(t)
             metadataTokens.add(t)
           }
@@ -427,14 +500,14 @@ function buildSearchExcerpt(
   matchedTokens: string[],
 ): string | undefined {
   // 1. Matches in body text — show context around the first matching token
+  const bodyOffsets = tokenizeWithOffsets(doc.entry.searchBody)
   for (const token of matchedTokens) {
     if (!doc.bodyTokens.has(token)) continue
-    const lower = doc.entry.text.toLowerCase()
-    const idx = lower.indexOf(token)
-    if (idx !== -1) {
-      const start = Math.max(0, idx - 30)
-      const end = Math.min(lower.length, idx + token.length + 30)
-      const excerpt = doc.entry.text.slice(start, end).replace(/\s+/g, ' ')
+    const off = bodyOffsets.find(o => o.token === token)
+    if (off) {
+      const start = Math.max(0, off.start - 30)
+      const end = Math.min(doc.entry.searchBody.length, off.end + 30)
+      const excerpt = doc.entry.searchBody.slice(start, end).replace(/\s+/g, ' ')
       return excerpt
     }
   }
@@ -444,14 +517,14 @@ function buildSearchExcerpt(
     return undefined
   }
   // 3. Matches in hidden tool input
-  for (const token of matchedTokens) {
-    if (!doc.searchTextTokens.has(token)) continue
-    if (doc.entry.searchText) {
-      const lower = doc.entry.searchText.toLowerCase()
-      const idx = lower.indexOf(token)
-      if (idx !== -1) {
-        const start = Math.max(0, idx - 30)
-        const end = Math.min(lower.length, idx + token.length + 30)
+  if (doc.entry.searchText) {
+    const searchOffsets = tokenizeWithOffsets(doc.entry.searchText)
+    for (const token of matchedTokens) {
+      if (!doc.searchTextTokens.has(token)) continue
+      const off = searchOffsets.find(o => o.token === token)
+      if (off) {
+        const start = Math.max(0, off.start - 30)
+        const end = Math.min(doc.entry.searchText.length, off.end + 30)
         const excerpt = doc.entry.searchText.slice(start, end).replace(/\s+/g, ' ')
         return `tool input: ${excerpt}`
       }
@@ -468,7 +541,7 @@ function bm25Search(
 ): SearchResponse {
   if (index.docs.length === 0) return { results: [], totalMatches: 0 }
 
-  const queryTokens = [...new Set(tokenize(query))]
+  const queryTokens = [...new Set(tokenizeQuery(query))]
   if (queryTokens.length === 0) return { results: [], totalMatches: 0 }
 
   const scored = index.docs.map(doc => ({
@@ -620,6 +693,7 @@ function doSerializeConversationLog(
         id: i,
         role: msg.type,
         text,
+        searchBody: text,
         charLength,
         truncated,
       })
@@ -630,6 +704,7 @@ function doSerializeConversationLog(
 
     const content = rawContent as any[]
     const textParts: string[] = []
+    const bodyParts: string[] = []
     const tools: string[] = []
     const searchSnippets: string[] = []
     const toolResults: { toolUseId: string; toolName?: string; isError: boolean }[] = []
@@ -639,6 +714,7 @@ function doSerializeConversationLog(
     for (const block of content) {
       if (block.type === 'text' && block.text) {
         textParts.push(block.text)
+        bodyParts.push(block.text)
       } else if (block.type === 'tool_use') {
         tools.push(block.name || 'unknown')
         // Capture tool-use input for BM25 search (bounded to prevent bloat)
@@ -666,6 +742,7 @@ function doSerializeConversationLog(
             truncated = true
           }
           textParts.push(`[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`)
+          bodyParts.push(resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS))
         } else if (block.is_error) {
           textParts.push(`[tool_result_error]`)
         }
@@ -678,6 +755,7 @@ function doSerializeConversationLog(
     }
 
     let text = textParts.join('\n')
+    const searchBody = bodyParts.join('\n')
     // Record the original displayed length before any entry-level cap.
     // Per-result truncation already happened above; this tracks the
     // assembled entry length.
@@ -691,6 +769,7 @@ function doSerializeConversationLog(
       id: i,
       role: msg.type === 'user' && toolResults.length > 0 ? 'tool_result' : msg.type,
       text,
+      searchBody,
       charLength,
       tools: tools.length > 0 ? tools : undefined,
       toolResults: toolResults.length > 0 ? toolResults : undefined,
@@ -793,7 +872,7 @@ function createConversationLogTool(entries: ConversationEntry[]) {
         return { data: formatConversationIndex(entries, input.offset, input.limit) }
       }
       if (input.action === 'search') {
-        const queryTokens = [...new Set(tokenize(input.query))]
+        const queryTokens = [...new Set(tokenizeQuery(input.query))]
         if (queryTokens.length > 64) {
           return { data: `Query has ${queryTokens.length} unique tokens; max 64 supported. Please narrow your search.` }
         }
