@@ -159,7 +159,7 @@ export function AssistantToolUseMessage(t0) {
     return null;
   }
   let t4;
-  if ($[24] !== commands || $[25] !== input_0.data || $[26] !== input_0.success || $[27] !== theme || $[28] !== tool_0 || $[29] !== verbose || $[42] !== param.input) {
+  if ($[24] !== commands || $[25] !== input_0.data || $[26] !== input_0.success || $[27] !== theme || $[28] !== tool_0 || $[29] !== verbose) {
     t4 = input_0.success ? renderToolUseMessage(tool_0, input_0.data, {
       theme,
       verbose,
@@ -176,7 +176,6 @@ export function AssistantToolUseMessage(t0) {
     $[28] = tool_0;
     $[29] = verbose;
     $[30] = t4;
-    $[42] = param.input;
   } else {
     t4 = $[30];
   }
