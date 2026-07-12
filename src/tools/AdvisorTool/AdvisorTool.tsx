@@ -469,6 +469,7 @@ function formatSearchResults(
   results: SearchResult[],
   totalIndexed: number,
   totalMatches?: number,
+  matchMode?: 'or' | 'all',
 ): string {
   const exclusionNote =
     'Note: Thinking-only entries and empty entries without searchable ' +
@@ -488,15 +489,16 @@ function formatSearchResults(
       ? `searched ${totalIndexed} messages; ${totalMatches} ${totalMatches === 1 ? 'match' : 'matches'}`
       : `searched ${totalIndexed} messages`
 
+  const modeNote = matchMode === 'all' ? ' (mode: all)' : ''
   const header =
-    `# Search results for "${query}" — showing ${results.length} results (${matchInfo})`
+    `# Search results for "${query}"${modeNote} — showing ${results.length} results (${matchInfo})`
 
   const lines = results.map(r => {
     const label = formatEntryLabel(r.entry)
     const toolInfo = r.entry.tools ? ` [tools: ${r.entry.tools.join(', ')}]` : ''
     const trunc = r.entry.truncated ? ' (truncated)' : ''
     const matchedInfo = ` [matched: ${r.matchedTokens.join(', ')}]`
-    const excerpt = r.excerpt ? ` "${r.excerpt}"` : ''
+    const excerpt = r.excerpt ? ` '${r.excerpt}'` : ''
     return `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}${excerpt}`
   })
   const ids = results.map(r => r.entry.id)
@@ -766,7 +768,7 @@ function createConversationLogTool(entries: ConversationEntry[]) {
       if (input.action === 'search') {
         if (!input.query) return { data: 'Query is required for search action.' }
         const response = bm25Search(input.query, searchIndex, input.top_k ?? 10, input.match_mode ?? 'or')
-        return { data: formatSearchResults(input.query, response.results, searchIndex.N, response.totalMatches) }
+        return { data: formatSearchResults(input.query, response.results, searchIndex.N, response.totalMatches, input.match_mode) }
       }
       if (input.action === 'read') {
         const ids = input.message_ids ?? []
