@@ -221,7 +221,6 @@ type ConversationEntry = {
   charLength: number
   tools?: string[]
   toolResults?: {
-    toolUseId: string
     toolName?: string
     isError: boolean
   }[]
@@ -607,11 +606,12 @@ function formatSearchResults(
     'metadata are excluded from search.'
 
   if (results.length === 0) {
+    const modeNote = matchMode === 'all' ? ' (mode: all)' : ''
     const searched = totalIndexed > 0
       ? ` Searched ${totalIndexed} messages.`
       : ''
     return (
-      `No conversation messages matched "${query}".${searched}\n\n${exclusionNote}`
+      `No conversation messages matched "${query}"${modeNote}.${searched}\n\n${exclusionNote}`
     )
   }
 
@@ -633,9 +633,7 @@ function formatSearchResults(
     return `[${r.entry.id}] ${label} (${r.score.toFixed(3)} score) (${r.entry.charLength} chars)${toolInfo}${matchedInfo}${trunc}${excerpt}`
   })
   const ids = results.map(r => r.entry.id)
-  const hint = results.length > 0
-    ? `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
-    : ''
+  const hint = `\n\nUse action="read" with message_ids=[${ids.join(', ')}] to fetch full content.`
   return `${header}\n\n${exclusionNote}\n\n${lines.join('\n')}${hint}`
 }
 
@@ -707,7 +705,7 @@ function doSerializeConversationLog(
     const bodyParts: string[] = []
     const tools: string[] = []
     const searchSnippets: string[] = []
-    const toolResults: { toolUseId: string; toolName?: string; isError: boolean }[] = []
+    const toolResults: { toolName?: string; isError: boolean }[] = []
     let hasThinking = false
     let truncated = false
 
@@ -724,7 +722,6 @@ function doSerializeConversationLog(
         }
       } else if (block.type === 'tool_result') {
         toolResults.push({
-          toolUseId: block.tool_use_id ?? '',
           toolName: toolNameMap.get(block.tool_use_id),
           isError: !!block.is_error,
         })
