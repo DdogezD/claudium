@@ -746,7 +746,7 @@ function buildSnapshotFingerprint(messages: readonly Message[]): string {
     return [msg.type ?? null, msg.uuid ?? null, projectedContent]
   })
 
-  return Bun.hash(JSON.stringify(projection)).toString(36)
+  return JSON.stringify(projection)
 }
 
 /**
@@ -1008,7 +1008,10 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
     },
 
     inputSchema: conversationLogInputSchema,
-    maxResultSizeChars: CONVERSATION_LOG_TOTAL_CHARS,
+    // Bypass 50K persistence threshold — index/search/read each enforce
+    // their own explicit budget.  Letting the framework persist would
+    // break lazy-read: the model would only get a file path, not content.
+    maxResultSizeChars: Infinity,
 
     isEnabled() { return true },
     isConcurrencySafe() { return true },
@@ -1094,9 +1097,12 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
     userFacingName() { return CONVERSATION_LOG_TOOL_NAME },
   })
 
-  // Attach stats tracking for runAdvisorQuery to read
-  ;(tool as any).__uniqueReadIds = uniqueReadIds
-  return tool
+  return {
+    tool,
+    getUniqueReadCount(): number {
+      return uniqueReadIds.size
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1368,7 +1374,7 @@ async function runAdvisorQuery(
   history: { messages: readonly Message[]; actualCount: number },
   advisorModel: string,
   context: ToolUseContext,
-): Promise<{ advice: string; filesRead: number; toolsCalled: number; tokens: number; durationMs: number; webSearched: boolean; blocks: Array<{ type: 'tool' | 'text'; text: string }>; interrupted: boolean; model: string; conversationsRead: number }> {
+): Promise<{ advice: string; filesRead: number; toolsCalled: number; tokens: number; durationMs: number; webSearched: boolean; blocks: Array<{ type: 'tool' | 'text'; text: string }>; interrupted: boolean; terminationReason: Output['terminationReason']; model: string; conversationsRead: number }> {
   const { query } = await import('../../query.js')
   const { getUserContext, getSystemContext } = await import('../../context.js')
   const { asSystemPrompt } = await import('../../utils/systemPromptType.js')
@@ -1388,12 +1394,12 @@ async function runAdvisorQuery(
 
   // Build conversation log snapshot + lazy-read tool
   const { entries: conversationEntries, index: conversationIndex } = getConversationSnapshot(history.messages)
-  const conversationTool = createConversationLogTool(conversationEntries, conversationIndex)
+  const conversationLog = createConversationLogTool(conversationEntries, conversationIndex)
 
   // Build identity-based allowlist from the current tool set.
   // Only canonical singletons (Set.has reference equality) are trusted.
   const allowedAdvisorTools = new Set<Tool>()
-  allowedAdvisorTools.add(conversationTool)
+  allowedAdvisorTools.add(conversationLog.tool)
 
   function selectAdvisorTools(allTools: readonly Tool[]): Tool[] {
     const selected = allTools.filter(
@@ -1403,8 +1409,8 @@ async function runAdvisorQuery(
     )
     allowedAdvisorTools.clear()
     for (const tool of selected) allowedAdvisorTools.add(tool)
-    allowedAdvisorTools.add(conversationTool)
-    return [...selected, conversationTool]
+    allowedAdvisorTools.add(conversationLog.tool)
+    return [...selected, conversationLog.tool]
   }
 
   const advisorTools = selectAdvisorTools(context.options.tools)
@@ -1491,7 +1497,6 @@ async function runAdvisorQuery(
   })
 
   let terminalResult: { reason: string } | undefined
-  let sawApiError = false
 
   // Start tick timer after iterator creation
   tickTimer = context.setToolJSX
@@ -1513,9 +1518,6 @@ async function runAdvisorQuery(
       }
       if (msg.type === 'assistant' || msg.type === 'user') {
         messages.push(msg)
-      }
-      if (msg.type === 'assistant' && (msg as any).isApiErrorMessage) {
-        sawApiError = true
       }
       // Push live UI update
       if (msg.type === 'assistant') {
@@ -1574,6 +1576,11 @@ async function runAdvisorQuery(
       `messages received: ${messages.length}).`,
     )
   }
+  // Recompute API error status from the final post-tombstone messages.
+  // Tombstones may have removed the errored message.
+  const sawApiError = messages.some(
+    (m: any) => m.type === 'assistant' && m.isApiErrorMessage,
+  )
   if (sawApiError) {
     throw new Error(
       `Advisor model returned an API error (messages received: ${messages.length}).`,
@@ -1582,8 +1589,8 @@ async function runAdvisorQuery(
 
   // Map terminal reason; model_error is re-thrown before reaching here.
   const terminationReason: Output['terminationReason'] =
-    terminalResult?.reason === 'completed' || terminalResult === undefined
-      ? 'completed'
+    terminalResult === undefined ? 'iterator_closed'
+      : terminalResult.reason === 'completed' ? 'completed'
       : terminalResult.reason === 'max_turns' ? 'max_turns'
       : terminalResult.reason === 'aborted_streaming' ? 'aborted_streaming'
       : terminalResult.reason === 'aborted_tools' ? 'aborted_tools'
@@ -1655,24 +1662,55 @@ async function runAdvisorQuery(
     (t: any) => t.name === 'WebSearch' && successfulToolUseIds.has(t.id),
   )
 
-  // Group consecutive assistant messages into logical API responses. iterate messages in order, split on non-assistant boundaries
-  const responseGroups: any[][] = []
+  // Aggregate token usage deduplicated by API response ID.
+  // Response-ID-based grouping handles providers that interleave
+  // assistant blocks with tool_result messages under the same ID.
+  const seenResponseIds = new Set<string | undefined>()
+  let tokens = 0
+
+  // First pass: collect all groups with known response IDs
+  const usageByResponse = new Map<string, { input: number; output: number; cacheCreation: number; cacheRead: number }>()
+  for (const m of assistantMessages) {
+    const usage = (m as any).message?.usage
+    if (!usage) continue
+    const responseId = (m as any).message?.id as string | undefined
+    if (responseId) {
+      const prev = usageByResponse.get(responseId)
+      usageByResponse.set(responseId, {
+        input: Math.max(prev?.input ?? 0, usage.input_tokens ?? 0),
+        output: Math.max(prev?.output ?? 0, usage.output_tokens ?? 0),
+        cacheCreation: Math.max(prev?.cacheCreation ?? 0, usage.cache_creation_input_tokens ?? 0),
+        cacheRead: Math.max(prev?.cacheRead ?? 0, usage.cache_read_input_tokens ?? 0),
+      })
+      seenResponseIds.add(responseId)
+    }
+  }
+
+  // Deduplicated known responses
+  for (const u of usageByResponse.values()) {
+    tokens += u.input + u.output + u.cacheCreation + u.cacheRead
+  }
+
+  // For messages without a response ID, aggregate by contiguous assistant
+  // groups (split on non-assistant boundaries) as a best-effort fallback.
+  const noIdGroups: any[][] = []
   let currentGroup: any[] = []
   for (const m of messages) {
     if (m.type === 'assistant') {
-      currentGroup.push(m)
+      if (!seenResponseIds.has((m as any).message?.id)) {
+        currentGroup.push(m)
+      } else if (currentGroup.length > 0) {
+        noIdGroups.push(currentGroup)
+        currentGroup = []
+      }
     } else if (currentGroup.length > 0) {
-      responseGroups.push(currentGroup)
+      noIdGroups.push(currentGroup)
       currentGroup = []
     }
   }
-  if (currentGroup.length > 0) responseGroups.push(currentGroup)
+  if (currentGroup.length > 0) noIdGroups.push(currentGroup)
 
-  // Aggregate token usage: component-wise max per logical response group.
-  // For groups with a response ID, deduplicate by ID. For groups without,
-  // use component-wise max within the group as a best-effort approximation.
-  let tokens = 0
-  for (const group of responseGroups) {
+  for (const group of noIdGroups) {
     const maxUsage = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 }
     for (const m of group) {
       const usage = (m as any).message?.usage
@@ -1685,16 +1723,42 @@ async function runAdvisorQuery(
     tokens += maxUsage.input + maxUsage.output + maxUsage.cacheCreation + maxUsage.cacheRead
   }
 
-  // Extract advice from the final logical response group
-  const lastResponseGroup = responseGroups.at(-1) ?? []
-  const finalBlocks = lastResponseGroup.flatMap(
+  // Extract advice from the final logical API response.
+  // Group by response ID: the final response is the one with the last
+  // response ID seen.  If there's a mix of keyed and unkeyed messages,
+  // prefer the last keyed group; otherwise fall back to the last
+  // contiguous unkeyed assistant run.
+  const groupedByResponse = new Map<string | undefined, any[]>()
+  let lastResponseId: string | undefined
+  for (const m of messages) {
+    if (m.type !== 'assistant') continue
+    const id = (m as any).message?.id as string | undefined
+    if (id) {
+      lastResponseId = id
+      const group = groupedByResponse.get(id)
+      if (group) group.push(m)
+      else groupedByResponse.set(id, [m])
+    } else {
+      const last = lastResponseId ? groupedByResponse.get(lastResponseId) : undefined
+      if (last) last.push(m)
+      else {
+        const noId = groupedByResponse.get(undefined)
+        if (noId) noId.push(m)
+        else groupedByResponse.set(undefined, [m])
+      }
+    }
+  }
+
+  const finalGroupKey = lastResponseId ?? undefined
+  const finalMessages = groupedByResponse.get(finalGroupKey) ??
+    (groupedByResponse.size > 0 ? [...groupedByResponse.values()].at(-1) : undefined) ??
+    []
+  const finalBlocks = finalMessages.flatMap(
     (m: any) => m.message?.content ?? [],
   )
   const advice = extractTextContent(finalBlocks, '\n\n').trim()
   const durationMs = Date.now() - info.startTime
-  const conversationsRead = (conversationTool as any).__uniqueReadIds instanceof Set
-    ? (conversationTool as any).__uniqueReadIds.size
-    : 0
+  const conversationsRead = conversationLog.getUniqueReadCount()
 
   if (!advice) {
     const partial = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim()
