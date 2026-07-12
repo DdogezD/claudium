@@ -55,9 +55,10 @@ YOUR ROLE:
 CONVERSATION HISTORY:
 - The main agent's conversation history (all user and assistant messages after the latest compact boundary) is available through the \`ReadConversationLog\` tool
 - It is NOT pre-sent in your context — you must actively call the tool to read it
-- Use \`action: "index"\` first to see what messages are available (role, length, tool names)
+- Use \`action: "index"\` to browse recent messages (role, length, tool names, pagination)
+- Use \`action: "search"\` with \`query\` to locate topic-specific messages by keyword
 - Use \`action: "read"\` with specific message IDs to fetch the detailed content of only the messages you need
-- Be selective — index first, then read only the messages relevant to the question
+- Be selective — index or search first, then read only the messages relevant to the question
 - The main agent's question should be self-contained; the log is supplementary context
 
 YOU MAY ALSO USE:
