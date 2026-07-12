@@ -325,23 +325,24 @@ function bm25Score(
     }
   }
 
-  // Hidden-input penalty: matches exclusively from tool-input/searchText
-  // should not outrank messages with visible explanatory text.
+  // Hidden-input penalty: a document where every matched token comes from
+  // tool-input/searchText only (none from visible text or displayed metadata)
+  // should not outrank messages with visible explanatory content.
   let matchedAny = false
   let allFromSearchText = true
   for (const qt of queryTokens) {
     if (!doc.tf.has(qt)) continue
     matchedAny = true
-    if (!doc.displayedTokens.has(qt) || doc.searchTextTokens.has(qt)) continue
-    allFromSearchText = false
+    if (doc.displayedTokens.has(qt)) {
+      allFromSearchText = false
+      break
+    }
+    if (!doc.searchTextTokens.has(qt)) {
+      allFromSearchText = false
+      break
+    }
   }
-  if (
-    matchedAny &&
-    allFromSearchText &&
-    queryTokens.every(
-      qt => !doc.tf.has(qt) || doc.searchTextTokens.has(qt),
-    )
-  ) {
+  if (matchedAny && allFromSearchText) {
     score *= BM25_SEARCH_TEXT_ONLY_PENALTY
   }
 
