@@ -80,7 +80,7 @@ const CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS = 16_000  // Aggregate per-ent
 const ADVISOR_MAX_TURNS = 200
 
 // ---------------------------------------------------------------------------
-// ReadConversationLog schema (module-level for type export + testing)
+// ReadConversationLog schema
 // ---------------------------------------------------------------------------
 
 const conversationLogIndexSchema = z.strictObject({
@@ -603,8 +603,7 @@ function formatSearchResults(
   matchMode?: 'or' | 'all',
 ): string {
   const exclusionNote =
-    'Note: Thinking-only entries and empty entries without searchable ' +
-    'metadata are excluded from search.'
+    'Note: Entries without searchable tokens or metadata are excluded from search.'
 
   if (results.length === 0) {
     const modeNote = matchMode === 'all' ? ' (mode: all)' : ''
@@ -650,13 +649,15 @@ type CachedSnapshot = {
 let _cachedSnapshot: CachedSnapshot | null = null
 
 /**
- * Build a lossless fingerprint from the subset of message fields that affect
+ * Build a fingerprint from the subset of message fields that affect
  * serialization output (entry text, searchBody, tools, toolResults, searchText,
  * truncated, hasThinking, charLength) and entry-id assignment.
  *
- * Uses a structured tuple projection + JSON.stringify — no prefixes, no hashes.
- * Two snapshots share the same fingerprint **iff** they produce identical
- * observable output.  This is the invariant the cache depends on.
+ * Uses a structured tuple projection + JSON.stringify.  For normal JSON messages
+ * the same fingerprint guarantees the same observable snapshot.  The projection
+ * may conservatively produce different fingerprints for snapshots that are
+ * actually identical (e.g. UUID changes, unused trailing content), trading some
+ * cache misses for safety.
  *
  * Coupling: if doSerializeConversationLog starts reading a new block field,
  * the corresponding case below MUST be updated in the same commit.
@@ -818,11 +819,12 @@ function doSerializeConversationLog(
         // Capture tool-use input for BM25 search (per-snippet + aggregate cap)
         if (block.input && typeof block.input === 'object') {
           const inputStr = JSON.stringify(block.input)
-          if (searchSnippetsTotal < CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS) {
-            const remaining = CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS - searchSnippetsTotal
+          const separatorCost = searchSnippets.length > 0 ? 1 : 0  // join(' ')
+          if (searchSnippetsTotal + separatorCost < CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS) {
+            const remaining = CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS - searchSnippetsTotal - separatorCost
             const snippet = inputStr.slice(0, Math.min(CONVERSATION_LOG_SEARCH_SNIPPET_CHARS, remaining))
             searchSnippets.push(snippet)
-            searchSnippetsTotal += snippet.length
+            searchSnippetsTotal += separatorCost + snippet.length
           }
         }
       } else if (block.type === 'tool_result') {
@@ -872,7 +874,7 @@ function doSerializeConversationLog(
     let text = textParts.join('\n')
     // Original display length: sum of all part lengths + newline separators
     const separatorOverhead = Math.max(0, textParts.length - 1)
-    let charLength = originalDisplayLen + separatorOverhead
+    const charLength = originalDisplayLen + separatorOverhead
     if (charLength > ENTRY_DISPLAY_CAP) {
       text = text.slice(0, ENTRY_DISPLAY_CAP) + '\n\n[...truncated]'
       truncated = true
@@ -1000,29 +1002,42 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       const SEPARATOR = '\n\n---\n\n'
       let totalChars = 0
       const results: string[] = []
+
+      function appendLine(line: string): boolean {
+        const cost = line.length + (results.length > 0 ? SEPARATOR.length : 0)
+        if (totalChars + cost > CONVERSATION_LOG_TOTAL_CHARS) {
+          const remaining = CONVERSATION_LOG_TOTAL_CHARS - totalChars - TRUNCATION_MARKER.length
+          if (remaining > 0) {
+            results.push(line.slice(0, Math.max(0, remaining)) + TRUNCATION_MARKER)
+          }
+          return false  // budget exhausted
+        }
+        totalChars += cost
+        results.push(line)
+        return true  // fully appended
+      }
+
       for (const id of ids) {
         if (seen.has(id)) continue
         seen.add(id)
         const entry = entryMap.get(id)
         if (!entry) {
-          const notFoundLine = `[${id}] NOT FOUND — ID out of range`
-          totalChars += notFoundLine.length + SEPARATOR.length
-          results.push(notFoundLine)
+          appendLine(`[${id}] NOT FOUND — ID out of range`)
           continue
         }
-        uniqueReadIds.add(id)
-        const truncTag = entry.truncated ? ' [truncated]' : ''
-        const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
-        const cost = line.length + SEPARATOR.length
-        if (totalChars + cost > CONVERSATION_LOG_TOTAL_CHARS) {
-          const remaining = CONVERSATION_LOG_TOTAL_CHARS - totalChars - TRUNCATION_MARKER.length
-          if (remaining > 0) {
-            results.push(line.slice(0, remaining) + TRUNCATION_MARKER)
-          }
-          break
+        // Track read status only after the entry is actually included in output.
+        // A partially-appended entry (budget window) still counts as read.
+        const appended = function() {
+          const truncTag = entry.truncated ? ' [truncated]' : ''
+          const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
+          return appendLine(line)
+        }()
+        if (appended) {
+          uniqueReadIds.add(id)
+        } else if (results.length > 0 && results[results.length - 1]!.includes(TRUNCATION_MARKER)) {
+          // The entry was partially appended (truncated) — count as read.
+          uniqueReadIds.add(id)
         }
-        totalChars += cost
-        results.push(line)
       }
       return { data: results.join(SEPARATOR) }
     },
