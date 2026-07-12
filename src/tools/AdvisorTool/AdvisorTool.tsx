@@ -1069,7 +1069,10 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
           continue
         }
         const truncTag = entry.truncated ? ' [truncated]' : ''
-        const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
+        const searchTextInfo = entry.searchText
+          ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]`
+          : ''
+        const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}${searchTextInfo}`
         const result = appendLine(line)
         if (result === 'full') {
           uniqueReadIds.add(id)
@@ -1572,16 +1575,32 @@ async function runAdvisorQuery(
   const interrupted = terminationReason !== 'completed'
 
   // Build blocks from final (post-tombstone) messages
+  const BLOCKS_TOTAL_CHARS = 20_000
   const blocks: Array<{ type: 'tool' | 'text'; text: string }> = []
-  for (const m of messages) {
+  let blocksChars = 0
+  outer: for (const m of messages) {
     if (m.type !== 'assistant') continue
     const content = (m.message as any)?.content as any[]
     if (!content) continue
     for (const b of content) {
       if (b.type === 'tool_use') {
         const s = formatToolInput(b.name, b.input)
-        blocks.push({ type: 'tool', text: s ? `${toolLabel(b.name)} ${s}` : toolLabel(b.name) })
+        const text = s ? `${toolLabel(b.name)} ${s}` : toolLabel(b.name)
+        if (blocksChars + text.length > BLOCKS_TOTAL_CHARS) {
+          blocks.push({ type: 'tool', text: '[...blocks truncated]' })
+          break outer
+        }
+        blocksChars += text.length
+        blocks.push({ type: 'tool', text })
       } else if (b.type === 'text' && b.text) {
+        const remaining = BLOCKS_TOTAL_CHARS - blocksChars
+        if (remaining <= 0) { blocks.push({ type: 'tool', text: '[...blocks truncated]' }); break outer }
+        if (b.text.length > remaining) {
+          blocks.push({ type: 'text', text: b.text.slice(0, remaining) })
+          blocks.push({ type: 'tool', text: '[...blocks truncated]' })
+          break outer
+        }
+        blocksChars += b.text.length
         blocks.push({ type: 'text', text: b.text })
       }
     }
