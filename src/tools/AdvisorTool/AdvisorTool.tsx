@@ -118,6 +118,9 @@ type ConversationLogInput = z.infer<typeof conversationLogInputSchema>
 const inputSchema = z.strictObject({
   question: z
     .string()
+    .trim()
+    .min(1)
+    .max(8000)
     .describe(
       'What do you need advice on? Describe the problem, what you are trying to do, ' +
         'what you have already tried, any constraints, and what you specifically ' +
@@ -171,14 +174,24 @@ const outputSchema = z.strictObject({
     }))
     .default([])
     .describe('The raw content blocks from the advisor query, in order.'),
-  toolCallSequence: z
-    .array(z.string())
-    .optional()
-    .describe('Deprecated. Use blocks instead.'),
   interrupted: z
     .boolean()
     .default(false)
     .describe('Whether the advisor query was interrupted before completion.'),
+  terminationReason: z
+    .enum([
+      'completed',
+      'max_turns',
+      'aborted_streaming',
+      'aborted_tools',
+      'prompt_too_long',
+      'hook_stopped',
+      'blocking_limit',
+      'image_error',
+      'stop_hook_prevented',
+      'iterator_closed',
+    ])
+    .describe('How the advisor query ended.'),
   model: z
     .string()
     .optional()
@@ -1205,8 +1218,13 @@ export const AdvisorTool = buildTool({
     const durationMs = content.durationMs ?? 0
     const webSearched = content.webSearched ?? false
     const interrupted = content.interrupted ?? false
+    const terminationReason = content.terminationReason
     const stats = []
-    if (interrupted) stats.push('interrupted')
+    if (terminationReason && terminationReason !== 'completed') {
+      stats.push(terminationReason.replace(/_/g, ' '))
+    } else if (interrupted) {
+      stats.push('interrupted')
+    }
     if (webSearched) stats.push('web searched')
     if (conversationsRead > 0) stats.push(`${conversationsRead} ${conversationsRead === 1 ? 'message read' : 'messages read'}`)
     if (toolsCalled > 0) stats.push(`${toolsCalled} ${toolsCalled === 1 ? 'tool use' : 'tool uses'}`)
@@ -1490,9 +1508,20 @@ async function runAdvisorQuery(
     )
   }
 
-  const interrupted =
-    terminalResult?.reason === 'aborted_streaming' ||
-    terminalResult?.reason === 'aborted_tools'
+  // Map terminal reason; model_error is re-thrown before reaching here.
+  const terminationReason: Output['terminationReason'] =
+    terminalResult?.reason === 'completed' || terminalResult === undefined
+      ? 'completed'
+      : terminalResult.reason === 'max_turns' ? 'max_turns'
+      : terminalResult.reason === 'aborted_streaming' ? 'aborted_streaming'
+      : terminalResult.reason === 'aborted_tools' ? 'aborted_tools'
+      : terminalResult.reason === 'prompt_too_long' ? 'prompt_too_long'
+      : terminalResult.reason === 'hook_stopped' ? 'hook_stopped'
+      : terminalResult.reason === 'blocking_limit' ? 'blocking_limit'
+      : terminalResult.reason === 'image_error' ? 'image_error'
+      : terminalResult.reason === 'stop_hook_prevented' ? 'stop_hook_prevented'
+      : 'iterator_closed'
+  const interrupted = terminationReason !== 'completed'
 
   // Build blocks from final (post-tombstone) messages
   const blocks: Array<{ type: 'tool' | 'text'; text: string }> = []
@@ -1600,6 +1629,7 @@ async function runAdvisorQuery(
           webSearched,
           blocks,
           interrupted: true,
+          terminationReason,
           model: advisorModel,
           conversationsRead,
         }
@@ -1619,6 +1649,7 @@ async function runAdvisorQuery(
           webSearched,
           blocks,
           interrupted: true,
+          terminationReason,
           model: advisorModel,
           conversationsRead,
         }
@@ -1640,6 +1671,7 @@ async function runAdvisorQuery(
       webSearched,
       blocks,
       interrupted: true,
+      terminationReason,
       model: advisorModel,
       conversationsRead,
     }
@@ -1654,6 +1686,7 @@ async function runAdvisorQuery(
     webSearched,
     blocks,
     interrupted,
+    terminationReason,
     model: advisorModel,
     conversationsRead,
   }
