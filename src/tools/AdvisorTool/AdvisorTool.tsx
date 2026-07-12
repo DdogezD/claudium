@@ -36,10 +36,9 @@ import { ListMcpResourcesTool } from '../ListMcpResourcesTool/ListMcpResourcesTo
 import { ReadMcpResourceTool } from '../ReadMcpResourceTool/ReadMcpResourceTool.js'
 
 // Read-only built-in tools the advisor subagent can use.
-// Canonical identity check first (Set.has via reference equality) — catches MCP
-// tools and plugins even if they share the name. Falls back to name matching
-// with structural guards for provider-wrapped tools (e.g. OpenAI compat layer
-// rewraps tools into `functions.Read` objects with different references).
+// Only canonical identity (Set.has via reference equality) is trusted —
+// no name-based fallback. Provider-wrapped tools with different references
+// are NOT allowed unless registered through a private provenance registry.
 const READ_ONLY_BUILTIN_TOOLS = new Set<Tool>([
   BashTool,
   FileReadTool,
@@ -50,27 +49,6 @@ const READ_ONLY_BUILTIN_TOOLS = new Set<Tool>([
   ListMcpResourcesTool,
   ReadMcpResourceTool,
 ])
-
-const READ_ONLY_BUILTIN_TOOL_NAMES = new Set([
-  'Bash',
-  'Read',
-  'Grep',
-  'Glob',
-  'WebSearch',
-  'WebFetch',
-  'ListMcpResources',
-  'ReadMcpResource',
-])
-
-/** Returns true when a tool is a built-in (non-MCP) read-only tool the advisor may use. */
-function isAdvisorAllowedBuiltin(tool: Tool): boolean {
-  // Canonical identity: exact singleton reference (catches MCP spoofing).
-  if (READ_ONLY_BUILTIN_TOOLS.has(tool)) return true
-  // Provider-wrapped tools (e.g. OpenAI compat): check name + structural guards.
-  if ((tool as any).mcpInfo !== undefined) return false
-  if ((tool as any).isMcp === true) return false
-  return READ_ONLY_BUILTIN_TOOL_NAMES.has(tool.name)
-}
 
 const CONVERSATION_LOG_READ_LIMIT = 20
 const CONVERSATION_LOG_TOTAL_CHARS = 80_000
@@ -1003,18 +981,22 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       let totalChars = 0
       const results: string[] = []
 
-      function appendLine(line: string): boolean {
-        const cost = line.length + (results.length > 0 ? SEPARATOR.length : 0)
+      type AppendResult = 'full' | 'partial' | 'none'
+
+      function appendLine(line: string): AppendResult {
+        const separatorCost = results.length > 0 ? SEPARATOR.length : 0
+        const cost = line.length + separatorCost
         if (totalChars + cost > CONVERSATION_LOG_TOTAL_CHARS) {
-          const remaining = CONVERSATION_LOG_TOTAL_CHARS - totalChars - TRUNCATION_MARKER.length
+          const remaining = CONVERSATION_LOG_TOTAL_CHARS - totalChars - separatorCost - TRUNCATION_MARKER.length
           if (remaining > 0) {
-            results.push(line.slice(0, Math.max(0, remaining)) + TRUNCATION_MARKER)
+            results.push(line.slice(0, remaining) + TRUNCATION_MARKER)
           }
-          return false  // budget exhausted
+          totalChars = CONVERSATION_LOG_TOTAL_CHARS
+          return remaining > 0 ? 'partial' : 'none'
         }
         totalChars += cost
         results.push(line)
-        return true  // fully appended
+        return 'full'
       }
 
       for (const id of ids) {
@@ -1022,21 +1004,18 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
         seen.add(id)
         const entry = entryMap.get(id)
         if (!entry) {
-          appendLine(`[${id}] NOT FOUND — ID out of range`)
+          if (appendLine(`[${id}] NOT FOUND — ID out of range`) !== 'full') break
           continue
         }
-        // Track read status only after the entry is actually included in output.
-        // A partially-appended entry (budget window) still counts as read.
-        const appended = function() {
-          const truncTag = entry.truncated ? ' [truncated]' : ''
-          const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
-          return appendLine(line)
-        }()
-        if (appended) {
+        const truncTag = entry.truncated ? ' [truncated]' : ''
+        const line = `[${id}] ${entry.role} (${entry.charLength} chars)${truncTag}:\n\n${entry.text}`
+        const result = appendLine(line)
+        if (result === 'full') {
           uniqueReadIds.add(id)
-        } else if (results.length > 0 && results[results.length - 1]!.includes(TRUNCATION_MARKER)) {
-          // The entry was partially appended (truncated) — count as read.
-          uniqueReadIds.add(id)
+        } else {
+          // Partial: entry was truncated but some content was included — count as read.
+          if (result === 'partial') uniqueReadIds.add(id)
+          break
         }
       }
       return { data: results.join(SEPARATOR) }
@@ -1337,12 +1316,23 @@ async function runAdvisorQuery(
   const conversationTool = createConversationLogTool(conversationEntries, conversationIndex)
 
   // Build identity-based allowlist from the current tool set.
-  // Only built-in (non-MCP) tools are allowed — MCP tools with colliding
-  // names must NOT be given built-in-tool privileges.
-  const filteredTools = context.options.tools.filter(
-    t => t.name !== ADVISOR_TOOL_NAME && isAdvisorAllowedBuiltin(t),
-  )
-  const advisorTools = [...filteredTools, conversationTool]
+  // Only canonical singletons (Set.has reference equality) are trusted.
+  const allowedAdvisorTools = new Set<Tool>()
+  allowedAdvisorTools.add(conversationTool)
+
+  function selectAdvisorTools(allTools: readonly Tool[]): Tool[] {
+    const selected = allTools.filter(
+      tool =>
+        tool.name !== ADVISOR_TOOL_NAME &&
+        READ_ONLY_BUILTIN_TOOLS.has(tool),
+    )
+    allowedAdvisorTools.clear()
+    for (const tool of selected) allowedAdvisorTools.add(tool)
+    allowedAdvisorTools.add(conversationTool)
+    return [...selected, conversationTool]
+  }
+
+  const advisorTools = selectAdvisorTools(context.options.tools)
 
   const subagentCtx = createSubagentContext(context, {
     options: {
@@ -1350,15 +1340,7 @@ async function runAdvisorQuery(
       mainLoopModel: advisorModel,
       tools: advisorTools,
       refreshTools: context.options.refreshTools
-        ? () => {
-            const allTools = context.options.refreshTools!()
-            return [
-              ...allTools.filter(
-                t => t.name !== ADVISOR_TOOL_NAME && isAdvisorAllowedBuiltin(t),
-              ),
-              conversationTool,
-            ]
-          }
+        ? () => selectAdvisorTools(context.options.refreshTools!())
         : undefined,
     },
     requireCanUseTool: true,
@@ -1389,48 +1371,44 @@ async function runAdvisorQuery(
     systemContext,
     maxTurns: ADVISOR_MAX_TURNS,
     canUseTool: async (tool, input) => {
-      // Identity check: the conversation log tool is the exact object we created.
-      if (tool === conversationTool) {
-        return { behavior: 'allow' as const, updatedInput: input }
+      // Allowed only if the tool object is in the identity-based set
+      // (canonical built-in singletons or the conversationTool instance).
+      if (!allowedAdvisorTools.has(tool as Tool)) {
+        return {
+          behavior: 'deny' as const,
+          updatedInput: input,
+          message: `The advisor cannot use ${(tool as any).name ?? 'unknown tool'}.`,
+          decisionReason: {
+            type: 'other' as const,
+            reason: 'Advisor tools are restricted to a read-only allowlist.',
+          },
+        }
       }
-      // Identity check: only built-in (non-MCP) tools from the allowlist.
-      // Rejects MCP tools that happen to share a name with a built-in.
-      if (isAdvisorAllowedBuiltin(tool as Tool)) {
-        // Enforce read-only for Bash — prompt-level instructions are not a
-        // security boundary. Uses the same read-only classifier as BashTool.
-        if ((tool as Tool).name === 'Bash') {
-          const cmd =
-            typeof input === 'object' && input !== null && 'command' in input
-              ? (input as any).command
-              : ''
-          const roCheck = checkReadOnlyConstraints(
-            input as any,
-            commandHasAnyCd(typeof cmd === 'string' ? cmd : ''),
-          )
-          if (roCheck.behavior !== 'allow') {
-            return {
-              behavior: 'deny' as const,
-              updatedInput: input,
-              message: `The advisor can only run read-only Bash commands. ` +
-                `"${typeof cmd === 'string' ? cmd.slice(0, 100) : 'this command'}" was denied.`,
-              decisionReason: {
-                type: 'other' as const,
-                reason: 'Advisor is restricted to read-only Bash commands.',
-              },
-            }
+      // Enforce read-only for Bash — prompt-level instructions are not a
+      // security boundary. Uses the same read-only classifier as BashTool.
+      if ((tool as Tool).name === 'Bash') {
+        const cmd =
+          typeof input === 'object' && input !== null && 'command' in input
+            ? (input as any).command
+            : ''
+        const roCheck = checkReadOnlyConstraints(
+          input as any,
+          commandHasAnyCd(typeof cmd === 'string' ? cmd : ''),
+        )
+        if (roCheck.behavior !== 'allow') {
+          return {
+            behavior: 'deny' as const,
+            updatedInput: input,
+            message: `The advisor can only run read-only Bash commands. ` +
+              `"${typeof cmd === 'string' ? cmd.slice(0, 100) : 'this command'}" was denied.`,
+            decisionReason: {
+              type: 'other' as const,
+              reason: 'Advisor is restricted to read-only Bash commands.',
+            },
           }
         }
-        return { behavior: 'allow' as const, updatedInput: input }
       }
-      return {
-        behavior: 'deny' as const,
-        updatedInput: input,
-        message: `The advisor cannot use ${(tool as any).name ?? 'unknown tool'}.`,
-        decisionReason: {
-          type: 'other' as const,
-          reason: 'Advisor tools are restricted to a read-only allowlist.',
-        },
-      }
+      return { behavior: 'allow' as const, updatedInput: input }
     },
     toolUseContext: subagentCtx,
     querySource: 'advisor' as any,
