@@ -638,16 +638,37 @@ function formatSearchResults(
 }
 
 // ---------------------------------------------------------------------------
-// Serialization cache
+// Serialization cache (atomic snapshot: entries + search index)
 // ---------------------------------------------------------------------------
-let _cachedEntries: ConversationEntry[] | null = null
-let _cachedFingerprint = ''
+type CachedSnapshot = {
+  fingerprint: string
+  entries: ConversationEntry[]
+  index: SearchIndex
+}
 
-function serializeConversationLog(
+let _cachedSnapshot: CachedSnapshot | null = null
+
+function buildSnapshotFingerprint(messages: readonly Message[]): string {
+  const parts = messages.map(m => {
+    const uuid = (m as any).uuid ?? ''
+    const content = (m as any).message?.content
+    if (typeof content === 'string') return `${uuid}:s${content.length}`
+    if (Array.isArray(content)) {
+      const summary = content.map((b: any) => `${b.type ?? '?'}:${typeof b.text === 'string' ? b.text.length : 0}`).join(',')
+      return `${uuid}:[${summary}]`
+    }
+    return uuid
+  })
+  return parts.join('|')
+}
+
+function getConversationSnapshot(
   messages: readonly Message[],
-): ConversationEntry[] {
-  const fp = messages.map((m: any) => m.uuid ?? '').join(':')
-  if (fp === _cachedFingerprint && _cachedEntries) return _cachedEntries
+): { entries: ConversationEntry[]; index: SearchIndex } {
+  const fp = buildSnapshotFingerprint(messages)
+  if (_cachedSnapshot && _cachedSnapshot.fingerprint === fp) {
+    return { entries: _cachedSnapshot.entries, index: _cachedSnapshot.index }
+  }
 
   // Map tool_use_id → tool name for per-result metadata
   const toolNameMap = new Map<string, string>()
@@ -663,9 +684,9 @@ function serializeConversationLog(
   }
 
   const entries = doSerializeConversationLog(messages, toolNameMap)
-  _cachedEntries = entries
-  _cachedFingerprint = fp
-  return entries
+  const index = buildSearchIndex(entries)
+  _cachedSnapshot = { fingerprint: fp, entries, index }
+  return { entries, index }
 }
 
 function doSerializeConversationLog(
@@ -826,9 +847,9 @@ function formatConversationIndex(
   return `${header}\n\n${lines.join('\n')}`
 }
 
-function createConversationLogTool(entries: ConversationEntry[]) {
+function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?: SearchIndex) {
   const entryMap = new Map(entries.map(e => [e.id, e]))
-  const searchIndex = buildSearchIndex(entries)
+  const searchIndex = prebuiltIndex ?? buildSearchIndex(entries)
   // Track which unique IDs were successfully read (for conversationsRead stats)
   const uniqueReadIds = new Set<number>()
 
@@ -1194,8 +1215,8 @@ async function runAdvisorQuery(
   ])
 
   // Build conversation log snapshot + lazy-read tool
-  const conversationEntries = serializeConversationLog(history.messages)
-  const conversationTool = createConversationLogTool(conversationEntries)
+  const { entries: conversationEntries, index: conversationIndex } = getConversationSnapshot(history.messages)
+  const conversationTool = createConversationLogTool(conversationEntries, conversationIndex)
 
   // Build identity-based allowlist from the current tool set.
   // Only built-in (non-MCP) tools are allowed — MCP tools with colliding
