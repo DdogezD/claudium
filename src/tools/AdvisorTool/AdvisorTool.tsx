@@ -844,7 +844,14 @@ export const AdvisorTool = buildTool({
     if (conversationsRead > 0) stats.push(`${conversationsRead} ${conversationsRead === 1 ? 'message read' : 'messages read'}`)
     if (toolsCalled > 0) stats.push(`${toolsCalled} ${toolsCalled === 1 ? 'tool use' : 'tool uses'}`)
     if (filesRead > 0) stats.push(`${filesRead} ${filesRead === 1 ? 'file read' : 'files read'}`)
-    if (tokens > 0) stats.push(`${formatNumber(tokens)} tokens`)
+    if (tokens > 0) {
+      stats.push(`${formatNumber(tokens)} tokens`)
+    } else if (toolsCalled > 0) {
+      // Tools ran but usage was never reported. Provider (GPT shim via cliproxy)
+      // may omit usage for multi-block responses when first-message aggregation
+      // takes a zero/preliminary value. Show a diagnostic label.
+      stats.push('tokens unavailable')
+    }
     if (durationMs > 0) stats.push(formatDuration(durationMs))
     const header = stats.length > 0 ? `${model} (${stats.join(' · ')})` : model
     if (!advice) {
@@ -1150,21 +1157,33 @@ async function runAdvisorQuery(
 
   // Aggregate token usage deduplicated by API response ID (message.message.id).
   // Multi-block API responses produce multiple assistant messages per round;
-  // usage is per-response, not per-block.
-  let tokens = 0
-  const seenResponseIds = new Set<string>()
+  // usage is per-response, not per-block. Usage is set only on the LAST block
+  // via message_delta, so we use component-wise max per response ID to avoid
+  // taking a zero/preliminary value from an earlier block.
+  const usageByResponse = new Map<string, { input: number; output: number; cacheCreation: number; cacheRead: number }>()
+  let unkeyedTokens = 0
   for (const m of assistantMessages) {
     const usage = (m as any).message?.usage
     if (!usage) continue
+    const input = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0)
+    const output = usage.output_tokens ?? 0
     const responseId = (m as any).message?.id as string | undefined
-    if (responseId && seenResponseIds.has(responseId)) continue
-    if (responseId) seenResponseIds.add(responseId)
-    tokens +=
-      (usage.cache_creation_input_tokens ?? 0) +
-      (usage.cache_read_input_tokens ?? 0) +
-      (usage.input_tokens ?? 0) +
-      (usage.output_tokens ?? 0)
+    if (!responseId) {
+      unkeyedTokens += input + output
+      continue
+    }
+    const prev = usageByResponse.get(responseId)
+    usageByResponse.set(responseId, {
+      input: Math.max(prev?.input ?? 0, input),
+      output: Math.max(prev?.output ?? 0, output),
+      cacheCreation: Math.max(prev?.cacheCreation ?? 0, usage.cache_creation_input_tokens ?? 0),
+      cacheRead: Math.max(prev?.cacheRead ?? 0, usage.cache_read_input_tokens ?? 0),
+    })
   }
+  const tokens = unkeyedTokens +
+    [...usageByResponse.values()].reduce(
+      (sum, u) => sum + u.input + u.output + u.cacheCreation + u.cacheRead, 0
+    )
 
   // Extract advice from the final logical API response only.
   // Multi-block responses produce several assistant messages sharing one
