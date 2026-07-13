@@ -7,13 +7,11 @@ import {
 import { createSubagentContext } from '../../utils/forkedAgent.js'
 import {
   createUserMessage,
-  extractTextContent,
   getMessagesAfterCompactBoundary,
 } from '../../utils/messages.js'
 import { formatNumber } from '../../utils/format.js'
-import { isAbortError } from '../../utils/errors.js'
-import { checkReadOnlyConstraints } from '../BashTool/readOnlyValidation.js'
-import { commandHasAnyCd } from '../BashTool/bashPermissions.js'
+import { errorMessage, isAbortError } from '../../utils/errors.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { BashTool } from '../BashTool/BashTool.js'
 import { FileReadTool } from '../FileReadTool/FileReadTool.js'
 import { GrepTool } from '../GrepTool/GrepTool.js'
@@ -41,6 +39,8 @@ import {
 import type { AdvisorRunResult } from './types.js'
 import { getConversationSnapshot } from './conversationLog/snapshot.js'
 import { createConversationLogTool } from './conversationLog/ConversationLogTool.js'
+import { buildAdvisorBlocks, summarizeAdvisorMessages } from './runtimeSummary.js'
+import { validateAdvisorBashInput } from './toolPolicy.js'
 
 // Read-only built-in tools the advisor subagent can use.
 // Both the identity Set and name→canonical Map are built lazily on
@@ -298,26 +298,25 @@ async function runAdvisorQuery(
       // Enforce read-only for Bash — prompt-level instructions are not a
       // security boundary. Uses the same read-only classifier as BashTool.
       if ((tool as Tool).name === 'Bash') {
-        const cmd =
-          typeof input === 'object' && input !== null && 'command' in input
-            ? (input as any).command
-            : ''
-        const roCheck = checkReadOnlyConstraints(
-          input as any,
-          commandHasAnyCd(typeof cmd === 'string' ? cmd : ''),
-        )
-        if (roCheck.behavior !== 'allow') {
+        const bashPolicy = validateAdvisorBashInput(input)
+        if (!bashPolicy.allowed) {
+          const malformed = bashPolicy.command === null
           return {
             behavior: 'deny' as const,
-            updatedInput: input,
-            message: `The advisor can only run read-only Bash commands. ` +
-              `"${typeof cmd === 'string' ? cmd.slice(0, 100) : 'this command'}" was denied.`,
+            updatedInput: bashPolicy.input,
+            message: malformed
+              ? 'The advisor received malformed Bash input.'
+              : `The advisor can only run read-only Bash commands. ` +
+                `"${bashPolicy.command.slice(0, 100)}" was denied.`,
             decisionReason: {
               type: 'other' as const,
-              reason: 'Advisor is restricted to read-only Bash commands.',
+              reason: malformed
+                ? 'Advisor Bash input must satisfy the Bash tool schema.'
+                : 'Advisor is restricted to read-only Bash commands.',
             },
           }
         }
+        return { behavior: 'allow' as const, updatedInput: bashPolicy.input }
       }
       return { behavior: 'allow' as const, updatedInput: input }
     },
@@ -388,7 +387,7 @@ async function runAdvisorQuery(
         ])
       } catch (err) {
         // Cleanup failure must not mask the primary error; log for diagnostics.
-        if (typeof (console as any)?.debug === 'function') (console as any).debug('Advisor iterator cleanup:', err)
+        logForDebugging(`Advisor iterator cleanup failed: ${errorMessage(err)}`)
       } finally {
         if (timeoutId !== undefined) clearTimeout(timeoutId)
       }
@@ -416,11 +415,17 @@ async function runAdvisorQuery(
       : terminalResult.reason === 'stop_hook_prevented' ? 'stop_hook_prevented'
       : 'iterator_closed'
 
-  // Recompute API error status from the final post-tombstone messages.
-  // Tombstones may have removed the errored message.
-  const sawApiError = messages.some(
-    (m: any) => m.type === 'assistant' && m.isApiErrorMessage,
-  )
+  const summary = summarizeAdvisorMessages(messages)
+  const {
+    advice,
+    sawApiError,
+    toolsCalled,
+    filesRead,
+    webSearched,
+    tokens,
+  } = summary
+
+  // sawApiError is calculated from the final post-tombstone message set.
   // Only throw on unexpected API errors: no known terminal reason, or
   // completed with an API error (shouldn't happen).  Known non-completed
   // reasons (blocking_limit, image_error, prompt_too_long, etc.) may
@@ -433,161 +438,11 @@ async function runAdvisorQuery(
   }
   const interrupted = terminationReason !== 'completed'
 
-  // Build blocks from final (post-tombstone) messages
-  const BLOCKS_TOTAL_CHARS = 20_000
-  const blocks: Array<{ type: 'tool' | 'text'; text: string }> = []
-  let blocksChars = 0
-  outer: for (const m of messages) {
-    if (m.type !== 'assistant') continue
-    const content = (m.message as any)?.content as any[]
-    if (!content) continue
-    for (const b of content) {
-      if (b.type === 'tool_use') {
-        const s = formatToolInput(b.name, b.input)
-        const text = s ? `${toolLabel(b.name)} ${s}` : toolLabel(b.name)
-        if (blocksChars + text.length > BLOCKS_TOTAL_CHARS) {
-          blocks.push({ type: 'tool', text: '[...blocks truncated]' })
-          break outer
-        }
-        blocksChars += text.length
-        blocks.push({ type: 'tool', text })
-      } else if (b.type === 'text' && b.text) {
-        const remaining = BLOCKS_TOTAL_CHARS - blocksChars
-        if (remaining <= 0) { blocks.push({ type: 'tool', text: '[...blocks truncated]' }); break outer }
-        if (b.text.length > remaining) {
-          blocks.push({ type: 'text', text: b.text.slice(0, remaining) })
-          blocks.push({ type: 'tool', text: '[...blocks truncated]' })
-          break outer
-        }
-        blocksChars += b.text.length
-        blocks.push({ type: 'text', text: b.text })
-      }
-    }
-  }
+  const blocks = buildAdvisorBlocks(messages, (name, input) => {
+    const formattedInput = formatToolInput(name, input)
+    return formattedInput ? `${toolLabel(name)} ${formattedInput}` : toolLabel(name)
+  })
 
-  const assistantMessages = messages.filter(
-    (m: any) => m.type === 'assistant',
-  )
-  const assistantBlocks = assistantMessages.flatMap(
-    (m: any) => m.message.content,
-  )
-  const toolUses = assistantBlocks.filter((b: any) => b.type === 'tool_use')
-  const toolsCalled = toolUses.length
-
-  // filesRead: unique Read file paths with a successful (non-error) tool_result
-  const successfulToolUseIds = new Set(
-    messages
-      .filter((m: any) => m.type === 'user')
-      .flatMap((m: any) => m.message?.content ?? [])
-      .filter((b: any) => b.type === 'tool_result' && !b.is_error)
-      .map((b: any) => b.tool_use_id)
-      .filter(Boolean),
-  )
-  const filesRead = new Set(
-    toolUses
-      .filter((t: any) => t.name === 'Read' && successfulToolUseIds.has(t.id))
-      .map((t: any) => t.input?.file_path)
-      .filter((p: unknown): p is string => typeof p === 'string'),
-  ).size
-  const webSearched = toolUses.some(
-    (t: any) => t.name === 'WebSearch' && successfulToolUseIds.has(t.id),
-  )
-
-  // Aggregate token usage deduplicated by API response ID.
-  // Response-ID-based grouping handles providers that interleave
-  // assistant blocks with tool_result messages under the same ID.
-  const seenResponseIds = new Set<string | undefined>()
-  let tokens = 0
-
-  // First pass: collect all groups with known response IDs
-  const usageByResponse = new Map<string, { input: number; output: number; cacheCreation: number; cacheRead: number }>()
-  for (const m of assistantMessages) {
-    const usage = (m as any).message?.usage
-    if (!usage) continue
-    const responseId = (m as any).message?.id as string | undefined
-    if (responseId) {
-      const prev = usageByResponse.get(responseId)
-      usageByResponse.set(responseId, {
-        input: Math.max(prev?.input ?? 0, usage.input_tokens ?? 0),
-        output: Math.max(prev?.output ?? 0, usage.output_tokens ?? 0),
-        cacheCreation: Math.max(prev?.cacheCreation ?? 0, usage.cache_creation_input_tokens ?? 0),
-        cacheRead: Math.max(prev?.cacheRead ?? 0, usage.cache_read_input_tokens ?? 0),
-      })
-      seenResponseIds.add(responseId)
-    }
-  }
-
-  // Deduplicated known responses
-  for (const u of usageByResponse.values()) {
-    tokens += u.input + u.output + u.cacheCreation + u.cacheRead
-  }
-
-  // For messages without a response ID, aggregate by contiguous assistant
-  // groups (split on non-assistant boundaries) as a best-effort fallback.
-  const noIdGroups: any[][] = []
-  let currentGroup: any[] = []
-  for (const m of messages) {
-    if (m.type === 'assistant') {
-      if (!seenResponseIds.has((m as any).message?.id)) {
-        currentGroup.push(m)
-      } else if (currentGroup.length > 0) {
-        noIdGroups.push(currentGroup)
-        currentGroup = []
-      }
-    } else if (currentGroup.length > 0) {
-      noIdGroups.push(currentGroup)
-      currentGroup = []
-    }
-  }
-  if (currentGroup.length > 0) noIdGroups.push(currentGroup)
-
-  for (const group of noIdGroups) {
-    const maxUsage = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 }
-    for (const m of group) {
-      const usage = (m as any).message?.usage
-      if (!usage) continue
-      maxUsage.input = Math.max(maxUsage.input, usage.input_tokens ?? 0)
-      maxUsage.output = Math.max(maxUsage.output, usage.output_tokens ?? 0)
-      maxUsage.cacheCreation = Math.max(maxUsage.cacheCreation, usage.cache_creation_input_tokens ?? 0)
-      maxUsage.cacheRead = Math.max(maxUsage.cacheRead, usage.cache_read_input_tokens ?? 0)
-    }
-    tokens += maxUsage.input + maxUsage.output + maxUsage.cacheCreation + maxUsage.cacheRead
-  }
-
-  // Extract advice from the final logical API response.
-  // Group by response ID: the final response is the one with the last
-  // response ID seen.  If there's a mix of keyed and unkeyed messages,
-  // prefer the last keyed group; otherwise fall back to the last
-  // contiguous unkeyed assistant run.
-  const groupedByResponse = new Map<string | undefined, any[]>()
-  let lastResponseId: string | undefined
-  for (const m of messages) {
-    if (m.type !== 'assistant') continue
-    const id = (m as any).message?.id as string | undefined
-    if (id) {
-      lastResponseId = id
-      const group = groupedByResponse.get(id)
-      if (group) group.push(m)
-      else groupedByResponse.set(id, [m])
-    } else {
-      const last = lastResponseId ? groupedByResponse.get(lastResponseId) : undefined
-      if (last) last.push(m)
-      else {
-        const noId = groupedByResponse.get(undefined)
-        if (noId) noId.push(m)
-        else groupedByResponse.set(undefined, [m])
-      }
-    }
-  }
-
-  const finalGroupKey = lastResponseId ?? undefined
-  const finalMessages = groupedByResponse.get(finalGroupKey) ??
-    (groupedByResponse.size > 0 ? [...groupedByResponse.values()].at(-1) : undefined) ??
-    []
-  const finalBlocks = finalMessages.flatMap(
-    (m: any) => m.message?.content ?? [],
-  )
-  const advice = extractTextContent(finalBlocks, '\n\n').trim()
   const durationMs = Date.now() - info.startTime
   const conversationsRead = conversationLog.getUniqueReadCount()
 

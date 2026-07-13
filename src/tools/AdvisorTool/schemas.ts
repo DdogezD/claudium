@@ -81,6 +81,10 @@ export const conversationLogInputSchema = z.discriminatedUnion('action', [
 
 export type ConversationLogInput = z.infer<typeof conversationLogInputSchema>
 
+export const conversationLogOutputSchema = z.string()
+
+export type ConversationLogOutput = z.infer<typeof conversationLogOutputSchema>
+
 export const inputSchema = z.strictObject({
   question: z
     .string()

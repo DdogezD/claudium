@@ -3,18 +3,23 @@ import {
   tokenize,
   tokenizeQuery,
 } from './conversationLog/tokenizer.js'
-import { buildSearchIndex, bm25Search, formatSearchResults, formatEntryLabel } from './conversationLog/search.js'
-import { createConversationLogTool } from './conversationLog/ConversationLogTool.js'
-import type { ConversationEntry, SearchIndex } from './types.js'
+import { buildSearchIndex, bm25Search, formatEntryLabel } from './conversationLog/search.js'
+import { createConversationLogTool, formatConversationIndex } from './conversationLog/ConversationLogTool.js'
+import {
+  conversationLogInputSchema,
+  conversationLogOutputSchema,
+} from './schemas.js'
+import type { Message } from '../../types/message.js'
+import type { ConversationEntry } from './types.js'
 
 // ---------------------------------------------------------------------------
 // Smoke: module imports without init-order crash
 // ---------------------------------------------------------------------------
 
 describe('module imports', () => {
-  it('AdvisorTool imports without crash', () => {
+  it('AdvisorTool imports without crash', async () => {
     // Lazy allowlist means this must NOT throw during import
-    const { AdvisorTool } = require('./AdvisorTool.js')
+    const { AdvisorTool } = await import('./AdvisorTool.js')
     expect(AdvisorTool).toBeDefined()
     expect(AdvisorTool.name).toBe('Advisor')
   })
@@ -25,6 +30,12 @@ describe('module imports', () => {
     const { tool, getUniqueReadCount } = createConversationLogTool(entries, index)
     expect(tool).toBeDefined()
     expect(tool.name).toBe('ReadConversationLog')
+    expect(tool.outputSchema).toBe(conversationLogOutputSchema)
+    expect(tool.mapToolResultToToolResultBlockParam('plain output', 'tool-1')).toEqual({
+      tool_use_id: 'tool-1',
+      type: 'tool_result',
+      content: 'plain output',
+    })
     expect(getUniqueReadCount()).toBe(0)
   })
 })
@@ -157,6 +168,15 @@ describe('ConversationLogTool index', () => {
     expect(result.data).toContain('[10]')
   })
 
+  it('formats a small manifest exactly', () => {
+    const entries = makeEntries(2)
+    expect(formatConversationIndex(entries, 0, 2)).toBe(
+      '# Conversation log manifest (2 messages available, showing [2]-[1])\n\n' +
+      '[2] ASSISTANT (140 chars)\n\n' +
+      '[1] USER (40 chars) [tools: Read]',
+    )
+  })
+
   it('respects offset beyond total', async () => {
     const entries = makeEntries(5)
     const index = buildSearchIndex(entries)
@@ -172,7 +192,7 @@ describe('ConversationLogTool index', () => {
     const result = await tool.call({ action: 'index', limit: 500 })
     expect(typeof result.data).toBe('string')
     // Must not exceed the declared budget
-    expect((result.data as string).length).toBeLessThanOrEqual(60_000)
+    expect((result.data).length).toBeLessThanOrEqual(60_000)
   })
 })
 
@@ -232,7 +252,51 @@ describe('ConversationLogTool search', () => {
     const { tool } = createConversationLogTool(entries, index)
     const result = await tool.call({ action: 'search', query: 'entry', top_k: 50 })
     expect(typeof result.data).toBe('string')
-    expect((result.data as string).length).toBeLessThanOrEqual(60_000)
+    expect((result.data).length).toBeLessThanOrEqual(60_000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ConversationLogTool: output contract and action schemas
+// ---------------------------------------------------------------------------
+
+describe('ConversationLogTool output contract', () => {
+  const entries: ConversationEntry[] = [
+    { id: 1, role: 'user', text: 'find the cache', searchBody: 'find the cache', charLength: 14, truncated: false },
+    { id: 2, role: 'assistant', text: 'cache is ready', searchBody: 'cache is ready', charLength: 14, truncated: false },
+  ]
+
+  it('parses each action and supplies its defaults', () => {
+    expect(conversationLogInputSchema.parse({ action: 'index' })).toEqual({ action: 'index', offset: 0, limit: 200 })
+    expect(conversationLogInputSchema.parse({ action: 'search', query: 'cache' })).toEqual({
+      action: 'search', query: 'cache', top_k: 10, match_mode: 'or',
+    })
+    expect(conversationLogInputSchema.parse({ action: 'read', message_ids: [1] })).toEqual({
+      action: 'read', message_ids: [1], char_offset: 0,
+    })
+    expect(conversationLogInputSchema.parse({ action: 'around', message_id: 1 })).toEqual({
+      action: 'around', message_id: 1, before: 3, after: 3,
+    })
+  })
+
+  it('returns schema-valid strings for every action, including error text', async () => {
+    const { tool } = createConversationLogTool(entries, buildSearchIndex(entries))
+    const results = await Promise.all([
+      tool.call({ action: 'index', offset: 0, limit: 1 }),
+      tool.call({ action: 'search', query: 'cache', top_k: 10, match_mode: 'or' }),
+      tool.call({ action: 'read', message_ids: [1], char_offset: 0 }),
+      tool.call({ action: 'around', message_id: 1, before: 0, after: 0 }),
+      tool.call({ action: 'around', message_id: 99, before: 0, after: 0 }),
+    ])
+
+    for (const result of results) {
+      expect(conversationLogOutputSchema.parse(result.data)).toBe(result.data)
+    }
+    expect(results[0]!.data).toContain('Conversation log manifest')
+    expect(results[1]!.data).toContain('[2]')
+    expect(results[2]!.data).toContain('[1] user')
+    expect(results[3]!.data).toContain('[1] user')
+    expect(results[4]!.data).toBe('Message [99] not found in conversation log.')
   })
 })
 
@@ -260,7 +324,7 @@ describe('ConversationLogTool read', () => {
     expect(result.data).toContain('[1]')
     expect(result.data).toContain('[3]')
     expect(result.data).toContain('[5]')
-    // Only full reads count
+    // Successful full and partial reads count.
     expect(getUniqueReadCount()).toBe(3)
   })
 
@@ -292,6 +356,41 @@ describe('snapshot fingerprint', () => {
     expect(result.entries).toEqual([])
     expect(result.index).toBeDefined()
     expect(result.index.N).toBe(0)
+  })
+
+  it('serializes nonempty string messages', async () => {
+    const { getConversationSnapshot } = await import('./conversationLog/snapshot.js')
+    const result = getConversationSnapshot([{
+      type: 'user',
+      uuid: 'snapshot-nonempty',
+      message: { content: 'hello snapshot' },
+    }] as unknown as Message[])
+
+    expect(result.entries).toEqual([{
+      id: 0,
+      role: 'user',
+      text: 'hello snapshot',
+      searchBody: 'hello snapshot',
+      charLength: 14,
+      truncated: false,
+    }])
+    expect(result.index.N).toBe(1)
+  })
+
+  it('characterizes the shared display cap for string messages', async () => {
+    const { getConversationSnapshot } = await import('./conversationLog/snapshot.js')
+    const source = 'x'.repeat(16_001)
+    const result = getConversationSnapshot([{
+      type: 'assistant',
+      uuid: 'snapshot-truncated',
+      message: { content: source },
+    }] as unknown as Message[])
+    const entry = result.entries[0]!
+
+    expect(entry.charLength).toBe(16_001)
+    expect(entry.text).toBe('x'.repeat(16_000) + '\n\n[...truncated]')
+    expect(entry.searchBody).toBe('x'.repeat(16_000))
+    expect(entry.truncated).toBe(true)
   })
 })
 
@@ -410,27 +509,19 @@ describe('ConversationLogTool read continuation', () => {
     expect(result2.data).toContain('[offset=500]')
   })
 
-  it('respects char_limit', async () => {
+  it('truncation includes next_offset, counts the partial read, and stays within char_limit', async () => {
     const index = buildSearchIndex(entries)
-    const { tool } = createConversationLogTool(entries, index)
-    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 300 })
-    expect(typeof result.data).toBe('string')
-    // Strict: output must not exceed the declared limit
-    expect((result.data as string).length).toBeLessThanOrEqual(300)
-  })
-
-  it('truncation includes next_offset and stays within char_limit', async () => {
-    const index = buildSearchIndex(entries)
-    const { tool } = createConversationLogTool(entries, index)
+    const { tool, getUniqueReadCount } = createConversationLogTool(entries, index)
     const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 300 })
     expect(result.data).toContain('next_offset=')
     expect(result.data).toContain('output truncated')
     // Strict: output must not exceed the declared limit
-    expect((result.data as string).length).toBeLessThanOrEqual(300)
+    expect((result.data).length).toBeLessThanOrEqual(300)
     // next_offset must be strictly after the input offset
-    const match = (result.data as string).match(/next_offset=(\d+)/)
+    const match = (result.data).match(/next_offset=(\d+)/)
     expect(match).not.toBeNull()
     expect(Number(match![1])).toBeGreaterThan(0)
+    expect(getUniqueReadCount()).toBe(1)
   })
 
   it('continuation read does not show content before offset', async () => {
@@ -458,7 +549,7 @@ describe('ConversationLogTool read continuation', () => {
     expect(result.data).toContain('[1] assistant')
     expect(result.data).not.toContain('next_offset=')
     expect(result.data).not.toContain('tool inputs for search')
-    expect((result.data as string).length).toBeLessThanOrEqual(300)
+    expect((result.data).length).toBeLessThanOrEqual(300)
   })
 })
 
