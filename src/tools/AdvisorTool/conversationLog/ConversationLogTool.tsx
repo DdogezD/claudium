@@ -1,6 +1,11 @@
 import { Text } from '../../../ink.js'
-import { buildTool } from '../../../Tool.js'
-import { conversationLogInputSchema, type ConversationLogInput } from '../schemas.js'
+import { buildTool, type ToolDef } from '../../../Tool.js'
+import {
+  conversationLogInputSchema,
+  conversationLogOutputSchema,
+  type ConversationLogInput,
+  type ConversationLogOutput,
+} from '../schemas.js'
 import type { ConversationEntry, SearchIndex, AppendResult } from '../types.js'
 import { formatSearchResults, formatEntryLabel, bm25Search, buildSearchIndex } from './search.js'
 import { tokenizeQuery } from './tokenizer.js'
@@ -44,7 +49,7 @@ function formatConversationIndex(
   // This is O(page.length) reconstruction — bounded by 500 entries.
   const newerLine = hasNewer ? `↑ ${effectiveOffset} newer messages above (use offset=0 to go back to latest)` : null
 
-  function assemble(shown: number): { text: string; firstId: number; lastId: number; nextOffset: number; hasMorePages: boolean } {
+  function assemble(shown: number): string {
     const nextOffset = effectiveOffset + shown
     const hasMorePages = effectiveOffset + shown < total
     const remaining = total - effectiveOffset - shown
@@ -63,21 +68,19 @@ function formatConversationIndex(
       parts.push(`↓ ${remaining} earlier messages below (use offset=${nextOffset} to page further back)`)
     }
 
-    return { text: parts.join('\n\n'), firstId, lastId, nextOffset, hasMorePages }
+    return parts.join('\n\n')
   }
 
   // Start with all messages, trim back until within budget
   let shown = msgLines.length
   while (shown > 0) {
-    const { text } = assemble(shown)
+    const text = assemble(shown)
     if (text.length <= CONVERSATION_LOG_INDEX_CHARS) break
     shown--
   }
 
-  // If even the header + nav lines exceed budget, show at least that
-  if (shown === 0) shown = 0
-  const result = assemble(shown)
-  return result.text
+  // If even the header + nav lines exceed budget, show at least that.
+  return assemble(shown)
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +182,11 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
     },
 
     inputSchema: conversationLogInputSchema,
+
+    get outputSchema(): typeof conversationLogOutputSchema {
+      return conversationLogOutputSchema
+    },
+
     // Bypass 50K persistence threshold — index/search/read/around each enforce
     // their own explicit budget.  Letting the framework persist would
     // break lazy-read: the model would only get a file path, not content.
@@ -192,7 +200,7 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       return {
         tool_use_id: toolUseID,
         type: 'tool_result' as const,
-        content: typeof output === 'string' ? output : JSON.stringify(output),
+        content: output,
       }
     },
 
@@ -245,7 +253,7 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
     },
 
     userFacingName() { return CONVERSATION_LOG_TOOL_NAME },
-  })
+  } satisfies ToolDef<typeof conversationLogInputSchema, ConversationLogOutput>)
 
   return {
     tool,

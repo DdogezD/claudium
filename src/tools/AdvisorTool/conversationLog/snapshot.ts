@@ -8,6 +8,8 @@ import {
   CONVERSATION_LOG_SEARCH_SNIPPET_TOTAL_CHARS,
 } from './constants.js'
 
+const ENTRY_DISPLAY_CAP = 16000
+
 // ---------------------------------------------------------------------------
 // Serialization cache (atomic snapshot: entries + search index)
 // ---------------------------------------------------------------------------
@@ -138,9 +140,9 @@ function doSerializeConversationLog(
       let text = rawContent
       let searchBody = rawContent
       let truncated = false
-      if (charLength > 16000) {
-        text = rawContent.slice(0, 16000) + '\n\n[...truncated]'
-        searchBody = rawContent.slice(0, 16000)
+      if (charLength > ENTRY_DISPLAY_CAP) {
+        text = rawContent.slice(0, ENTRY_DISPLAY_CAP) + '\n\n[...truncated]'
+        searchBody = rawContent.slice(0, ENTRY_DISPLAY_CAP)
         truncated = true
       }
       entries.push({
@@ -170,7 +172,6 @@ function doSerializeConversationLog(
     // Build searchBody incrementally so it only includes semantic content
     // that falls within the read-visible 16K display window.
     const searchBodyParts: string[] = []
-    const ENTRY_DISPLAY_CAP = 16000
     let displayPos = 0  // current position in the assembled text (includes newlines)
 
     for (const block of content) {
@@ -211,26 +212,30 @@ function doSerializeConversationLog(
           if (resultText.length > CONVERSATION_LOG_RESULT_CHARS) {
             truncated = true
           }
-          textParts.push(`[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`)
+          const displayedResultText = resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)
+          const wrapper = `[${label}: ${displayedResultText}]`
+          textParts.push(wrapper)
           // [label: resultText] = 4 chars of framing + label + resultText
           originalDisplayLen += label.length + resultText.length + 4
           // Body text starts after "[label: " in the display string
           const bodyOffsetInDisplay = label.length + 3  // "[label: "
           const visibleBody = clampVisible(
-            resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS),
+            displayedResultText,
             displayPos, bodyOffsetInDisplay, ENTRY_DISPLAY_CAP,
           )
           if (visibleBody) searchBodyParts.push(visibleBody)
-          displayPos += `[${label}: ${resultText.slice(0, CONVERSATION_LOG_RESULT_CHARS)}]`.length + 1
+          displayPos += wrapper.length + 1
         } else if (block.is_error) {
-          textParts.push(`[tool_result_error]`)
-          originalDisplayLen += '[tool_result_error]'.length
-          displayPos += '[tool_result_error]'.length + 1
+          const wrapper = '[tool_result_error]'
+          textParts.push(wrapper)
+          originalDisplayLen += wrapper.length
+          displayPos += wrapper.length + 1
         } else {
           // Non-text tool_result: array content with no text blocks
-          textParts.push('[tool_result: non-text content omitted]')
-          originalDisplayLen += '[tool_result: non-text content omitted]'.length
-          displayPos += '[tool_result: non-text content omitted]'.length + 1
+          const wrapper = '[tool_result: non-text content omitted]'
+          textParts.push(wrapper)
+          originalDisplayLen += wrapper.length
+          displayPos += wrapper.length + 1
         }
       } else if (block.type === 'thinking' || block.type === 'redacted_thinking') {
         hasThinking = true
