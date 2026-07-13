@@ -177,6 +177,7 @@ export function bm25Search(
   index: SearchIndex,
   topK: number,
   matchMode: 'or' | 'all' = 'or',
+  filter?: (entry: ConversationEntry) => boolean,
 ): SearchResponse {
   if (index.docs.length === 0) return { results: [], totalMatches: 0 }
 
@@ -196,6 +197,12 @@ export function bm25Search(
   if (matchMode === 'all') {
     matched = matched.filter(s => s.matchedTokens.length === queryTokens.length)
   }
+
+  // Apply role/ID predicate before top_k truncation
+  if (filter) {
+    matched = matched.filter(s => filter(s.entry))
+  }
+
   if (matched.length === 0) return { results: [], totalMatches: 0 }
 
   matched.sort((a, b) => b.score - a.score || b.entry.id - a.entry.id)

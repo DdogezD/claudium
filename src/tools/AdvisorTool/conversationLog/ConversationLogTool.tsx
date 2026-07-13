@@ -93,19 +93,20 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
   // Shared read implementation reused by read and around actions
   function doRead(ids: number[], charOffset: number = 0, charLimit?: number): string {
     const seen = new Set<number>()
-    const TRUNCATION_MARKER = '\n\n[...output truncated]'
     const SEPARATOR = '\n\n---\n\n'
     const effectiveCap = charLimit ?? CONVERSATION_LOG_TOTAL_CHARS
     let totalChars = 0
     const results: string[] = []
 
-    function appendLine(line: string): AppendResult {
+    function appendLine(line: string, onTruncated?: (consumed: number) => void): AppendResult {
       const separatorCost = results.length > 0 ? SEPARATOR.length : 0
       const cost = line.length + separatorCost
       if (totalChars + cost > effectiveCap) {
-        const remaining = effectiveCap - totalChars - separatorCost - TRUNCATION_MARKER.length
+        const remaining = effectiveCap - totalChars - separatorCost
         if (remaining > 0) {
-          results.push(line.slice(0, remaining) + TRUNCATION_MARKER)
+          const truncated = line.slice(0, remaining)
+          const marker = `\n\n[...output truncated, next_offset=${onTruncated ? onTruncated(truncated.length) : '?'}]`
+          results.push(truncated + marker)
         }
         totalChars = effectiveCap
         return remaining > 0 ? 'partial' : 'none'
@@ -126,17 +127,21 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       const visibleText = charOffset > 0 ? entry.text.slice(charOffset) : entry.text
       const offsetTag = charOffset > 0 ? ` [offset=${charOffset}]` : ''
       const truncTag = entry.truncated ? ' [truncated]' : ''
-      const searchTextInfo = entry.searchText
-        ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]`
-        : ''
-      const line = `[${id}] ${entry.role} (${entry.charLength} chars)${offsetTag}${truncTag}:\n\n${visibleText}${searchTextInfo}`
-      const result = appendLine(line)
-      if (result === 'full' && charOffset === 0) {
+      const headerPart = `[${id}] ${entry.role} (${entry.charLength} chars)${offsetTag}${truncTag}:\n\n`
+      const footerPart = entry.searchText ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]` : ''
+      const contentLine = headerPart + visibleText + footerPart
+
+      const headerLen = headerPart.length
+      const result = appendLine(contentLine, (truncatedLen) => {
+        // truncatedLen is total chars kept from contentLine.
+        // visibleText consumed = truncatedLen - headerLen, clamped to visibleText range
+        return charOffset + Math.min(visibleText.length, Math.max(0, truncatedLen - headerLen))
+      })
+
+      if (result === 'full' || result === 'partial') {
         uniqueReadIds.add(id)
-      } else if (result === 'partial') {
-        uniqueReadIds.add(id)
-        break
-      } else {
+      }
+      if (result !== 'full') {
         break
       }
     }
@@ -189,32 +194,31 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
         if (queryTokens.length > 64) {
           return { data: `Query has ${queryTokens.length} unique tokens; max 64 supported. Please narrow your search.` }
         }
-        const response = bm25Search(input.query, searchIndex, input.top_k, input.match_mode)
+        // Build filter predicate for role/ID range (applied before top_k truncation)
+        const roleSet = input.roles && input.roles.length > 0 ? new Set(input.roles) : null
+        const after = input.after_id
+        const before = input.before_id
+        const filter = (roleSet || after !== undefined || before !== undefined)
+          ? (e: ConversationEntry) =>
+              (!roleSet || roleSet.has(e.role)) &&
+              (after === undefined || e.id > after) &&
+              (before === undefined || e.id < before)
+          : undefined
 
-        // Apply role/ID filters post-search
-        let results = response.results
-        if (input.roles && input.roles.length > 0) {
-          const roleSet = new Set(input.roles)
-          results = results.filter(r => roleSet.has(r.entry.role))
-        }
-        if (input.after_id !== undefined) {
-          results = results.filter(r => r.entry.id > input.after_id!)
-        }
-        if (input.before_id !== undefined) {
-          results = results.filter(r => r.entry.id < input.before_id!)
-        }
-
-        return { data: formatSearchResults(input.query, results, searchIndex.N, results.length === response.results.length ? response.totalMatches : results.length, input.match_mode) }
+        const response = bm25Search(input.query, searchIndex, input.top_k, input.match_mode, filter)
+        return { data: formatSearchResults(input.query, response.results, searchIndex.N, response.totalMatches, input.match_mode) }
       }
       if (input.action === 'around') {
         const target = input.message_id
+        const before = input.before ?? 3
+        const after = input.after ?? 3
         const allIds = entries.map(e => e.id).sort((a, b) => a - b)
         const idx = allIds.indexOf(target)
         if (idx === -1) {
           return { data: `Message [${target}] not found in conversation log.` }
         }
-        const start = Math.max(0, idx - input.before)
-        const end = Math.min(allIds.length, idx + input.after + 1)
+        const start = Math.max(0, idx - before)
+        const end = Math.min(allIds.length, idx + after + 1)
         const aroundIds = allIds.slice(start, end)
         return { data: doRead(aroundIds) }
       }
