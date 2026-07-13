@@ -137,7 +137,12 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       const offsetTag = charOffset > 0 ? ` [offset=${charOffset}]` : ''
       const truncTag = entry.truncated ? ' [truncated]' : ''
       const headerPart = `[${id}] ${entry.role} (${entry.charLength} chars)${offsetTag}${truncTag}:\n\n`
-      const footerPart = entry.searchText ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]` : ''
+      // Footer (searchText) does NOT participate in continuation — char_offset
+      // only advances through message text.  On continuation reads where the
+      // text is fully consumed, skip footer to avoid resetting to offset 0.
+      const footerPart = (charOffset === 0 && entry.searchText)
+        ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]`
+        : ''
       const contentLine = headerPart + visibleText + footerPart
 
       const headerLen = headerPart.length
