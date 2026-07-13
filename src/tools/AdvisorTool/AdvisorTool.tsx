@@ -630,13 +630,28 @@ async function runAdvisorQuery(
           conversationsRead,
         }
       }
-      throw new Error(
-        `Advisor returned no response ` +
-        `(terminal reason: ${terminalResult?.reason ?? 'none'}, ` +
-        `messages: ${messages.length}, ` +
-        `tool uses: ${toolNames || 'none'}, ` +
-        `sawApiError: ${sawApiError}).`,
-      )
+      // All other interrupted/non-completed reasons: return a structured
+      // result so mapToolResultToToolResultBlockParam can attach the
+      // interruption banner.  model_error and sawApiError throw before
+      // reaching here.
+      const reasonLabel = (terminalResult?.reason ?? 'unknown').replace(/_/g, ' ')
+      return {
+        advice:
+          `Advisor was interrupted (reason: ${reasonLabel}). ` +
+          `It made ${toolsCalled} tool ${toolsCalled === 1 ? 'call' : 'calls'} ` +
+          `(${toolNames || 'none'}), read ${filesRead} ${filesRead === 1 ? 'file' : 'files'}, ` +
+          `and consumed ${formatNumber(tokens)} tokens.`,
+        filesRead,
+        toolsCalled,
+        tokens,
+        durationMs,
+        webSearched,
+        blocks,
+        interrupted: true,
+        terminationReason,
+        model: advisorModel,
+        conversationsRead,
+      }
     }
     return {
       advice: partial,

@@ -38,6 +38,7 @@ export const conversationLogSearchSchema = z.strictObject({
     .describe('"or" returns messages matching any term (default). "all" requires every term to match.'),
   roles: z
     .array(z.enum(['user', 'assistant', 'tool_result']))
+    .min(1)
     .optional()
     .describe('Only search messages with these roles.'),
   after_id: z.number().int().min(0).optional()
@@ -55,7 +56,7 @@ export const conversationLogReadSchema = z.strictObject({
     .describe(`Message IDs to read. Maximum ${CONVERSATION_LOG_READ_LIMIT} per call.`),
   char_offset: z
     .number().int().min(0).default(0)
-    .describe('Start reading from this character offset within the serialized entry. Default 0.'),
+    .describe('Start reading from this character offset within the message text. The truncated output includes a next_offset for continuation. Default 0.'),
   char_limit: z
     .number().int().min(1).max(80000).optional()
     .describe('Maximum characters to return. If omitted, the full entry fits within the 80K budget.'),

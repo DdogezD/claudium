@@ -418,4 +418,57 @@ describe('ConversationLogTool read continuation', () => {
     // Should be well under the limit considering header overhead
     expect((result.data as string).length).toBeLessThan(400)
   })
+
+  it('truncation includes next_offset for continuation', async () => {
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 100 })
+    expect(result.data).toContain('next_offset=')
+    expect(result.data).toContain('output truncated')
+  })
+
+  it('continuation read does not show content before offset', async () => {
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'read', message_ids: [1], char_offset: 500 })
+    // Continuation should NOT show 'AAA' prefix
+    expect(result.data).not.toContain('AAA')
+    expect(result.data).toContain('BBB')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ConversationLogTool: search filter before top_k
+// ---------------------------------------------------------------------------
+
+describe('ConversationLogTool search filtering', () => {
+  it('filters before top_k — does not miss results', async () => {
+    // Create 15 entries: first 10 all assistant, 11th is user
+    const entries: ConversationEntry[] = []
+    for (let i = 0; i < 10; i++) {
+      entries.push({ id: i + 1, role: 'assistant', text: `match ${i}`, searchBody: `match ${i}`, charLength: 8, truncated: false })
+    }
+    entries.push({ id: 11, role: 'user', text: 'match target', searchBody: 'match target', charLength: 12, truncated: false })
+
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    // top_k=10, filter roles=['user'] — should find entry 11 even though it ranks 11th
+    const result = await tool.call({ action: 'search', query: 'match', top_k: 10, roles: ['user'] })
+    expect(result.data).toContain('[11]')
+    expect(result.data).not.toContain('[1]')
+  })
+
+  it('after_id filters correctly', async () => {
+    const entries: ConversationEntry[] = [
+      { id: 1, role: 'user', text: 'match', searchBody: 'match', charLength: 5, truncated: false },
+      { id: 5, role: 'user', text: 'match', searchBody: 'match', charLength: 5, truncated: false },
+      { id: 10, role: 'user', text: 'match', searchBody: 'match', charLength: 5, truncated: false },
+    ]
+    const index = buildSearchIndex(entries)
+    const { tool } = createConversationLogTool(entries, index)
+    const result = await tool.call({ action: 'search', query: 'match', top_k: 10, after_id: 3 })
+    expect(result.data).toContain('[5]')
+    expect(result.data).toContain('[10]')
+    expect(result.data).not.toContain('[1]')
+  })
 })
