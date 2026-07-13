@@ -136,6 +136,24 @@ function cleanupTerminalModes(): void {
 }
 
 let resumeHintPrinted = false
+let exitFooterStarted = false
+
+/**
+ * Write one exit-footer item, adding the shared leading gap exactly once.
+ * Returns false when stdout is unavailable.
+ */
+function writeExitFooter(output: string): boolean {
+  try {
+    writeSync(1, `${exitFooterStarted ? '' : '\n\n\n'}${output}`)
+    exitFooterStarted = true
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Re-export for use in costHook process.exit handler
+export { writeExitFooter }
 
 /**
  * Print a hint about how to resume the session.
@@ -170,13 +188,15 @@ function printResumeHint(): void {
         resumeArg = sessionId
       }
 
-      writeSync(
-        1,
-        chalk.dim(
-          `\nResume this session with:\nclaudium --resume ${resumeArg}\n`,
-        ),
-      )
-      resumeHintPrinted = true
+      if (
+        writeExitFooter(
+          chalk.dim(
+            `Resume this session with:\nclaudium --resume ${resumeArg}\n`,
+          ),
+        )
+      ) {
+        resumeHintPrinted = true
+      }
     } catch {
       // Ignore write errors
     }
@@ -372,6 +392,7 @@ export function isShuttingDown(): boolean {
 export function resetShutdownState(): void {
   shutdownInProgress = false
   resumeHintPrinted = false
+  exitFooterStarted = false
   if (failsafeTimer !== undefined) {
     clearTimeout(failsafeTimer)
     failsafeTimer = undefined
