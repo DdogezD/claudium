@@ -58,8 +58,8 @@ export const conversationLogReadSchema = z.strictObject({
     .number().int().min(0).default(0)
     .describe('Start reading from this character offset within the message text. The truncated output includes a next_offset for continuation. Default 0.'),
   char_limit: z
-    .number().int().min(1).max(80000).optional()
-    .describe('Maximum characters to return. If omitted, the full entry fits within the 80K budget.'),
+    .number().int().min(200).max(80000).optional()
+    .describe('Maximum characters to return (min 200 to guarantee header + marker + content). If omitted, the full entry fits within the 80K budget.'),
 })
 
 export const conversationLogAroundSchema = z.strictObject({
