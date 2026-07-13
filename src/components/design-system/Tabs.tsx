@@ -197,7 +197,7 @@ export function Tabs(t0) {
   const T0 = Box;
   const t11 = "column";
   const t12 = 0;
-  const t13 = true;
+  const t13 = initialHeaderFocused;
   const t14 = modalScrollRef ? 0 : undefined;
   const t15 = !hidden && <Box flexDirection="row" gap={1} flexShrink={modalScrollRef ? 0 : undefined}>{title !== undefined && <Text bold={true} color={color}>{title}</Text>}{tabs.map((t16, i) => {
       const [id, title_0] = t16;
