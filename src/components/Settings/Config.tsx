@@ -37,7 +37,7 @@ import { SearchBox } from '../SearchBox.js';
 import { isSupportedTerminal, hasAccessToIDEExtensionDiffFeature } from '../../utils/ide.js';
 import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js';
-import { DEFAULT_OUTPUT_STYLE_NAME } from 'src/constants/outputStyles.js';
+import { DEFAULT_OUTPUT_STYLE_NAME, OUTPUT_STYLE_CONFIG } from 'src/constants/outputStyles.js';
 import { isEnvTruthy, isRunningOnHomespace } from 'src/utils/envUtils.js';
 import type { LocalJSXCommandContext, CommandResultDisplay } from '../../commands.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js';
@@ -49,6 +49,13 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { clearFastModeCooldown, FAST_MODE_MODEL_DISPLAY, isFastModeAvailable, isFastModeEnabled, getFastModeModel, isFastModeSupportedByModel } from '../../utils/fastMode.js';
 import type { AdvisorPreference } from '../tools/AdvisorTool/prompt.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+
+function outputStyleDisplayName(style: OutputStyle): string {
+  const config = OUTPUT_STYLE_CONFIG[style]
+  if (config?.name) return config.name
+  if (style === DEFAULT_OUTPUT_STYLE_NAME) return 'Default'
+  return style
+}
 
 const ADVISOR_PREFERENCE_OPTIONS = [
   { label: 'Default', value: 'default' as const, description: 'Call advisor for consequential decisions — architecture, security, complex debugging, or when truly stuck.' },
@@ -115,6 +122,13 @@ export function Config({
   const [currentLanguage, setCurrentLanguage] = useState<string | undefined>(settingsData?.language);
   const initialLanguage = React.useRef(currentLanguage);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const selectedIndexRef = React.useRef(selectedIndex);
+  // Keep the ref in sync with committed state so non-batched reads
+  // (e.g. effects, resize handlers) see the latest value.  Batched
+  // navigation handlers write the ref synchronously themselves.
+  React.useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isSearchMode, setIsSearchMode] = useState(true);
   const isTerminalFocused = useTerminalFocus();
@@ -192,7 +206,10 @@ export function Config({
   } = useSearchInput({
     isActive: isSearchMode && showSubmenu === null && !headerFocused,
     onExit: () => setIsSearchMode(false),
-    onExitUp: focusHeader,
+    onExitUp: () => {
+      setIsSearchMode(false)
+      focusHeader()
+    },
     // Ctrl+C/D must reach Settings' useExitOnCtrlCD; 'd' also avoids
     // double-action (delete-char + exit-pending).
     passthroughCtrlKeys: ['c', 'd']
@@ -727,13 +744,13 @@ export function Config({
   }] : []), {
     id: 'outputStyle',
     label: 'Output style',
-    value: currentOutputStyle,
+    value: outputStyleDisplayName(currentOutputStyle),
     type: 'managedEnum' as const,
     onChange: () => {} // handled by OutputStylePicker submenu
   }, {
     id: 'advisorPreference',
     label: 'Advisor preference',
-    value: currentAdvisorPreference,
+    value: ADVISOR_PREFERENCE_OPTIONS.find(o => o.value === currentAdvisorPreference)?.label ?? currentAdvisorPreference,
     type: 'managedEnum' as const,
     onChange: () => {} // handled by AdvisorPreferencePicker submenu
   }, ...(showDefaultViewPicker ? [{
@@ -1281,7 +1298,7 @@ export function Config({
   // Settings navigation and toggle actions via configurable keybindings.
   // Only active when not in search mode and no submenu is open.
   const toggleSetting = useCallback(() => {
-    const setting_0 = filteredSettingsItems[selectedIndex];
+    const setting_0 = filteredSettingsItems[selectedIndexRef.current];
     if (!setting_0 || !setting_0.onChange) {
       return;
     }
@@ -1373,13 +1390,15 @@ export function Config({
   }, [autoUpdaterDisabledReason, filteredSettingsItems, selectedIndex, settingsData?.autoUpdatesChannel, setTabsHidden]);
   const moveSelection = (delta: -1 | 1): void => {
     setShowThinkingWarning(false);
-    const newIndex_1 = Math.max(0, Math.min(filteredSettingsItems.length - 1, selectedIndex + delta));
+    const prev = selectedIndexRef.current;
+    const newIndex_1 = Math.max(0, Math.min(filteredSettingsItems.length - 1, prev + delta));
+    selectedIndexRef.current = newIndex_1;
     setSelectedIndex(newIndex_1);
     adjustScrollOffset(newIndex_1);
   };
   useKeybindings({
     'select:previous': () => {
-      if (selectedIndex === 0) {
+      if (selectedIndexRef.current === 0) {
         // ↑ at top enters search mode so users can type-to-filter after
         // reaching the list boundary. Wheel-up (scroll:lineUp) clamps
         // instead — overshoot shouldn't move focus away from the list.
@@ -1690,13 +1709,13 @@ export function Config({
             const isSelected = actualIndex === selectedIndex && !headerFocused && !isSearchMode;
             return <React.Fragment key={setting_2.id}>
                         <Box>
-                          <Box width={44}>
-                            <Text color={isSelected ? 'suggestion' : undefined}>
+                          <Box width={44} overflow="hidden">
+                            <Text wrap="truncate-end" color={isSelected ? 'suggestion' : undefined}>
                               {isSelected ? figures.pointer : ' '}{' '}
                               {setting_2.label}
                             </Text>
                           </Box>
-                          <Box key={isSelected ? 'selected' : 'unselected'}>
+                          <Box key="value">
                             {setting_2.type === 'boolean' ? <>
                                 <Text color={isSelected ? 'suggestion' : undefined}>
                                   {setting_2.value.toString()}
