@@ -3,18 +3,26 @@ export const ADVISOR_TOOL_NAME = 'Advisor'
 export const CONVERSATION_LOG_TOOL_NAME = 'ReadConversationLog'
 
 export const ADVISOR_TOOL_DESCRIPTION =
-  'MUST call this BEFORE doing any substantive work on every task. ' +
-  'A stronger reviewer model will check your approach for architecture flaws, ' +
-  'security issues, and edge cases you missed. Also call when stuck, ' +
-  'when the task is complete, or when considering a change of approach. ' +
-  'The advisor can selectively read all available post-compaction user and assistant messages through its `ReadConversationLog` tool; ' +
+  'Consult a stronger advisor model for strategic guidance. ' +
+  'The advisor can selectively read all available post-compaction user ' +
+  'and assistant messages through its `ReadConversationLog` tool; ' +
   'the history is not pre-injected into the advisor prompt.'
 
-/**
- * Instructions delivered to the **executor model** through the persisted
- * advisor_instructions attachment. Never injected into subagent queries.
- */
-export const ADVISOR_TOOL_INSTRUCTIONS = `# Advisor Tool
+// ---------------------------------------------------------------------------
+// Executor instructions — three tiers, selected by settings.advisorPreference.
+// Falls back to 'default' when the setting is absent.
+// ---------------------------------------------------------------------------
+
+const ADVISOR_SHARED_INSTRUCTIONS = `The advisor receives all conversation history after the latest compact boundary as a read-only log. It does NOT get your messages pre-sent — it must actively call the \`ReadConversationLog\` tool to see the manifest and selectively read what matters. Write a self-contained question describing what you need advice on, but know that the advisor can also pull full message details on demand.
+
+You have access to an \`advisor\` tool backed by a stronger reviewer model.
+When you call it, provide a clear question describing what you need advice on — the advisor sees what you write — include all relevant context in your question.
+
+Give the advice serious weight. If you follow a step and it fails empirically, or you have primary-source evidence that contradicts a specific claim (the file says X, the code does Y), adapt. A passing self-test is not evidence the advice is wrong — it's evidence your test doesn't check what the advice is checking.
+
+If you've already retrieved data pointing one way and the advisor points another: don't silently switch. Surface the conflict in one more advisor call — "I found X, you suggest Y, which constraint breaks the tie?" The advisor saw your evidence but may have underweighted it; a reconcile call is cheaper than committing to the wrong branch.`
+
+const ADVISOR_INSTRUCTIONS_PREFER = `# Advisor Tool
 
 These instructions replace any earlier Advisor Tool instructions in this conversation.
 
@@ -22,10 +30,7 @@ These instructions replace any earlier Advisor Tool instructions in this convers
 
 Do NOT call advisor for greetings, acknowledgements, casual conversation, simple status checks, or direct questions whose answer requires no investigation or decision. Reply to those normally. A task is substantive when it requires implementation, debugging, research, multi-step analysis, or a consequential recommendation.
 
-The advisor receives all conversation history after the latest compact boundary as a read-only log. It does NOT get your messages pre-sent — it must actively call the \`ReadConversationLog\` tool to see the manifest and selectively read what matters. Write a self-contained question describing what you need advice on, but know that the advisor can also pull full message details on demand.
-
-You have access to an \`advisor\` tool backed by a stronger reviewer model.
-When you call it, provide a clear question describing what you need advice on — the advisor sees what you write — include all relevant context in your question.
+${ADVISOR_SHARED_INSTRUCTIONS}
 
 Call advisor BEFORE substantive work — before writing, before committing to an interpretation, before building on an assumption. If the task requires orientation first (finding files, reading code, seeing what's there), do that, then call advisor. Orientation is not substantive work. Writing, editing, and declaring an answer are.
 
@@ -34,11 +39,51 @@ Also call advisor:
 - When stuck — errors recurring, approach not converging, results that don't fit.
 - When considering a change of approach.
 
-On tasks longer than a few steps, call advisor at least once before committing to an approach and once before declaring done. On short reactive tasks where the next action is dictated by tool output you just read, you don't need to keep calling — the advisor adds most of its value on the first call, before the approach crystallizes.
+On tasks longer than a few steps, call advisor at least once before committing to an approach and once before declaring done. On short reactive tasks where the next action is dictated by tool output you just read, you don't need to keep calling — the advisor adds most of its value on the first call, before the approach crystallizes.`
 
-Give the advice serious weight. If you follow a step and it fails empirically, or you have primary-source evidence that contradicts a specific claim (the file says X, the code does Y), adapt. A passing self-test is not evidence the advice is wrong — it's evidence your test doesn't check what the advice is checking.
+const ADVISOR_INSTRUCTIONS_DEFAULT = `# Advisor Tool
 
-If you've already retrieved data pointing one way and the advisor points another: don't silently switch. Surface the conflict in one more advisor call — "I found X, you suggest Y, which constraint breaks the tie?" The advisor saw your evidence but may have underweighted it; a reconcile call is cheaper than committing to the wrong branch.`
+These instructions replace any earlier Advisor Tool instructions in this conversation.
+
+You have access to an \`advisor\` tool backed by a stronger reviewer model. Use it for consequential decisions — architectural trade-offs, security-sensitive changes, complex multi-step debugging, or when you're genuinely stuck and need a second opinion.
+
+You do NOT need to call advisor for routine work: simple fixes, straightforward feature additions, code that the user has given detailed instructions for, or actions directly dictated by tool output you just read. Use your judgment — if the path forward is clear, proceed without advisor.
+
+When you do call advisor, do it BEFORE committing to the approach — before writing the implementation, before declaring a root cause, before building on an assumption. Orientation (finding files, reading code) is fine to do first.
+
+Also consider calling advisor:
+- When you believe the task is complete and want a final review.
+- When errors keep recurring and your approach isn't converging.
+- When you're considering a significant change of approach.
+
+${ADVISOR_SHARED_INSTRUCTIONS}`
+
+const ADVISOR_INSTRUCTIONS_AT_USER_DEMAND = `# Advisor Tool
+
+These instructions replace any earlier Advisor Tool instructions in this conversation.
+
+You have access to an \`advisor\` tool backed by a stronger reviewer model.
+
+**Do not proactively call, recommend, or mention the advisor.** Only call it when the user explicitly asks you to consult the advisor, get a second opinion from the advisor, or have the advisor review something. The complexity, importance, or risk level of a task alone does not count as user demand — the user must clearly express that they want advisor involvement.
+
+When the user does ask you to consult advisor, provide a clear, self-contained question describing what you need guidance on.
+
+${ADVISOR_SHARED_INSTRUCTIONS}`
+
+export type AdvisorPreference = 'prefer' | 'default' | 'atUserDemand'
+
+export function getAdvisorToolInstructions(
+  preference: string | undefined,
+): string {
+  switch (preference) {
+    case 'prefer':
+      return ADVISOR_INSTRUCTIONS_PREFER
+    case 'atUserDemand':
+      return ADVISOR_INSTRUCTIONS_AT_USER_DEMAND
+    default:
+      return ADVISOR_INSTRUCTIONS_DEFAULT
+  }
+}
 
 /**
  * System prompt sent to the **advisor model** itself. Injected into the

@@ -175,7 +175,7 @@ import {
 import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from './claudeInChrome/common.js'
 import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from './claudeInChrome/prompt.js'
 import { isAdvisorEnabled } from './advisor.js'
-import { ADVISOR_TOOL_INSTRUCTIONS } from '../tools/AdvisorTool/prompt.js'
+import { getAdvisorToolInstructions } from '../tools/AdvisorTool/prompt.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import type {
   HookEvent,
@@ -1624,9 +1624,13 @@ export function getAdvisorInstructionsAttachment(
     ]
   }
 
+  const instructions = getAdvisorToolInstructions(
+    getSettings_DEPRECATED()?.advisorPreference,
+  )
+
   if (
     previousAttachment?.enabled !== false &&
-    previousAttachment?.instructions === ADVISOR_TOOL_INSTRUCTIONS
+    previousAttachment?.instructions === instructions
   ) {
     return []
   }
@@ -1634,7 +1638,7 @@ export function getAdvisorInstructionsAttachment(
   return [
     {
       type: 'advisor_instructions',
-      instructions: ADVISOR_TOOL_INSTRUCTIONS,
+      instructions,
       enabled: true,
     },
   ]
