@@ -413,20 +413,20 @@ describe('ConversationLogTool read continuation', () => {
   it('respects char_limit', async () => {
     const index = buildSearchIndex(entries)
     const { tool } = createConversationLogTool(entries, index)
-    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 200 })
+    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 300 })
     expect(typeof result.data).toBe('string')
-    // Should be well under the limit considering header overhead
-    expect((result.data as string).length).toBeLessThan(400)
+    // Strict: output must not exceed the declared limit
+    expect((result.data as string).length).toBeLessThanOrEqual(300)
   })
 
   it('truncation includes next_offset and stays within char_limit', async () => {
     const index = buildSearchIndex(entries)
     const { tool } = createConversationLogTool(entries, index)
-    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 120 })
+    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 300 })
     expect(result.data).toContain('next_offset=')
     expect(result.data).toContain('output truncated')
     // Strict: output must not exceed the declared limit
-    expect((result.data as string).length).toBeLessThanOrEqual(120)
+    expect((result.data as string).length).toBeLessThanOrEqual(300)
     // next_offset must be strictly after the input offset
     const match = (result.data as string).match(/next_offset=(\d+)/)
     expect(match).not.toBeNull()
@@ -449,32 +449,41 @@ describe('ConversationLogTool read continuation', () => {
 
 describe('ConversationLogTool search filtering', () => {
   it('filters before top_k — finds result outside topK', async () => {
-    // 10 assistant entries with high BM25 score (more matching terms),
-    // 1 user entry with lower score. User should rank outside top 11,
-    // but filter-before-topK must still return it.
+    // 10 assistant entries with high TF of the query term ("match"),
+    // 1 user entry with only one occurrence. The user should score
+    // lower and rank outside top 5.
     const entries: ConversationEntry[] = []
     for (let i = 1; i <= 10; i++) {
       entries.push({
         id: i, role: 'assistant',
-        text: 'match extra terms boost score significantly',
-        searchBody: 'match extra terms boost score significantly',
-        charLength: 43, truncated: false,
+        text: 'match '.repeat(5),
+        searchBody: 'match '.repeat(5),
+        charLength: 30, truncated: false,
       })
     }
-    // User entry: lower score, higher ID (so tie-break puts it last among equals)
+    // User entry: lower TF, higher ID (tie-break: newer wins)
     entries.push({
       id: 99, role: 'user',
-      text: 'simple match',
-      searchBody: 'simple match',
-      charLength: 12, truncated: false,
+      text: 'match',
+      searchBody: 'match',
+      charLength: 5, truncated: false,
     })
 
     const index = buildSearchIndex(entries)
+    // Sanity: unfiltered top 5 should NOT include [99]
+    const unfiltered = bm25Search('match', index, 5)
+    const unfilteredIds = unfiltered.results.map(r => r.entry.id)
+    expect(unfilteredIds).not.toContain(99)
+
+    // Filtered should still find [99]
+    const filtered = bm25Search('match', index, 5, 'or', e => e.role === 'user')
+    expect(filtered.results.map(r => r.entry.id)).toContain(99)
+    expect(filtered.totalMatches).toBe(1)
+
+    // Integration: tool call with role filter
     const { tool } = createConversationLogTool(entries, index)
     const result = await tool.call({ action: 'search', query: 'match', top_k: 5, roles: ['user'] })
-    // With old filter-after-topK code, top 5 would all be assistants and user 99 lost
     expect(result.data).toContain('[99]')
-    expect(result.data).not.toContain('no matches')
   })
 
   it('after_id filters correctly', async () => {

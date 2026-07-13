@@ -675,7 +675,7 @@ async function runAdvisorQuery(
       durationMs,
       webSearched,
       blocks,
-      interrupted: true,
+      interrupted,
       terminationReason,
       model: advisorModel,
       conversationsRead,
