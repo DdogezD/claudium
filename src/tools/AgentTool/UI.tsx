@@ -624,11 +624,14 @@ export function renderToolUseErrorMessage(result: ToolResultBlockParam['content'
       <FallbackToolUseErrorMessage result={result} verbose={verbose} />
     </>;
 }
-function calculateAgentStats(progressMessages: ProgressMessage<Progress>[]): {
+function calculateAgentStats(progressMessages: ProgressMessage<Progress>[], result?: {
+  param: ToolResultBlockParam;
+  output: Output;
+}): {
   toolUseCount: number;
   tokens: number | null;
 } {
-  const toolUseCount = count(progressMessages, msg => {
+  let toolUseCount = count(progressMessages, msg => {
     if (!hasProgressMessage(msg.data)) {
       return false;
     }
@@ -640,6 +643,15 @@ function calculateAgentStats(progressMessages: ProgressMessage<Progress>[]): {
   if (latestAssistant?.data.message.type === 'assistant') {
     const usage = latestAssistant.data.message.message.usage;
     tokens = (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + usage.input_tokens + usage.output_tokens;
+  }
+  if (
+    result?.output != null &&
+    typeof result.output === 'object' &&
+    typeof (result.output as Record<string, unknown>).totalTokens === 'number' &&
+    typeof (result.output as Record<string, unknown>).totalToolUseCount === 'number'
+  ) {
+    tokens = (result.output as { totalTokens: number }).totalTokens;
+    toolUseCount = (result.output as { totalToolUseCount: number }).totalToolUseCount;
   }
   return {
     toolUseCount,
@@ -673,7 +685,7 @@ export function renderGroupedAgentToolUse(toolUses: Array<{
     progressMessages,
     result
   }) => {
-    const stats = calculateAgentStats(progressMessages);
+    const stats = calculateAgentStats(progressMessages, result);
     const lastToolInfo = extractLastToolInfo(progressMessages, tools);
     const parsedInput = inputSchema().safeParse(param.input);
 

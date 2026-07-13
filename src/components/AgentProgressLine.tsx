@@ -21,7 +21,7 @@ type Props = {
   hideType?: boolean;
 };
 export function AgentProgressLine(t0) {
-  const $ = _c(32);
+  const $ = _c(33);
   const {
     agentType,
     description,
@@ -33,6 +33,7 @@ export function AgentProgressLine(t0) {
     color,
     isLast,
     isResolved,
+    isError,
     isAsync: t1,
     lastToolInfo,
     hideType: t2
@@ -40,12 +41,15 @@ export function AgentProgressLine(t0) {
   const isAsync = t1 === undefined ? false : t1;
   const hideType = t2 === undefined ? false : t2;
   const treeChar = isLast ? "\u2514\u2500" : "\u251C\u2500";
-  const isBackgrounded = isAsync && isResolved;
+  const isBackgrounded = isAsync && isResolved && !isError;
   let t3;
-  if ($[0] !== isBackgrounded || $[1] !== isResolved || $[2] !== lastToolInfo || $[3] !== taskDescription) {
+  if ($[0] !== isBackgrounded || $[1] !== isResolved || $[2] !== lastToolInfo || $[3] !== taskDescription || $[32] !== isError) {
     t3 = () => {
       if (!isResolved) {
         return lastToolInfo || "Initializing\u2026";
+      }
+      if (isError) {
+        return 'Failed';
       }
       if (isBackgrounded) {
         return taskDescription ?? "Running in the background";
@@ -57,6 +61,7 @@ export function AgentProgressLine(t0) {
     $[2] = lastToolInfo;
     $[3] = taskDescription;
     $[4] = t3;
+    $[32] = isError;
   } else {
     t3 = $[4];
   }

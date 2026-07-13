@@ -1166,6 +1166,12 @@ export type MessageLookups = {
  * This avoids O(n²) behavior from calling getProgressMessagesForMessage,
  * getSiblingToolUseIDs, and hasUnresolvedHooks for each message.
  */
+function isStructuredInterruptedResult(msg: NormalizedMessage): boolean {
+  if (msg.type !== 'user' || msg.toolUseResult == null) return false
+  const result = msg.toolUseResult as { interrupted?: boolean; terminationReason?: string }
+  return result.interrupted === true && result.terminationReason !== 'completed'
+}
+
 export function buildMessageLookups(
   normalizedMessages: NormalizedMessage[],
   messages: Message[],
@@ -1208,7 +1214,7 @@ export function buildMessageLookups(
   const toolResultByToolUseID = new Map<string, NormalizedMessage>()
   // Track resolved/errored tool use IDs (replaces separate useMemos in Messages.tsx)
   const resolvedToolUseIDs = new Set<string>()
-  const erroredToolUseIDs = new Set<string>()
+  const errorStateByToolUseID = new Map<string, boolean>()
 
   for (const msg of normalizedMessages) {
     if (msg.type === 'progress') {
@@ -1239,9 +1245,11 @@ export function buildMessageLookups(
         if (content.type === 'tool_result') {
           toolResultByToolUseID.set(content.tool_use_id, msg)
           resolvedToolUseIDs.add(content.tool_use_id)
-          if (content.is_error) {
-            erroredToolUseIDs.add(content.tool_use_id)
-          }
+          errorStateByToolUseID.set(
+            content.tool_use_id,
+            content.is_error === true ||
+              isStructuredInterruptedResult(msg),
+          )
         }
       }
     }
@@ -1311,10 +1319,16 @@ export function buildMessageLookups(
       ) {
         const id = (content as { id: string }).id
         resolvedToolUseIDs.add(id)
-        erroredToolUseIDs.add(id)
+        errorStateByToolUseID.set(id, true)
       }
     }
   }
+
+  const erroredToolUseIDs = new Set(
+    [...errorStateByToolUseID]
+      .filter(([, isError]) => isError)
+      .map(([id]) => id),
+  )
 
   return {
     siblingToolUseIDs,

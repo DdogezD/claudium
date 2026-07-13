@@ -4,6 +4,7 @@ import { getAdvisorModel } from '../../utils/advisor.js'
 import { formatDuration, formatNumber } from '../../utils/format.js'
 import { CtrlOToExpand } from '../../components/CtrlOToExpand.js'
 import { extractTag } from '../../utils/messages.js'
+import { InterruptedByUser } from '../../components/InterruptedByUser.js'
 import { MessageResponse } from '../../components/MessageResponse.js'
 import { FallbackToolUseErrorMessage } from '../../components/FallbackToolUseErrorMessage.js'
 import { CONVERSATION_LOG_TOOL_NAME } from './prompt.js'
@@ -126,14 +127,11 @@ export function renderAdvisorToolResultMessage(
   const tokens = content.tokens ?? 0
   const durationMs = content.durationMs ?? 0
   const webSearched = content.webSearched ?? false
-  const interrupted = content.interrupted ?? false
-  const terminationReason = content.terminationReason
+  const interruptedByUser =
+    content.interrupted === true &&
+    (content.terminationReason === 'aborted_streaming' ||
+      content.terminationReason === 'aborted_tools')
   const stats = []
-  if (terminationReason && terminationReason !== 'completed') {
-    stats.push(terminationReason.replace(/_/g, ' '))
-  } else if (interrupted) {
-    stats.push('interrupted')
-  }
   if (webSearched) stats.push('web searched')
   if (conversationsRead > 0) stats.push(`${conversationsRead} ${conversationsRead === 1 ? 'message read' : 'messages read'}`)
   if (toolsCalled > 0) stats.push(`${toolsCalled} ${toolsCalled === 1 ? 'tool use' : 'tool uses'}`)
@@ -145,42 +143,54 @@ export function renderAdvisorToolResultMessage(
   }
   if (durationMs > 0) stats.push(formatDuration(durationMs))
   const header = stats.length > 0 ? `${model} (${stats.join(' · ')})` : model
-  if (!advice) {
-    return <Text dimColor>No response received</Text>
-  }
-  const children: React.ReactNode[] = []
-  children.push(<Text key="header" bold>{`${header}\n`}</Text>)
 
-  if (options?.verbose || options?.isTranscriptMode) {
-    const blocks = content.blocks ?? []
-    if (blocks.length > 0) {
-      blocks.forEach((block, i) => {
-        if (block.type === 'text') {
-          children.push(<Text key={`b-${i}`}>{block.text + '\n'}</Text>)
-        } else {
-          children.push(<Text key={`b-${i}`} dimColor>{block.text + '\n'}</Text>)
-        }
-      })
-    } else {
-      children.push(<Text key="advice">{advice}</Text>)
+  const body = buildResultBody()
+  if (!interruptedByUser) return body
+  return (
+    <>
+      <MessageResponse height={1}><InterruptedByUser /></MessageResponse>
+      {body}
+    </>
+  )
+
+  function buildResultBody(): JSX.Element {
+    if (!advice) {
+      return <Text dimColor>No response received</Text>
     }
+    const children: React.ReactNode[] = []
+    children.push(<Text key="header" bold>{`${header}\n`}</Text>)
+
+    if (options?.verbose || options?.isTranscriptMode) {
+      const blocks = content.blocks ?? []
+      if (blocks.length > 0) {
+        blocks.forEach((block, i) => {
+          if (block.type === 'text') {
+            children.push(<Text key={`b-${i}`}>{block.text + '\n'}</Text>)
+          } else {
+            children.push(<Text key={`b-${i}`} dimColor>{block.text + '\n'}</Text>)
+          }
+        })
+      } else {
+        children.push(<Text key="advice">{advice}</Text>)
+      }
+      return (
+        <Box flexDirection="column" borderStyle="round" paddingX={1}>
+          {children}
+        </Box>
+      )
+    }
+    const previewLines = advice.split('\n').slice(0, 5)
+    const preview = previewLines.join('\n').slice(0, 200)
+    const adviceTruncated = advice.length > preview.length
+    const hasToolBlocks = (content.blocks ?? []).some(b => b.type === 'tool')
+    const needsExpand = adviceTruncated || hasToolBlocks
+    children.push(
+      <Text key="preview" dimColor>{preview}{adviceTruncated ? '…' : ''}{needsExpand && <CtrlOToExpand />}</Text>,
+    )
     return (
       <Box flexDirection="column" borderStyle="round" paddingX={1}>
         {children}
       </Box>
     )
   }
-  const previewLines = advice.split('\n').slice(0, 5)
-  const preview = previewLines.join('\n').slice(0, 200)
-  const adviceTruncated = advice.length > preview.length
-  const hasToolBlocks = (content.blocks ?? []).some(b => b.type === 'tool')
-  const needsExpand = adviceTruncated || hasToolBlocks
-  children.push(
-    <Text key="preview" dimColor>{preview}{adviceTruncated ? '…' : ''}{needsExpand && <CtrlOToExpand />}</Text>,
-  )
-  return (
-    <Box flexDirection="column" borderStyle="round" paddingX={1}>
-      {children}
-    </Box>
-  )
 }
