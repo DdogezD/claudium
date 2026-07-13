@@ -130,7 +130,7 @@ export function Config({
     selectedIndexRef.current = selectedIndex;
   }, [selectedIndex]);
   const [scrollOffset, setScrollOffset] = useState(0);
-  const [isSearchMode, setIsSearchMode] = useState(true);
+  const [isSearchMode, setIsSearchMode] = useState(false);
   const isTerminalFocused = useTerminalFocus();
   const {
     rows
@@ -1442,6 +1442,13 @@ export function Config({
           setIsSearchMode(false);
         }
         return;
+      }
+      // Empty query: left/right/tab/space act as list-mode navigation
+      // so that the first keypress after re-opening /config behaves the
+      // same as subsequent keypresses — no mode-switch preamble.
+      if (searchQuery.length === 0 && (e.key === 'left' || e.key === 'right' || e.key === 'tab' || e.key === 'space')) {
+        e.preventDefault();
+        setIsSearchMode(false);
       }
       if (e.key === 'return' || e.key === 'down' || e.key === 'wheeldown') {
         e.preventDefault();
