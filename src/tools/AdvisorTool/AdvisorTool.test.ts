@@ -441,6 +441,25 @@ describe('ConversationLogTool read continuation', () => {
     expect(result.data).not.toContain('AAA')
     expect(result.data).toContain('BBB')
   })
+
+  it('omits an oversized searchText footer without a false continuation', async () => {
+    const footerOnly: ConversationEntry[] = [{
+      id: 1,
+      role: 'assistant',
+      text: '',
+      searchBody: '',
+      searchText: 'tool-input '.repeat(200),
+      charLength: 0,
+      truncated: false,
+    }]
+    const index = buildSearchIndex(footerOnly)
+    const { tool } = createConversationLogTool(footerOnly, index)
+    const result = await tool.call({ action: 'read', message_ids: [1], char_limit: 300 })
+    expect(result.data).toContain('[1] assistant')
+    expect(result.data).not.toContain('next_offset=')
+    expect(result.data).not.toContain('tool inputs for search')
+    expect((result.data as string).length).toBeLessThanOrEqual(300)
+  })
 })
 
 // ---------------------------------------------------------------------------
