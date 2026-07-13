@@ -1581,15 +1581,17 @@ export function Config({
         setShowSubmenu(null);
         setTabsHidden(false);
       }} />
-          <Text dimColor>
-            <Byline>
-              <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
-            </Byline>
-          </Text>
+          <Box marginTop={1}>
+            <Text dimColor>
+              <Byline>
+                <KeyboardShortcutHint shortcut="Enter" action="confirm" />
+                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+              </Byline>
+            </Text>
+          </Box>
         </> : showSubmenu === 'AdvisorPreference' ? <>
           <Dialog title="Advisor preference" onCancel={() => { setShowSubmenu(null); setTabsHidden(false); }} hideInputGuide hideBorder>
-        <Box marginTop={1} flexDirection="column">
+        <Box marginTop={1} flexDirection="column" gap={1}>
           <Text dimColor>Controls how proactively Claudium uses the Advisor tool</Text>
           <Select options={ADVISOR_PREFERENCE_OPTIONS} onChange={(value: string) => {
             isDirty.current = true
@@ -1600,12 +1602,14 @@ export function Config({
           }} visibleOptionCount={3} defaultValue={currentAdvisorPreference} />
         </Box>
       </Dialog>
-          <Text dimColor>
-            <Byline>
-              <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
-            </Byline>
-          </Text>
+          <Box marginTop={1}>
+            <Text dimColor>
+              <Byline>
+                <KeyboardShortcutHint shortcut="Enter" action="confirm" />
+                <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+              </Byline>
+            </Text>
+          </Box>
         </> : showSubmenu === 'Language' ? <>
           <LanguagePicker initialLanguage={currentLanguage} onComplete={language => {
         isDirty.current = true;
