@@ -47,7 +47,15 @@ import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateMod
 import { useSearchInput } from '../../hooks/useSearchInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { clearFastModeCooldown, FAST_MODE_MODEL_DISPLAY, isFastModeAvailable, isFastModeEnabled, getFastModeModel, isFastModeSupportedByModel } from '../../utils/fastMode.js';
+import type { AdvisorPreference } from '../tools/AdvisorTool/prompt.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
+
+const ADVISOR_PREFERENCE_OPTIONS = [
+  { label: 'Default', value: 'default' as const, description: 'Call advisor for consequential decisions — architecture, security, complex debugging, or when truly stuck.' },
+  { label: 'Prefer advisor', value: 'prefer' as const, description: 'Call advisor on every substantive task before writing code or committing to an approach.' },
+  { label: "At user's demand", value: 'atUserDemand' as const, description: 'Only call advisor when the user explicitly asks to consult or review with advisor.' },
+]
+
 type Props = {
   onClose: (result?: string, options?: {
     display?: CommandResultDisplay;
@@ -81,7 +89,7 @@ type Setting = (SettingBase & {
   onChange(value: string): void;
   type: 'managedEnum';
 });
-type SubMenu = 'Theme' | 'Model' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'ChannelDowngrade' | 'Language' | 'EnableAutoUpdates';
+type SubMenu = 'Theme' | 'Model' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'ChannelDowngrade' | 'Language' | 'EnableAutoUpdates';
 export function Config({
   onClose,
   context,
@@ -102,6 +110,8 @@ export function Config({
   const initialSettingsData = React.useRef(getInitialSettings());
   const [currentOutputStyle, setCurrentOutputStyle] = useState<OutputStyle>(settingsData?.outputStyle || DEFAULT_OUTPUT_STYLE_NAME);
   const initialOutputStyle = React.useRef(currentOutputStyle);
+  const [currentAdvisorPreference, setCurrentAdvisorPreference] = useState<AdvisorPreference>(settingsData?.advisorPreference ?? 'default');
+  const initialAdvisorPreference = React.useRef(currentAdvisorPreference);
   const [currentLanguage, setCurrentLanguage] = useState<string | undefined>(settingsData?.language);
   const initialLanguage = React.useRef(currentLanguage);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -720,6 +730,12 @@ export function Config({
     value: currentOutputStyle,
     type: 'managedEnum' as const,
     onChange: () => {} // handled by OutputStylePicker submenu
+  }, {
+    id: 'advisorPreference',
+    label: 'Advisor preference',
+    value: currentAdvisorPreference,
+    type: 'managedEnum' as const,
+    onChange: () => {} // handled by AdvisorPreferencePicker submenu
   }, ...(showDefaultViewPicker ? [{
     id: 'defaultView',
     label: 'What you see by default',
@@ -1103,6 +1119,9 @@ export function Config({
     if (currentOutputStyle !== initialOutputStyle.current) {
       formattedChanges.push(`Set output style to ${chalk.bold(currentOutputStyle)}`);
     }
+    if (currentAdvisorPreference !== initialAdvisorPreference.current) {
+      formattedChanges.push(`Set advisor preference to ${chalk.bold(currentAdvisorPreference)}`);
+    }
     if (currentLanguage !== initialLanguage.current) {
       formattedChanges.push(`Set response language to ${chalk.bold(currentLanguage ?? 'Default (English)')}`);
     }
@@ -1176,7 +1195,8 @@ export function Config({
       spinnerTipsEnabled: il?.spinnerTipsEnabled,
       prefersReducedMotion: il?.prefersReducedMotion,
       defaultView: il?.defaultView,
-      outputStyle: il?.outputStyle
+      outputStyle: il?.outputStyle,
+      advisorPreference: il?.advisorPreference,
     });
     const iu = initialUserSettings;
     updateSettingsForSource('userSettings', {
@@ -1279,7 +1299,7 @@ export function Config({
       }
       return;
     }
-    if (setting_0.id === 'theme' || setting_0.id === 'model' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'language') {
+    if (setting_0.id === 'theme' || setting_0.id === 'model' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language') {
       // managedEnum items open a submenu — isDirty is set by the submenu's
       // completion callback, not here (submenu may be cancelled).
       switch (setting_0.id) {
@@ -1301,6 +1321,10 @@ export function Config({
           return;
         case 'outputStyle':
           setShowSubmenu('OutputStyle');
+          setTabsHidden(true);
+          return;
+        case 'advisorPreference':
+          setShowSubmenu('AdvisorPreference');
           setTabsHidden(true);
           return;
         case 'language':
@@ -1531,6 +1555,25 @@ export function Config({
         setShowSubmenu(null);
         setTabsHidden(false);
       }} />
+          <Text dimColor>
+            <Byline>
+              <KeyboardShortcutHint shortcut="Enter" action="confirm" />
+              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
+            </Byline>
+          </Text>
+        </> : showSubmenu === 'AdvisorPreference' ? <>
+          <Dialog title="Advisor preference" onCancel={() => { setShowSubmenu(null); setTabsHidden(false); }} hideInputGuide hideBorder>
+        <Box marginTop={1} flexDirection="column">
+          <Text dimColor>Controls how proactively Claudium uses the Advisor tool</Text>
+          <Select options={ADVISOR_PREFERENCE_OPTIONS} onChange={(value: string) => {
+            isDirty.current = true
+            setCurrentAdvisorPreference(value)
+            setShowSubmenu(null)
+            setTabsHidden(false)
+            updateSettingsForSource('localSettings', { advisorPreference: value })
+          }} visibleOptionCount={3} defaultValue={currentAdvisorPreference} />
+        </Box>
+      </Dialog>
           <Text dimColor>
             <Byline>
               <KeyboardShortcutHint shortcut="Enter" action="confirm" />

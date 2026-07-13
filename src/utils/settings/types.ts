@@ -640,6 +640,15 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe('Controls the output style for assistant responses'),
+      advisorPreference: z
+        .enum(['prefer', 'default', 'atUserDemand'])
+        .optional()
+        .describe(
+          'Controls how proactively Claudium uses the Advisor tool. ' +
+            '"prefer" — call advisor on every substantive task. ' +
+            '"default" — call advisor for consequential decisions only. ' +
+            '"atUserDemand" — only call advisor when the user explicitly asks.',
+        ),
       language: z
         .string()
         .optional()

@@ -610,3 +610,46 @@ describe('ConversationLogTool search filtering', () => {
     expect(result.data).not.toContain('[1]')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Advisor preference selector
+// ---------------------------------------------------------------------------
+
+import { getAdvisorToolInstructions } from './prompt.js'
+
+describe('getAdvisorToolInstructions', () => {
+  it('falls back to default when preference is undefined', () => {
+    const instructions = getAdvisorToolInstructions(undefined)
+    expect(instructions).toContain('# Advisor Tool')
+    expect(instructions).not.toContain('MUST call the')
+  })
+
+  it('falls back to default for unknown values', () => {
+    const instructions = getAdvisorToolInstructions('unknown')
+    expect(instructions).not.toContain('MUST call the')
+  })
+
+  it('returns prefer instructions with mandatory call semantics', () => {
+    const instructions = getAdvisorToolInstructions('prefer')
+    expect(instructions).toContain('MUST call the')
+  })
+
+  it('returns default instructions without mandatory semantics', () => {
+    const instructions = getAdvisorToolInstructions('default')
+    expect(instructions).toContain('# Advisor Tool')
+    expect(instructions).not.toContain('MUST call')
+  })
+
+  it('returns atUserDemand instructions that forbid proactive calling', () => {
+    const instructions = getAdvisorToolInstructions('atUserDemand')
+    expect(instructions).toContain('Do not proactively call')
+  })
+
+  it('all three tiers contain shared basics', () => {
+    for (const pref of ['prefer', 'default', 'atUserDemand'] as const) {
+      const instructions = getAdvisorToolInstructions(pref)
+      expect(instructions).toContain('ReadConversationLog')
+      expect(instructions).toContain('stronger reviewer model')
+    }
+  })
+})
