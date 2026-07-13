@@ -401,16 +401,6 @@ async function runAdvisorQuery(
       `messages received: ${messages.length}).`,
     )
   }
-  // Recompute API error status from the final post-tombstone messages.
-  // Tombstones may have removed the errored message.
-  const sawApiError = messages.some(
-    (m: any) => m.type === 'assistant' && m.isApiErrorMessage,
-  )
-  if (sawApiError) {
-    throw new Error(
-      `Advisor model returned an API error (messages received: ${messages.length}).`,
-    )
-  }
 
   // Map terminal reason; model_error is re-thrown before reaching here.
   const terminationReason: Output['terminationReason'] =
@@ -425,6 +415,22 @@ async function runAdvisorQuery(
       : terminalResult.reason === 'image_error' ? 'image_error'
       : terminalResult.reason === 'stop_hook_prevented' ? 'stop_hook_prevented'
       : 'iterator_closed'
+
+  // Recompute API error status from the final post-tombstone messages.
+  // Tombstones may have removed the errored message.
+  const sawApiError = messages.some(
+    (m: any) => m.type === 'assistant' && m.isApiErrorMessage,
+  )
+  // Only throw on unexpected API errors: no known terminal reason, or
+  // completed with an API error (shouldn't happen).  Known non-completed
+  // reasons (blocking_limit, image_error, prompt_too_long, etc.) may
+  // legitimately carry API error messages and must reach the structured
+  // return path so the interruption banner is attached.
+  if (sawApiError && (terminationReason === 'completed' || terminationReason === 'iterator_closed')) {
+    throw new Error(
+      `Advisor model returned an API error (messages received: ${messages.length}).`,
+    )
+  }
   const interrupted = terminationReason !== 'completed'
 
   // Build blocks from final (post-tombstone) messages
@@ -632,8 +638,16 @@ async function runAdvisorQuery(
       }
       // All other interrupted/non-completed reasons: return a structured
       // result so mapToolResultToToolResultBlockParam can attach the
-      // interruption banner.  model_error and sawApiError throw before
-      // reaching here.
+      // interruption banner.  model_error and unexpected sawApiError throw
+      // before reaching here.
+      if (terminationReason === 'completed') {
+        throw new Error(
+          `Advisor returned no response ` +
+          `(termination reason: completed, ` +
+          `messages: ${messages.length}, ` +
+          `tool uses: ${toolNames || 'none'}).`,
+        )
+      }
       const reasonLabel = (terminalResult?.reason ?? 'unknown').replace(/_/g, ' ')
       return {
         advice:

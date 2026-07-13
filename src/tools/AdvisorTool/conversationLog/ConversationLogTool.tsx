@@ -103,13 +103,22 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       const cost = line.length + separatorCost
       if (totalChars + cost > effectiveCap) {
         const remaining = effectiveCap - totalChars - separatorCost
-        if (remaining > 0) {
-          const truncated = line.slice(0, remaining)
-          const marker = `\n\n[...output truncated, next_offset=${onTruncated ? onTruncated(truncated.length) : '?'}]`
+        if (remaining <= 0) return 'none'
+        // Build candidate: truncate, build marker, check total, trim if over
+        let truncated = line.slice(0, remaining)
+        let nextOffset = onTruncated ? onTruncated(truncated.length) : -1
+        let marker = `\n\n[...output truncated, next_offset=${nextOffset >= 0 ? nextOffset : '?'}]`
+        // Shrink until truncated + marker fits in remaining
+        while (truncated.length > 0 && truncated.length + marker.length > remaining) {
+          truncated = truncated.slice(0, -1)
+          nextOffset = onTruncated ? onTruncated(truncated.length) : -1
+          marker = `\n\n[...output truncated, next_offset=${nextOffset >= 0 ? nextOffset : '?'}]`
+        }
+        if (truncated.length > 0) {
           results.push(truncated + marker)
         }
         totalChars = effectiveCap
-        return remaining > 0 ? 'partial' : 'none'
+        return truncated.length > 0 ? 'partial' : 'none'
       }
       totalChars += cost
       results.push(line)
