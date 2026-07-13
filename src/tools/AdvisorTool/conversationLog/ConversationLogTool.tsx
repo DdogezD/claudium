@@ -137,20 +137,24 @@ function createConversationLogTool(entries: ConversationEntry[], prebuiltIndex?:
       const offsetTag = charOffset > 0 ? ` [offset=${charOffset}]` : ''
       const truncTag = entry.truncated ? ' [truncated]' : ''
       const headerPart = `[${id}] ${entry.role} (${entry.charLength} chars)${offsetTag}${truncTag}:\n\n`
-      // Footer (searchText) does NOT participate in continuation — char_offset
-      // only advances through message text.  On continuation reads where the
-      // text is fully consumed, skip footer to avoid resetting to offset 0.
+      const bodyLine = headerPart + visibleText
       const footerPart = (charOffset === 0 && entry.searchText)
         ? `\n\n[tool inputs for search: ${entry.searchText.slice(0, 1000)}]`
         : ''
-      const contentLine = headerPart + visibleText + footerPart
 
       const headerLen = headerPart.length
-      const result = appendLine(contentLine, (truncatedLen) => {
-        // truncatedLen is total chars kept from contentLine.
-        // visibleText consumed = truncatedLen - headerLen, clamped to visibleText range
-        return charOffset + Math.min(visibleText.length, Math.max(0, truncatedLen - headerLen))
-      })
+      const nextOffset = (truncatedLen: number) =>
+        charOffset + Math.min(visibleText.length, Math.max(0, truncatedLen - headerLen))
+
+      // Only include tool-input metadata when the complete body already fits.
+      // The footer has no continuation coordinate, so it must never produce a
+      // next_offset marker.  Omit it best-effort when the current budget cannot
+      // contain it, rather than claiming a body continuation can recover it.
+      const separatorCost = results.length > 0 ? SEPARATOR.length : 0
+      const line = footerPart && totalChars + separatorCost + bodyLine.length + footerPart.length <= effectiveCap
+        ? bodyLine + footerPart
+        : bodyLine
+      const result = appendLine(line, nextOffset)
 
       if (result === 'full' || result === 'partial') {
         uniqueReadIds.add(id)
