@@ -13,6 +13,10 @@ import {
 export function useMainLoopModel(): ModelName {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
+  // Subscribe to AppState.settings so /config changes trigger re-render.
+  // OffscreenFreeze is reset via settingsVersion, so this subscription
+  // ensures the Logo computes fresh values on the post-invalidation render.
+  const settingsModelProfiles = useAppState(s => s.settings.modelProfiles)
 
   // parseUserSpecifiedModel reads tengu_ant_model_override via
   // _CACHED_MAY_BE_STALE (in resolveAntModel). Until GB init completes,
@@ -28,6 +32,7 @@ export function useMainLoopModel(): ModelName {
   const model = parseUserSpecifiedModel(
     mainLoopModelForSession ??
       mainLoopModel ??
+      settingsModelProfiles?.main?.model ??
       getDefaultMainLoopModelSetting(),
   )
   return model

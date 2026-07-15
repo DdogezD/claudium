@@ -4,6 +4,7 @@ import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
+import { resolveModelProfileContext, type ModelScope } from './model/modelProfiles.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -51,6 +52,7 @@ export function modelSupports1M(model: string): boolean {
 export function getContextWindowForModel(
   model: string,
   betas?: string[],
+  scope: ModelScope = 'main',
 ): number {
   // Allow override via environment variable
   // This takes precedence over all other context window resolution, including 1M detection,
@@ -90,6 +92,11 @@ export function getContextWindowForModel(
     if (antModel?.contextWindow) {
       return antModel.contextWindow
     }
+  }
+  // User-configured context window override from /config → Model → Context tokens
+  if (scope) {
+    const profileWindow = resolveModelProfileContext(scope)
+    if (profileWindow) return profileWindow
   }
   return MODEL_CONTEXT_WINDOW_DEFAULT
 }

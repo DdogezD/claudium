@@ -1,3 +1,3 @@
-export function sendChromeMessage(message: string): void {}
-
-export async function runChromeNativeHost(): Promise<void> {}
+export async function startChromeNativeHost() { return null }
+export function stopChromeNativeHost() {}
+export function isChromeNativeHostRunning() { return false }

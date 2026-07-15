@@ -1,29 +1,27 @@
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { capitalize } from '../stringUtils.js'
-import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
+import { type ModelAlias } from './aliases.js'
 import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
 import {
   getCanonicalName,
   getRuntimeMainLoopModel,
   parseUserSpecifiedModel,
 } from './model.js'
+import { resolveModelProfileModel } from './modelProfiles.js'
 import { getAPIProvider } from './providers.js'
 
-export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
-export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
-
 export type AgentModelOption = {
-  value: AgentModelAlias
+  value: string
   label: string
   description: string
 }
 
 /**
- * Get the default subagent model. Returns 'inherit' so subagents inherit
- * the model from the parent thread.
+ * Get the default subagent model. Falls back to modelProfiles.subagent.model
+ * if configured, otherwise 'inherit' (use the parent thread's model).
  */
 export function getDefaultSubagentModel(): string {
-  return 'inherit'
+  return resolveModelProfileModel('subagent') ?? 'inherit'
 }
 
 /**
@@ -129,29 +127,25 @@ export function getAgentModelDisplay(model: string | undefined): string {
 }
 
 /**
- * Get available model options for agents
+ * Get available model options for agents.
+ * Only shows Subagent Model (from /config) and Inherit from parent.
+ * Users wanting a custom model should type it directly in the model input.
  */
 export function getAgentModelOptions(): AgentModelOption[] {
-  return [
-    {
-      value: 'sonnet',
-      label: 'Sonnet',
-      description: 'Balanced performance - best for most agents',
-    },
-    {
-      value: 'opus',
-      label: 'Opus',
-      description: 'Most capable for complex reasoning tasks',
-    },
-    {
-      value: 'haiku',
-      label: 'Haiku',
-      description: 'Fast and efficient for simple tasks',
-    },
+  const profileModel = resolveModelProfileModel('subagent')
+  const options: AgentModelOption[] = [
     {
       value: 'inherit',
       label: 'Inherit from parent',
       description: 'Use the same model as the main conversation',
     },
   ]
+  if (profileModel) {
+    options.unshift({
+      value: profileModel,
+      label: capitalize(profileModel),
+      description: 'Subagent Model (configured in /config)',
+    })
+  }
+  return options
 }

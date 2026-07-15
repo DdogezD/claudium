@@ -1,5 +1,3 @@
-export function createChromeContext(): any {
-  return {}
-}
-
-export async function runClaudeInChromeMcpServer(): Promise<void> {}
+export async function startClaudeInChromeMcpServer() { return { server: null, port: 0 } }
+export function stopClaudeInChromeMcpServer() {}
+export function isClaudeInChromeMcpServerRunning() { return false }

@@ -39,9 +39,10 @@ import { useShowGuestPassesUpsell, incrementGuestPassesSeenCount } from './Guest
 import { useShowOverageCreditUpsell, incrementOverageCreditUpsellSeenCount, createOverageCreditFeed } from './OverageCreditUpsell.js';
 import { plural } from '../../utils/stringUtils.js';
 import { useAppState } from '../../state/AppState.js';
-import { getEffortSuffix } from '../../utils/effort.js';
+import { resolveAppliedEffort } from '../../utils/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { renderModelSetting } from '../../utils/model/model.js';
+import { getAdvisorModelFromProfiles } from '../../utils/advisor.js';
 const LEFT_PANEL_MAX_WIDTH = 50;
 export function LogoV2() {
   const $ = _c(94);
@@ -70,7 +71,9 @@ export function LogoV2() {
   const showOverageCreditUpsell = useShowOverageCreditUpsell();
   const agent = useAppState(_temp);
   const effortValue = useAppState(_temp2);
-  const advisorModel = process.env.CLAUDE_CODE_ADVISOR_MODEL?.trim() || undefined;
+  // Subscribe to settings so /config triggers OffscreenFreeze-aware re-render.
+  const appSettings = useAppState(s => s.settings);
+  const advisorModel = getAdvisorModelFromProfiles(appSettings?.modelProfiles);
   const config = getGlobalConfig();
   let changelog;
   try {
@@ -162,7 +165,8 @@ export function LogoV2() {
     agentName: agentNameFromSettings
   } = getLogoDisplayData();
   const agentName = agent ?? agentNameFromSettings;
-  const effortSuffix = getEffortSuffix(model, effortValue);
+  const mainEffort = resolveAppliedEffort(model, effortValue);
+  const effortSuffix = mainEffort !== undefined ? `(${String(mainEffort)})` : '';
   const t9 = fullModelDisplayName + effortSuffix;
   let t10;
   if ($[13] !== t9) {
@@ -282,7 +286,9 @@ export function LogoV2() {
       t12 = $[34];
     }
     let t13;
-    const compactModelLine = advisorModel ? `${modelDisplayName} · ${advisorModel}` : modelDisplayName;
+    const advisorEffort = advisorModel ? resolveAppliedEffort(advisorModel, undefined, 'advisor') : undefined;
+    const advisorEffortSuffix = advisorEffort !== undefined ? `(${String(advisorEffort)})` : '';
+    const compactModelLine = advisorModel ? `${modelDisplayName} · ${advisorModel}${advisorEffortSuffix}` : modelDisplayName;
     if ($[35] !== compactModelLine) {
       t13 = <Text dimColor={true}>{compactModelLine}</Text>;
       $[35] = compactModelLine;
@@ -327,7 +333,9 @@ export function LogoV2() {
     return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="startupAccent" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true}>{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
   }
   const welcomeMessage_0 = formatWelcomeMessage(username);
-  const modelLine = advisorModel ? `${modelDisplayName} · ${advisorModel}` : modelDisplayName;
+  const advisorEffort_0 = advisorModel ? resolveAppliedEffort(advisorModel, undefined, 'advisor') : undefined;
+  const advisorEffortSuffix_0 = advisorEffort_0 !== undefined ? `(${String(advisorEffort_0)})` : '';
+  const modelLine = advisorModel ? `${modelDisplayName} · ${advisorModel}${advisorEffortSuffix_0}` : modelDisplayName;
   const cwdAvailableWidth_0 = agentName ? LEFT_PANEL_MAX_WIDTH - 1 - stringWidth(agentName) - 3 : LEFT_PANEL_MAX_WIDTH;
   const truncatedCwd_0 = truncatePath(cwd, Math.max(cwdAvailableWidth_0, 10));
   const cwdLine = agentName ? `@${agentName} · ${truncatedCwd_0}` : truncatedCwd_0;

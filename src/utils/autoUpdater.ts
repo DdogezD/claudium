@@ -104,11 +104,11 @@ export type NpmDistTags = {
 }
 
 export async function getNpmDistTags(): Promise<NpmDistTags> {
-  return {}
+  return { latest: MACRO.VERSION, stable: MACRO.VERSION }
 }
 
 export async function getGcsDistTags(): Promise<NpmDistTags> {
-  return {}
+  return { latest: MACRO.VERSION, stable: MACRO.VERSION }
 }
 
 export async function getVersionHistory(limit: number): Promise<string[]> {

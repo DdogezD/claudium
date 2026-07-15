@@ -5,12 +5,12 @@ import backfillSessions from './commands/backfill-sessions/index.js'
 import btw from './commands/btw/index.js'
 import goodClaude from './commands/good-claude/index.js'
 import issue from './commands/issue/index.js'
-import feedback from './commands/feedback/index.js'
+// feedback import removed (Anthropic API feedback stripped)
 import clear from './commands/clear/index.js'
 import color from './commands/color/index.js'
 import commit from './commands/commit.js'
 import copy from './commands/copy/index.js'
-import desktop from './commands/desktop/index.js'
+// desktop import removed (Claude Desktop app stripped)
 import commitPushPr from './commands/commit-push-pr.js'
 import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
@@ -18,7 +18,7 @@ import { context, contextNonInteractive } from './commands/context/index.js'
 import cost from './commands/cost/index.js'
 import diff from './commands/diff/index.js'
 import ctx_viz from './commands/ctx_viz/index.js'
-import doctor from './commands/doctor/index.js'
+// doctor removed (Anthropic online service diagnostics)
 import memory from './commands/memory/index.js'
 import help from './commands/help/index.js'
 import init from './commands/init.js'
@@ -26,10 +26,10 @@ import initVerifiers from './commands/init-verifiers.js'
 import keybindings from './commands/keybindings/index.js'
 import breakCache from './commands/break-cache/index.js'
 import mcp from './commands/mcp/index.js'
-import mobile from './commands/mobile/index.js'
+// mobile import removed (Claude mobile app stripped)
 import onboarding from './commands/onboarding/index.js'
 import pr_comments from './commands/pr_comments/index.js'
-import releaseNotes from './commands/release-notes/index.js'
+// release-notes removed (Anthropic online service)
 import rename from './commands/rename/index.js'
 import resume from './commands/resume/index.js'
 import review, { ultrareview } from './commands/review.js'
@@ -38,7 +38,7 @@ import share from './commands/share/index.js'
 import skills from './commands/skills/index.js'
 import status from './commands/status/index.js'
 import tasks from './commands/tasks/index.js'
-import teleport from './commands/teleport/index.js'
+// teleport removed (CCR stripped)
 import terminalSetup from './commands/terminalSetup/index.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const agentsPlatform =
@@ -48,7 +48,7 @@ const agentsPlatform =
 /* eslint-enable @typescript-eslint/no-require-imports */
 import securityReview from './commands/security-review.js'
 import bughunter from './commands/bughunter/index.js'
-import usage from './commands/usage/index.js'
+// usage removed (Anthropic online service)
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
@@ -65,16 +65,7 @@ const briefCommand =
 const assistantCommand = feature('KAIROS')
   ? require('./commands/assistant/index.js').default
   : null
-const bridge = feature('BRIDGE_MODE')
-  ? require('./commands/bridge/index.js').default
-  : null
-const remoteControlServerCommand =
-  feature('DAEMON') && feature('BRIDGE_MODE')
-    ? require('./commands/remoteControlServer/index.js').default
-    : null
-const voiceCommand = feature('VOICE_MODE')
-  ? require('./commands/voice/index.js').default
-  : null
+// bridge/remoteControlServer removed (BRIDGE_MODE stripped)
 const forceSnip = feature('HISTORY_SNIP')
   ? require('./commands/force-snip.js').default
   : null
@@ -120,8 +111,8 @@ import thinkback from './commands/thinkback/index.js'
 import thinkbackPlay from './commands/thinkback-play/index.js'
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
-import fast from './commands/fast/index.js'
-import privacySettings from './commands/privacy-settings/index.js'
+// fast mode removed
+// privacy-settings removed (Anthropic online service)
 import hooks from './commands/hooks/index.js'
 import files from './commands/files/index.js'
 import branch from './commands/branch/index.js'
@@ -130,18 +121,13 @@ import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
-import mockLimits from './commands/mock-limits/index.js'
-import bridgeKick from './commands/bridge-kick.js'
+// mockLimits removed (Anthropic billing stripped)
+// bridge-kick removed (bridge stripped)
 import version from './commands/version.js'
 import summary from './commands/summary/index.js'
-import {
-  resetLimits,
-  resetLimitsNonInteractive,
-} from './commands/reset-limits/index.js'
 import antTrace from './commands/ant-trace/index.js'
 import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
-import advisor from './commands/advisor.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
 import { logForDebugging } from './utils/debug.js'
@@ -167,14 +153,10 @@ import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
 import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
-import remoteEnv from './commands/remote-env/index.js'
-import {
-  extraUsage,
-  extraUsageNonInteractive,
-} from './commands/extra-usage/index.js'
-import rateLimitOptions from './commands/rate-limit-options/index.js'
-import statusline from './commands/statusline.js'
-import effort from './commands/effort/index.js'
+// remote-env removed (Anthropic online service)
+// extra-usage import removed (Anthropic billing stripped)
+// rate-limit-options removed (Anthropic online service)
+// effort removed (replaced by modelProfiles in /config)
 import stats from './commands/stats/index.js'
 // insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
 // shim defers the heavy module until /insights is actually invoked.
@@ -223,16 +205,16 @@ export const INTERNAL_ONLY_COMMANDS = [
   issue,
   initVerifiers,
   ...(forceSnip ? [forceSnip] : []),
-  mockLimits,
-  bridgeKick,
+  // mockLimits removed
+  // bridgeKick removed
   version,
   ...(subscribePr ? [subscribePr] : []),
-  resetLimits,
-  resetLimitsNonInteractive,
+  // resetLimits removed
+  // resetLimitsNonInteractive removed
   onboarding,
   share,
   summary,
-  teleport,
+  // teleport removed
   antTrace,
   perfIssue,
   env,
@@ -245,7 +227,6 @@ export const INTERNAL_ONLY_COMMANDS = [
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
   addDir,
-  advisor,
   agents,
   branch,
   btw,
@@ -254,15 +235,15 @@ const COMMANDS = memoize((): Command[] => [
   compact,
   config,
   copy,
-  desktop,
+  // desktop removed
   context,
   contextNonInteractive,
   cost,
   diff,
-  doctor,
-  effort,
+  // doctor removed
+  // effort removed
   exit,
-  fast,
+  // fast removed
   files,
   heapDump,
   help,
@@ -270,13 +251,13 @@ const COMMANDS = memoize((): Command[] => [
   keybindings,
   mcp,
   memory,
-  mobile,
+  // mobile removed
   model,
   outputStyle,
-  remoteEnv,
+  // remoteEnv removed
   plugin,
   pr_comments,
-  releaseNotes,
+  // releaseNotes removed
   reloadPlugins,
   rename,
   resume,
@@ -284,18 +265,16 @@ const COMMANDS = memoize((): Command[] => [
   skills,
   stats,
   status,
-  statusline,
   tag,
   theme,
-  feedback,
+  // feedback removed
   review,
   ultrareview,
   rewind,
   securityReview,
-  extraUsage,
-  extraUsageNonInteractive,
-  rateLimitOptions,
-  usage,
+  // extra-usage removed
+  // rateLimitOptions removed
+  // usage removed
   usageReport,
   vim,
   ...(webCmd ? [webCmd] : []),
@@ -304,14 +283,13 @@ const COMMANDS = memoize((): Command[] => [
   ...(proactive ? [proactive] : []),
   ...(briefCommand ? [briefCommand] : []),
   ...(assistantCommand ? [assistantCommand] : []),
-  ...(bridge ? [bridge] : []),
-  ...(remoteControlServerCommand ? [remoteControlServerCommand] : []),
-  ...(voiceCommand ? [voiceCommand] : []),
+  // bridge/remoteControlServer removed
+  // voice removed
   thinkback,
   thinkbackPlay,
   permissions,
   plan,
-  privacySettings,
+  // privacySettings removed
   hooks,
   exportCommand,
   sandboxToggle,
@@ -607,14 +585,12 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   color, // Change agent color
   vim, // Toggle vim mode
   cost, // Show session cost (local cost tracking)
-  usage, // Show usage info
+  usageReport,
   copy, // Copy last message
   btw, // Quick note
-  feedback, // Send feedback
+  // feedback, mobile removed (Anthropic services stripped)
   plan, // Plan mode toggle
   keybindings, // Keybinding management
-  statusline, // Status line toggle
-  mobile, // Mobile QR code
 ])
 
 /**
@@ -635,7 +611,7 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
     clear, // Wipe transcript
     cost, // Show session cost
     summary, // Summarize conversation
-    releaseNotes, // Show changelog
+    // releaseNotes removed
     files, // List tracked files
   ].filter((c): c is Command => c !== null),
 )
