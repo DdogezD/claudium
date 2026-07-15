@@ -704,6 +704,8 @@ export function REPL({
     setDynamicMcpConfig(config);
   }, [setDynamicMcpConfig]);
   const [screen, setScreen] = useState<Screen>('prompt');
+  const screenRef = useRef<Screen>('prompt');
+  useEffect(() => { screenRef.current = screen; }, [screen]);
   const [showAllInTranscript, setShowAllInTranscript] = useState(false);
   // [ forces the dump-to-scrollback path inside transcript mode. Separate
   // from CLAUDE_CODE_NO_FLICKER=0 (which is process-lifetime) — this is
@@ -1103,6 +1105,16 @@ export function REPL({
         return;
       }
       // Otherwise, keep the local JSX command visible - ignore tool updates
+      return;
+    }
+
+    // In transcript mode, suppress tool JSX updates (advisor progress,
+    // agent status etc.) — each update triggers a re-render that resets
+    // the ScrollBox scroll position, making it impossible to scroll
+    // through history while a tool is running in the background.
+    // Allow null (clearing overlay) and clearLocalJSX — removing JSX is
+    // safe and won't cause scroll resets.
+    if (screenRef.current === 'transcript' && args !== null && !args.clearLocalJSX) {
       return;
     }
 
