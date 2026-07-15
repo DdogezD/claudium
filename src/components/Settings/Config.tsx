@@ -170,6 +170,7 @@ export function Config({
   // eagerly even though only the first result is kept.
   const [initialLocalSettings] = useState(() => getSettingsForSource('localSettings'));
   const [initialUserSettings] = useState(() => getSettingsForSource('userSettings'));
+  const [initialModelProfiles] = useState(() => getSettingsForSource('userSettings')?.modelProfiles ?? null);
   const initialThemeSetting = React.useRef(themeSetting);
   // AppState fields Config may modify — snapshot once at mount.
   const store = useAppStateStore();
@@ -1116,6 +1117,32 @@ export function Config({
       advisorPreference: il?.advisorPreference,
     });
     const iu = initialUserSettings;
+    // modelProfiles: restore atomically.  If user settings had no
+    // modelProfiles at mount, delete the entire key; otherwise
+    // reconstruct each scope/field to undo mid-session edits.
+    if (initialModelProfiles === null) {
+      updateSettingsForSource('userSettings', { modelProfiles: undefined });
+    } else {
+      const current = getSettingsForSource('userSettings')?.modelProfiles ?? {};
+      const initial = initialModelProfiles;
+      const revert: Record<string, any> = {};
+      const allScopes = new Set([...Object.keys(current), ...Object.keys(initial)]);
+      for (const scope of allScopes) {
+        const cs = current[scope] as Record<string, unknown> | undefined;
+        const is = initial[scope] as Record<string, unknown> | undefined;
+        if (!is) {
+          revert[scope] = undefined;
+        } else {
+          revert[scope] = { ...is };
+          for (const key of Object.keys(cs ?? {})) {
+            if (!(key in is)) (revert[scope] as any)[key] = undefined;
+          }
+        }
+      }
+      if (Object.keys(revert).length > 0) {
+        updateSettingsForSource('userSettings', { modelProfiles: revert });
+      }
+    }
     updateSettingsForSource('userSettings', {
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
@@ -1163,7 +1190,7 @@ export function Config({
     if (getUserMsgOptIn() !== initialUserMsgOptIn) {
       setUserMsgOptIn(initialUserMsgOptIn);
     }
-  }, [themeSetting, setTheme, initialLocalSettings, initialUserSettings, initialAppState, initialUserMsgOptIn, setAppState]);
+  }, [themeSetting, setTheme, initialLocalSettings, initialModelProfiles, initialUserSettings, initialAppState, initialUserMsgOptIn, setAppState]);
 
   // Escape: revert all changes (if any) and close.
   const handleEscape = useCallback(() => {
@@ -1393,8 +1420,18 @@ export function Config({
               const newSummary = formatProfileSummary(newProfile);
               if (prevSummary !== newSummary) {
                 isDirty.current = true;
-                const profiles = getInitialSettings().modelProfiles ?? {};
-                const updated = { ...profiles, [scope]: newProfile };
+                const userProfiles = getSettingsForSource('userSettings')?.modelProfiles ?? {};
+                // Explicitly delete fields the user cleared in the dialog.
+                // If newProfile omits a key that was in userProfiles[scope],
+                // the mergeWith customizer won't delete it — objects are
+                // deep-merged, not replaced.  Set missing keys to undefined
+                // so the customizer's `delete object[key]` path fires.
+                const prevScope = userProfiles[scope] as Record<string, unknown> | undefined;
+                const scopeUpdate: Record<string, any> = { ...newProfile };
+                for (const key of Object.keys(prevScope ?? {})) {
+                  if (!(key in newProfile)) scopeUpdate[key] = undefined;
+                }
+                const updated = { ...userProfiles, [scope]: scopeUpdate };
                 updateSettingsForSource('userSettings', { modelProfiles: updated });
                 // When main model profile changes, clear any /model
                 // session override so the new settings take effect.

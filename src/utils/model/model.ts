@@ -68,7 +68,7 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   let specifiedModel: ModelSetting | undefined
 
   const modelOverride = getMainLoopModelOverride()
-  if (modelOverride !== undefined) {
+  if (modelOverride !== undefined && modelOverride !== null) {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
@@ -561,10 +561,8 @@ export function isLegacyModelRemapEnabled(): boolean {
 
 export function modelDisplayString(model: ModelSetting): string {
   if (model === null) {
-    if (process.env.USER_TYPE === 'ant') {
-      return `Default for Ants (${renderDefaultModelSetting(getDefaultMainLoopModelSetting())})`
-    }
-    return `Default (${getDefaultMainLoopModel()})`
+    // null = "re-resolve from env/profile/default".  Show the effective model.
+    return `Default (${getMainLoopModel()})`
   }
   const resolvedModel = parseUserSpecifiedModel(model)
   return model === resolvedModel ? resolvedModel : `${model} (${resolvedModel})`
