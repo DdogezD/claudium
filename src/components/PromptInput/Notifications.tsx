@@ -34,6 +34,7 @@ import { SandboxPromptFooterHint } from './SandboxPromptFooterHint.js';
 import { formatTokenCount } from '../../utils/model/modelProfiles.js';
 import { resolveAppliedEffort } from '../../utils/effort.js';
 import { getEffectiveContextWindowSize } from '../../services/compact/autoCompact.js';
+import { getContextWindowForModel } from '../../utils/context.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const VoiceIndicator: typeof import('./VoiceIndicator.js').VoiceIndicator = feature('VOICE_MODE') ? require('./VoiceIndicator.js').VoiceIndicator : () => null;
@@ -281,25 +282,25 @@ function NotificationContent({
   useAppState(s_1 => s_1.isBriefOnly) : false;
 
   // Persistent effort + context display (same pattern as compaction token footer).
-  // Uses effective context window (minus max-output-tokens) so the
-  // "available" percentage matches what autocompact actually sees.
-  // Turns red/warning when approaching the compaction threshold so the
-  // user gets an early signal without a separate warning line.
+  // Display the full context window (what the user configured), but calculate the
+  // available-percentage from the effective window that autocompact actually sees.
+  // Turns red/warning when approaching the compaction threshold.
   //
   // tokenUsage can briefly drop to 0 mid-stream (between API updates).
   // A ref holds the last non-zero density so the footer doesn't blink.
   const effortValue = resolveAppliedEffort(mainLoopModel, undefined);
-  const ctxWin = getEffectiveContextWindowSize(mainLoopModel);
+  const displayWindow = getContextWindowForModel(mainLoopModel);
+  const effectiveWindow = getEffectiveContextWindowSize(mainLoopModel);
   const warnState = calculateTokenWarningState(tokenUsage, mainLoopModel);
   const lastStable = useRef({ usage: 0, pct: 100 });
   if (tokenUsage > 0) {
-    lastStable.current = { usage: tokenUsage, pct: ctxWin > 0 ? Math.round(((ctxWin - tokenUsage) / ctxWin) * 100) : 100 };
+    lastStable.current = { usage: tokenUsage, pct: effectiveWindow > 0 ? Math.round(((effectiveWindow - tokenUsage) / effectiveWindow) * 100) : 100 };
   }
-  const pctAvail = tokenUsage > 0 ? lastStable.current.pct : lastStable.current.pct;
+  const pctAvail = lastStable.current.pct;
   const displayUsage = tokenUsage > 0 ? tokenUsage : lastStable.current.usage;
   const footerColor = warnState.isAboveErrorThreshold ? 'error' : warnState.isAboveWarningThreshold ? 'warning' : undefined;
   const effortLine = [
-    tokenUsage > 0 || lastStable.current.usage > 0 ? `${formatTokenCount(displayUsage)}/${formatTokenCount(ctxWin)}(${pctAvail}% available)` : formatTokenCount(ctxWin),
+    tokenUsage > 0 || lastStable.current.usage > 0 ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(${pctAvail}% available)` : formatTokenCount(displayWindow),
     effortValue ?? 'auto',
   ].join(' · ');
 
