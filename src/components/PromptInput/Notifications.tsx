@@ -1,7 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import * as React from 'react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type Notification, useNotifications } from 'src/context/notifications.js';
 import { logEvent } from '../../services/analytics-stub.js';
 import { useAppState } from 'src/state/AppState.js';
@@ -30,11 +30,10 @@ import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 // import { IdeStatusIndicator } from '../IdeStatusIndicator.js'; // stripped
 import { MemoryUsageIndicator } from '../MemoryUsageIndicator.js';
 import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
-import { TokenWarning } from '../TokenWarning.js';
 import { SandboxPromptFooterHint } from './SandboxPromptFooterHint.js';
 import { formatTokenCount } from '../../utils/model/modelProfiles.js';
 import { resolveAppliedEffort } from '../../utils/effort.js';
-import { getContextWindowForModel } from '../../utils/context.js';
+import { getEffectiveContextWindowSize } from '../../services/compact/autoCompact.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const VoiceIndicator: typeof import('./VoiceIndicator.js').VoiceIndicator = feature('VOICE_MODE') ? require('./VoiceIndicator.js').VoiceIndicator : () => null;
@@ -281,12 +280,26 @@ function NotificationContent({
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useAppState(s_1 => s_1.isBriefOnly) : false;
 
-  // Persistent effort + context display (same pattern as compaction token footer)
+  // Persistent effort + context display (same pattern as compaction token footer).
+  // Uses effective context window (minus max-output-tokens) so the
+  // "available" percentage matches what autocompact actually sees.
+  // Turns red/warning when approaching the compaction threshold so the
+  // user gets an early signal without a separate warning line.
+  //
+  // tokenUsage can briefly drop to 0 mid-stream (between API updates).
+  // A ref holds the last non-zero density so the footer doesn't blink.
   const effortValue = resolveAppliedEffort(mainLoopModel, undefined);
-  const ctxWin = getContextWindowForModel(mainLoopModel, undefined, 'main');
-  const pctAvail = ctxWin > 0 ? Math.round(((ctxWin - tokenUsage) / ctxWin) * 100) : 100;
+  const ctxWin = getEffectiveContextWindowSize(mainLoopModel);
+  const warnState = calculateTokenWarningState(tokenUsage, mainLoopModel);
+  const lastStable = useRef({ usage: 0, pct: 100 });
+  if (tokenUsage > 0) {
+    lastStable.current = { usage: tokenUsage, pct: ctxWin > 0 ? Math.round(((ctxWin - tokenUsage) / ctxWin) * 100) : 100 };
+  }
+  const pctAvail = tokenUsage > 0 ? lastStable.current.pct : lastStable.current.pct;
+  const displayUsage = tokenUsage > 0 ? tokenUsage : lastStable.current.usage;
+  const footerColor = warnState.isAboveErrorThreshold ? 'error' : warnState.isAboveWarningThreshold ? 'warning' : undefined;
   const effortLine = [
-    tokenUsage > 0 ? `${formatTokenCount(tokenUsage)}/${formatTokenCount(ctxWin)}(${pctAvail}% available)` : formatTokenCount(ctxWin),
+    tokenUsage > 0 || lastStable.current.usage > 0 ? `${formatTokenCount(displayUsage)}/${formatTokenCount(ctxWin)}(${pctAvail}% available)` : formatTokenCount(ctxWin),
     effortValue ?? 'auto',
   ].join(' · ');
 
@@ -330,7 +343,6 @@ function NotificationContent({
             {tokenUsage} tokens
           </Text>
         </Box>}
-      {!isBriefOnly && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />}
       {shouldShowAutoUpdater && <AutoUpdaterWrapper verbose={verbose} onAutoUpdaterResult={onAutoUpdaterResult} autoUpdaterResult={autoUpdaterResult} isUpdating={isAutoUpdating} onChangeIsUpdating={onChangeIsUpdating} showSuccessMessage={!isShowingCompactMessage} />}
       {feature('VOICE_MODE') ? voiceEnabled && voiceError && <Box>
               <Text color="error" wrap="truncate">
@@ -340,7 +352,7 @@ function NotificationContent({
       <MemoryUsageIndicator />
       <SandboxPromptFooterHint />
       <Box>
-          <Text dimColor wrap="truncate">
+          <Text dimColor={!footerColor} color={footerColor} wrap="truncate">
             {effortLine}
           </Text>
         </Box>
