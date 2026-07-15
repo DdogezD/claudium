@@ -105,62 +105,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude remote-control` (also accepts legacy `claude remote` / `claude sync` / `claude bridge`):
-  // serve local machine as bridge environment.
-  // feature() must stay inline for build-time dead code elimination;
-  // isBridgeEnabled() checks the runtime GrowthBook gate.
-  if (feature('BRIDGE_MODE') && (args[0] === 'remote-control' || args[0] === 'rc' || args[0] === 'remote' || args[0] === 'sync' || args[0] === 'bridge')) {
-    profileCheckpoint('cli_bridge_path');
-    const {
-      enableConfigs
-    } = await import('../utils/config.js');
-    enableConfigs();
-    const {
-      getBridgeDisabledReason,
-      checkBridgeMinVersion
-    } = await import('../bridge/bridgeEnabled.js');
-    const {
-      BRIDGE_LOGIN_ERROR
-    } = await import('../bridge/types.js');
-    const {
-      bridgeMain
-    } = await import('../bridge/bridgeMain.js');
-    const {
-      exitWithError
-    } = await import('../utils/process.js');
-
-    // Auth check must come before the GrowthBook gate check — without auth,
-    // GrowthBook has no user context and would return a stale/default false.
-    // getBridgeDisabledReason awaits GB init, so the returned value is fresh
-    // (not the stale disk cache), but init still needs auth headers to work.
-    const {
-      getClaudeAIOAuthTokens
-    } = await import('../utils/auth.js');
-    if (!getClaudeAIOAuthTokens()?.accessToken) {
-      exitWithError(BRIDGE_LOGIN_ERROR);
-    }
-    const disabledReason = await getBridgeDisabledReason();
-    if (disabledReason) {
-      exitWithError(`Error: ${disabledReason}`);
-    }
-    const versionError = checkBridgeMinVersion();
-    if (versionError) {
-      exitWithError(versionError);
-    }
-
-    // Bridge is a remote control feature - check policy limits
-    const {
-      waitForPolicyLimitsToLoad,
-      isPolicyAllowed
-    } = await import('../services/policyLimits/index.js');
-    await waitForPolicyLimitsToLoad();
-    if (!isPolicyAllowed('allow_remote_control')) {
-      exitWithError("Error: Remote Control is disabled by your organization's policy.");
-    }
-    await bridgeMain(args.slice(1));
-    return;
-  }
-
   // Fast-path for `claude daemon [subcommand]`: long-running supervisor.
   if (feature('DAEMON') && args[0] === 'daemon') {
     profileCheckpoint('cli_daemon_path');

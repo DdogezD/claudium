@@ -12,7 +12,7 @@ import { type AgentDefinition, getActiveAgentsFromList, isCustomAgent, isPluginA
 import { editFileInEditor } from '../../utils/promptEditor.js';
 import { getActualAgentFilePath, updateAgentFile } from './agentFileUtils.js';
 import { ColorPicker } from './ColorPicker.js';
-import { ModelSelector } from './ModelSelector.js';
+import { AgentModelInput } from './AgentModelInput.js';
 import { ToolSelector } from './ToolSelector.js';
 import { getAgentSourceDisplayName } from './utils.js';
 type Props = {
@@ -165,12 +165,12 @@ export function AgentEditor({
         });
       }} />;
     case 'edit-model':
-      return <ModelSelector initialModel={agent.model} onComplete={async model => {
+      return <AgentModelInput initialModel={agent.model} onComplete={async model => {
         setEditMode('menu');
         await handleSave({
           model
         });
-      }} />;
+      }} onCancel={() => setEditMode('menu')} />;
     default:
       return null;
   }

@@ -27,7 +27,6 @@ import { useSettings } from '../hooks/useSettings.js';
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js';
 import { isBackgroundTask } from '../tasks/types.js';
 import { getAllInProcessTeammateTasks } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js';
-import { getEffortSuffix } from '../utils/effort.js';
 import { getMainLoopModel } from '../utils/model/model.js';
 import { getViewedTeammateTask } from '../state/selectors.js';
 import { TEARDROP_ASTERISK } from '../constants/figures.js';
@@ -179,7 +178,7 @@ function SpinnerWithVerbInner({
     };
   }, [mode]);
   const effortValue = useAppState(s_4 => s_4.effortValue);
-  const effortSuffix = getEffortSuffix(getMainLoopModel(), effortValue);
+  const effortSuffix = '';
 
   // Check if any running in-process teammates exist (needed for both modes)
   const runningTeammates = getAllInProcessTeammateTasks(tasks).filter(t => t.status === 'running');

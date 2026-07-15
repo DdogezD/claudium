@@ -1,28 +1,13 @@
-import { getAnthropicApiKey } from './auth.js'
-import { isEnvTruthy } from './envUtils.js'
-
-export function hasConsoleBillingAccess(): boolean {
-  if (isEnvTruthy(process.env.DISABLE_COST_WARNINGS)) {
-    return false
-  }
-  const hasApiKey = getAnthropicApiKey() !== null
-  return hasApiKey
-}
-
-// Mock billing access for /mock-limits testing (set by mockRateLimits.ts)
-let mockBillingAccessOverride: boolean | null = null
-
-export function setMockBillingAccessOverride(value: boolean | null): void {
-  mockBillingAccessOverride = value
-}
-
-/**
- * Stub: OAuth/claude.ai billing access has been stripped.
- * Returns true if API key is configured (API key users always have billing access).
- */
-export function hasClaudeAiBillingAccess(): boolean {
-  if (mockBillingAccessOverride !== null) {
-    return mockBillingAccessOverride
-  }
-  return getAnthropicApiKey() !== null
-}
+export function isEligibleForExtraUsage() { return false }
+export function hasClaudeAiBillingAccess() { return true }
+export function hasConsoleBillingAccess() { return true }
+export function isConsumerSubscriber() { return false }
+export function isExtraUsageAllowed() { return false }
+export function shouldShowRateLimitWarning() { return false }
+export function getRateLimitTier() { return 'free' }
+export function getBillingInfo() { return null }
+export function isClaudeAISubscriber() { return false }
+export function getSubscriptionType() { return 'free' }
+export function isSubscriptionActive() { return false }
+export function getBillingType() { return 'free' }
+export function hasBillingAccess() { return false }

@@ -1,9 +1,2 @@
-import type { Command } from '../../commands.js'
-
-export default {
-  type: 'local-jsx',
-  name: 'usage',
-  description: 'Show plan usage limits',
-  availability: ['claude-ai'],
-  load: () => import('./usage.js'),
-} satisfies Command
+const usage = { name: 'usage', type: 'local' as const, isEnabled: () => false, isHidden: true, load: () => import('./usage.js') }
+export default usage

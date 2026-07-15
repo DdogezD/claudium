@@ -26,6 +26,7 @@ import { getAPIProvider } from './providers.js'
 import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
+import { resolveModelProfileModel } from './modelProfiles.js'
 import { capitalize } from '../stringUtils.js'
 
 export type ModelShortName = string
@@ -71,7 +72,7 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || process.env.OPENAI_MODEL || settings.model || undefined
+    specifiedModel = process.env.ANTHROPIC_MODEL || process.env.OPENAI_MODEL || resolveModelProfileModel('main') || undefined
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.

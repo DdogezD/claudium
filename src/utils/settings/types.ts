@@ -206,6 +206,25 @@ export const DeniedMcpServerEntrySchema = lazySchema(() =>
     ),
 )
 
+export const ModelProfileSchema = lazySchema(() =>
+  z.object({
+    model: z.string().trim().min(1).optional(),
+    contextWindowTokens: z.number().int().positive().optional(),
+    reasoningEffort: z.string().trim().min(1).optional(),
+  }),
+)
+
+export const ModelProfilesSchema = lazySchema(() =>
+  z.object({
+    main: ModelProfileSchema().optional(),
+    subagent: ModelProfileSchema().optional(),
+    advisor: ModelProfileSchema().optional(),
+  }),
+)
+
+export type ModelProfile = z.infer<ReturnType<typeof ModelProfileSchema>>
+export type ModelProfiles = z.infer<ReturnType<typeof ModelProfilesSchema>>
+
 /**
  * Unified schema for settings files
  *
@@ -372,10 +391,11 @@ export const SettingsSchema = lazySchema(() =>
       permissions: PermissionsSchema()
         .optional()
         .describe('Tool usage permissions configuration'),
-      model: z
-        .string()
+      modelProfiles: ModelProfilesSchema()
         .optional()
-        .describe('Override the default model used by Claudium'),
+        .describe(
+          'Per-scope model configuration for main loop, subagents, and advisor',
+        ),
       // Enterprise allowlist of models
       availableModels: z
         .array(z.string())
@@ -709,28 +729,6 @@ export const SettingsSchema = lazySchema(() =>
           'When false, thinking is disabled. When absent or true, thinking is ' +
             'enabled automatically for supported models.',
         ),
-      effortLevel: z
-        .enum(
-          process.env.USER_TYPE === 'ant'
-            ? ['low', 'medium', 'high', 'max']
-            : ['low', 'medium', 'high'],
-        )
-        .optional()
-        .catch(undefined)
-        .describe('Persisted effort level for supported models.'),
-      // Override context window size (max tokens) for subagents.
-      // When set, subagents use this as their effective context window cap,
-      // overriding the model's default context window. Useful for limiting
-      // subagent token usage.
-      subagentContextWindow: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe(
-          'Override the context window size (max tokens) for subagents. ' +
-            'When set, subagents use this as their effective context window cap.',
-        ),
       // Override auto-compact buffer size for subagents.
       // The buffer determines how many tokens before the context limit triggers
       // automatic compaction. Larger values compact more aggressively.
@@ -741,18 +739,6 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Override the auto-compact buffer size (tokens) for subagents.',
-        ),
-      // Override context window size (max tokens) for the advisor tool.
-      // When set, the advisor uses this as its effective context window cap,
-      // overriding the model's default context window.
-      advisorContextWindow: z
-        .number()
-        .int()
-        .positive()
-        .optional()
-        .describe(
-          'Override the context window size (max tokens) for the advisor tool. ' +
-            'When set, the advisor uses this as its effective context window cap.',
         ),
       // Override auto-compact buffer size for the advisor tool.
       // The buffer determines how many tokens before the context limit triggers

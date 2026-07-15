@@ -174,32 +174,10 @@ type DomainCheckResult =
   | { status: 'check_failed'; error: Error }
 
 export async function checkDomainBlocklist(
-  domain: string,
+  _domain: string,
 ): Promise<DomainCheckResult> {
-  if (DOMAIN_CHECK_CACHE.has(domain)) {
-    return { status: 'allowed' }
-  }
-  try {
-    const response = await axios.get(
-      `https://api.anthropic.com/api/web/domain_info?domain=${encodeURIComponent(domain)}`,
-      { timeout: DOMAIN_CHECK_TIMEOUT_MS },
-    )
-    if (response.status === 200) {
-      if (response.data.can_fetch === true) {
-        DOMAIN_CHECK_CACHE.set(domain, true)
-        return { status: 'allowed' }
-      }
-      return { status: 'blocked' }
-    }
-    // Non-200 status but didn't throw
-    return {
-      status: 'check_failed',
-      error: new Error(`Domain check returned status ${response.status}`),
-    }
-  } catch (e) {
-    logError(e)
-    return { status: 'check_failed', error: e as Error }
-  }
+  // Anthropic domain blocklist API stripped — always allow
+  return { status: 'allowed' }
 }
 
 /**

@@ -1,12 +1,3 @@
-import type { Command } from '../../commands.js'
-
-const upgrade = {
-  type: 'local-jsx',
-  name: 'upgrade',
-  description: 'Upgrade to Max for higher rate limits and more Opus',
-  availability: ['claude-ai'],
-  isEnabled: () => false,
-  load: () => import('./upgrade.js'),
-} satisfies Command
-
+// Anthropic upgrade billing stripped. Keep stub for rate-limit-options imports.
+const upgrade = { isEnabled: () => false }
 export default upgrade

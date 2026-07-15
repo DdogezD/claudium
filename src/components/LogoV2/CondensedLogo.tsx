@@ -6,7 +6,8 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { stringWidth } from '../../ink/stringWidth.js';
 import { Box, Text } from '../../ink.js';
 import { useAppState } from '../../state/AppState.js';
-import { getEffortSuffix } from '../../utils/effort.js';
+import { resolveAppliedEffort } from '../../utils/effort.js';
+import { getAdvisorModelFromProfiles } from '../../utils/advisor.js';
 import { truncate } from '../../utils/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
@@ -23,6 +24,8 @@ export function CondensedLogo() {
   } = useTerminalSize();
   const agent = useAppState(_temp);
   const effortValue = useAppState(_temp2);
+  // Subscribe to settings so that /config writes to modelProfiles cause re-render
+  const _settings = useAppState(s => s.settings);
   const model = useMainLoopModel();
   const modelDisplayName = renderModelSetting(model);
   const {
@@ -71,12 +74,19 @@ export function CondensedLogo() {
   useEffect(t2, t3);
   const textWidth = Math.max(columns - 15, 20);
   const truncatedVersion = truncate(version, Math.max(textWidth - 13, 6));
-  const effortSuffix = getEffortSuffix(model, effortValue);
+  const mainEffort = resolveAppliedEffort(model, effortValue);
+  const effortSuffix = mainEffort !== undefined ? `(${String(mainEffort)})` : '';
+  const advisorModel = getAdvisorModelFromProfiles(_settings?.modelProfiles);
+  const advisorEffort = advisorModel ? resolveAppliedEffort(advisorModel, undefined, 'advisor') : undefined;
+  const advisorEffortSuffix = advisorEffort !== undefined ? `(${String(advisorEffort)})` : '';
+  const displayName = advisorModel
+    ? `${modelDisplayName}${effortSuffix} · ${advisorModel}${advisorEffortSuffix}`
+    : `${modelDisplayName}${effortSuffix}`;
   const {
     shouldSplit,
     truncatedModel,
     truncatedBilling
-  } = formatModelAndBilling(modelDisplayName + effortSuffix, billingType, textWidth);
+  } = formatModelAndBilling(displayName, billingType, textWidth);
   const cwdAvailableWidth = agentName ? textWidth - 1 - stringWidth(agentName) - 3 : textWidth;
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
   let t4;

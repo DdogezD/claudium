@@ -1,7 +1,9 @@
 import React, { useContext, useRef } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useTerminalViewport } from '../ink/hooks/use-terminal-viewport.js';
 import { Box } from '../ink.js';
 import { InVirtualListContext } from './messageActions.js';
+import { getSettingsVersion, subscribeSettingsVersion } from '../utils/settingsVersion.js';
 type Props = {
   children: React.ReactNode;
 };
@@ -32,11 +34,21 @@ export function OffscreenFreeze({
     isVisible
   }] = useTerminalViewport();
   const cached = useRef(children);
+  // When /config commits a settings change, every OffscreenFreeze in the
+  // tree must invalidate its cache so that the Logo (frozen in scrollback)
+  // picks up fresh modelProfiles instead of showing stale data.
+  useSyncExternalStore(subscribeSettingsVersion, getSettingsVersion, getSettingsVersion);
+  const version = getSettingsVersion();
+  const lastVersion = useRef(version);
+  const forceUpdate = lastVersion.current !== version;
+  if (forceUpdate) {
+    lastVersion.current = version;
+  }
   // Virtual list has no terminal scrollback — the ScrollBox clips inside the
   // viewport, so there's nothing to freeze. Freezing there also blocks
   // click-to-expand since useTerminalViewport's visibility calc can disagree
   // with the ScrollBox's virtual scroll position.
-  if (isVisible || inVirtualList) {
+  if (isVisible || inVirtualList || forceUpdate) {
     cached.current = children;
   }
   return <Box ref={ref}>{cached.current}</Box>;

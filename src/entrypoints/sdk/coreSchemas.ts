@@ -1669,28 +1669,6 @@ export const SDKAuthStatusMessageSchema = lazySchema(() =>
   }),
 )
 
-export const SDKFilesPersistedEventSchema = lazySchema(() =>
-  z.object({
-    type: z.literal('system'),
-    subtype: z.literal('files_persisted'),
-    files: z.array(
-      z.object({
-        filename: z.string(),
-        file_id: z.string(),
-      }),
-    ),
-    failed: z.array(
-      z.object({
-        filename: z.string(),
-        error: z.string(),
-      }),
-    ),
-    processed_at: z.string(),
-    uuid: UUIDPlaceholder(),
-    session_id: z.string(),
-  }),
-)
-
 export const SDKTaskNotificationMessageSchema = lazySchema(() =>
   z.object({
     type: z.literal('system'),
@@ -1872,7 +1850,6 @@ export const SDKMessageSchema = lazySchema(() =>
     SDKTaskStartedMessageSchema(),
     SDKTaskProgressMessageSchema(),
     SDKSessionStateChangedMessageSchema(),
-    SDKFilesPersistedEventSchema(),
     SDKToolUseSummaryMessageSchema(),
     SDKRateLimitEventSchema(),
     SDKElicitationCompleteMessageSchema(),

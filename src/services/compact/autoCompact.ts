@@ -188,13 +188,10 @@ function getSubagentContextWindowOverride(): number | undefined {
   }
   // 2. Settings fallback
   try {
-    const { getInitialSettings } =
-      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
-    const v = getInitialSettings().subagentContextWindow
+    const { getModelProfile } = require('../../utils/model/modelProfiles.js')
+    const v = getModelProfile('subagent').contextWindowTokens
     if (v && v > 0) return v
-  } catch {
-    // Settings not available (circular dep guard or early startup)
-  }
+  } catch { /* circular dep guard */ }
   return undefined
 }
 
@@ -207,13 +204,10 @@ function getAdvisorContextWindowOverride(): number | undefined {
   }
   // 2. Settings fallback
   try {
-    const { getInitialSettings } =
-      require('../../utils/settings/settings.js') as typeof import('../../utils/settings/settings.js')
-    const v = getInitialSettings().advisorContextWindow
+    const { getModelProfile } = require('../../utils/model/modelProfiles.js')
+    const v = getModelProfile('advisor').contextWindowTokens
     if (v && v > 0) return v
-  } catch {
-    // Settings not available
-  }
+  } catch { /* circular dep guard */ }
   return undefined
 }
 

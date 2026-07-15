@@ -4,12 +4,12 @@ import { feature } from 'bun:bundle';
 import { Box, Text, useTheme, useThemeSetting, useTerminalFocus } from '../../ink.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import * as React from 'react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import figures from 'figures';
 import { type GlobalConfig, saveGlobalConfig, getCurrentProjectConfig, type OutputStyle } from '../../utils/config.js';
 import { normalizeApiKeyForConfig } from '../../utils/authPortable.js';
-import { getGlobalConfig, getAutoUpdaterDisabledReason, formatAutoUpdaterDisabledReason, getRemoteControlAtStartup } from '../../utils/config.js';
+import { getGlobalConfig, getRemoteControlAtStartup } from '../../utils/config.js';
 import chalk from 'chalk';
 import { permissionModeTitle, permissionModeFromString, toExternalPermissionMode, isExternalPermissionMode, EXTERNAL_PERMISSION_MODES, PERMISSION_MODES, type ExternalPermissionMode, type PermissionMode } from '../../utils/permissions/PermissionMode.js';
 import { getAutoModeEnabledState, hasAutoModeOptInAnySource, transitionPlanAutoMode } from '../../utils/permissions/permissionSetup.js';
@@ -22,11 +22,12 @@ import { ModelPicker } from '../ModelPicker.js';
 import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
 import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialog.js';
-import { ChannelDowngradeDialog, type ChannelDowngradeChoice } from '../ChannelDowngradeDialog.js';
 import { Dialog } from '../design-system/Dialog.js';
 import { Select } from '../CustomSelect/index.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
+import { ModelProfileDialog } from './ModelProfileDialog.js';
+import { formatProfileSummary, getModelProfile, type ModelScope } from '../../utils/model/modelProfiles.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
@@ -34,8 +35,8 @@ import { Byline } from '../design-system/Byline.js';
 import { useTabHeaderFocus } from '../design-system/Tabs.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { SearchBox } from '../SearchBox.js';
-import { isSupportedTerminal, hasAccessToIDEExtensionDiffFeature } from '../../utils/ide.js';
 import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
+import { bumpSettingsVersion } from '../../utils/settingsVersion.js';
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js';
 import { DEFAULT_OUTPUT_STYLE_NAME, OUTPUT_STYLE_CONFIG } from 'src/constants/outputStyles.js';
 import { isEnvTruthy, isRunningOnHomespace } from 'src/utils/envUtils.js';
@@ -46,7 +47,6 @@ import { getCliTeammateModeOverride, clearCliTeammateModeOverride } from '../../
 import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js';
 import { useSearchInput } from '../../hooks/useSearchInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
-import { clearFastModeCooldown, FAST_MODE_MODEL_DISPLAY, isFastModeAvailable, isFastModeEnabled, getFastModeModel, isFastModeSupportedByModel } from '../../utils/fastMode.js';
 import type { AdvisorPreference } from '../tools/AdvisorTool/prompt.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 
@@ -96,7 +96,7 @@ type Setting = (SettingBase & {
   onChange(value: string): void;
   type: 'managedEnum';
 });
-type SubMenu = 'Theme' | 'Model' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'ChannelDowngrade' | 'Language' | 'EnableAutoUpdates';
+type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile';
 export function Config({
   onClose,
   context,
@@ -144,7 +144,7 @@ export function Config({
   const mainLoopModel = useAppState(s => s.mainLoopModel);
   const verbose = useAppState(s_0 => s_0.verbose);
   const thinkingEnabled = useAppState(s_1 => s_1.thinkingEnabled);
-  const isFastMode = useAppState(s_2 => isFastModeEnabled() ? s_2.fastMode : false);
+  const [currentModelProfileScope, setCurrentModelProfileScope] = useState<ModelScope>('main');
   const promptSuggestionEnabled = useAppState(s_3 => s_3.promptSuggestionEnabled);
   // Show auto in the default-mode dropdown when the user has opted in OR the
   // config is fully 'enabled' — even if currently circuit-broken ('disabled'),
@@ -180,7 +180,6 @@ export function Config({
       mainLoopModelForSession: s_4.mainLoopModelForSession,
       verbose: s_4.verbose,
       thinkingEnabled: s_4.thinkingEnabled,
-      fastMode: s_4.fastMode,
       promptSuggestionEnabled: s_4.promptSuggestionEnabled,
       isBriefOnly: s_4.isBriefOnly,
       replBridgeEnabled: s_4.replBridgeEnabled,
@@ -222,11 +221,9 @@ export function Config({
   React.useEffect(() => {
     onIsSearchModeChange?.(ownsEsc);
   }, [ownsEsc, onIsSearchModeChange]);
-  const isConnectedToIde = hasAccessToIDEExtensionDiffFeature(context.options.mcpClients);
   const isFileCheckpointingAvailable = !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING);
   const memoryFiles = React.use(getMemoryFiles(true));
   const shouldShowExternalIncludesToggle = hasExternalClaudeMdIncludes(memoryFiles);
-  const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason();
   function onChangeMainModelConfig(value: string | null): void {
     const previousModel = mainLoopModel;
     logEvent('tengu_config_model_changed', {
@@ -369,41 +366,8 @@ export function Config({
       });
     }
   },
-  // Fast mode toggle (ant-only, eliminated from external builds)
-  ...(isFastModeEnabled() && isFastModeAvailable() ? [{
-    id: 'fastMode',
-    label: `Fast mode (${FAST_MODE_MODEL_DISPLAY} only)`,
-    value: !!isFastMode,
-    type: 'boolean' as const,
-    onChange(enabled_0: boolean) {
-      clearFastModeCooldown();
-      updateSettingsForSource('userSettings', {
-        fastMode: enabled_0 ? true : undefined
-      });
-      if (enabled_0) {
-        setAppState(prev_7 => ({
-          ...prev_7,
-          mainLoopModel: getFastModeModel(),
-          mainLoopModelForSession: null,
-          fastMode: true
-        }));
-        setChanges(prev_8 => ({
-          ...prev_8,
-          model: getFastModeModel(),
-          'Fast mode': 'ON'
-        }));
-      } else {
-        setAppState(prev_9 => ({
-          ...prev_9,
-          fastMode: false
-        }));
-        setChanges(prev_10 => ({
-          ...prev_10,
-          'Fast mode': 'OFF'
-        }));
-      }
-    }
-  }] : []), ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false) ? [{
+  // Fast mode toggle removed (Anthropic online service)
+  ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false) ? [{
     id: 'promptSuggestionEnabled',
     label: 'Prompt suggestions',
     value: promptSuggestionEnabled,
@@ -658,23 +622,7 @@ export function Config({
         value: String(copyOnSelect) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
     }
-  }] : []),
-  // autoUpdates setting is hidden - use DISABLE_AUTOUPDATER env var to control
-  autoUpdaterDisabledReason ? {
-    id: 'autoUpdatesChannel',
-    label: 'Auto-update channel',
-    value: 'disabled',
-    type: 'managedEnum' as const,
-    onChange() {}
-  } : {
-    id: 'autoUpdatesChannel',
-    label: 'Auto-update channel',
-    value: settingsData?.autoUpdatesChannel ?? 'latest',
-    type: 'managedEnum' as const,
-    onChange() {
-      // Handled via toggleSetting -> 'ChannelDowngrade'
-    }
-  }, {
+  }] : []), {
     id: 'theme',
     label: 'Theme',
     value: themeSetting,
@@ -841,70 +789,24 @@ export function Config({
       });
     }
   }, {
-    id: 'model',
+    id: 'modelProfileMain',
     label: 'Model',
-    value: mainLoopModel === null ? 'Default (recommended)' : mainLoopModel,
+    value: formatProfileSummary(getModelProfile('main')),
     type: 'managedEnum' as const,
-    onChange: onChangeMainModelConfig
-  }, ...(isConnectedToIde ? [{
-    id: 'diffTool',
-    label: 'Diff tool',
-    value: globalConfig.diffTool ?? 'auto',
-    options: ['terminal', 'auto'],
-    type: 'enum' as const,
-    onChange(diffTool: string) {
-      saveGlobalConfig(current_15 => ({
-        ...current_15,
-        diffTool: diffTool as GlobalConfig['diffTool']
-      }));
-      setGlobalConfig({
-        ...getGlobalConfig(),
-        diffTool: diffTool as GlobalConfig['diffTool']
-      });
-      logEvent('tengu_diff_tool_changed', {
-        tool: diffTool as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        source: 'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-    }
-  }] : []), ...(!isSupportedTerminal() ? [{
-    id: 'autoConnectIde',
-    label: 'Auto-connect to IDE (external terminal)',
-    value: globalConfig.autoConnectIde ?? false,
-    type: 'boolean' as const,
-    onChange(autoConnectIde: boolean) {
-      saveGlobalConfig(current_16 => ({
-        ...current_16,
-        autoConnectIde
-      }));
-      setGlobalConfig({
-        ...getGlobalConfig(),
-        autoConnectIde
-      });
-      logEvent('tengu_auto_connect_ide_changed', {
-        enabled: autoConnectIde,
-        source: 'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-    }
-  }] : []), ...(isSupportedTerminal() ? [{
-    id: 'autoInstallIdeExtension',
-    label: 'Auto-install IDE extension',
-    value: globalConfig.autoInstallIdeExtension ?? true,
-    type: 'boolean' as const,
-    onChange(autoInstallIdeExtension: boolean) {
-      saveGlobalConfig(current_17 => ({
-        ...current_17,
-        autoInstallIdeExtension
-      }));
-      setGlobalConfig({
-        ...getGlobalConfig(),
-        autoInstallIdeExtension
-      });
-      logEvent('tengu_auto_install_ide_extension_changed', {
-        enabled: autoInstallIdeExtension,
-        source: 'config_panel' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-    }
-  }] : []),
+    onChange: () => {},
+  }, {
+    id: 'modelProfileSubagent',
+    label: 'Subagent Model',
+    value: formatProfileSummary(getModelProfile('subagent')),
+    type: 'managedEnum' as const,
+    onChange: () => {},
+  }, {
+    id: 'modelProfileAdvisor',
+    label: 'Advisor Model',
+    value: formatProfileSummary(getModelProfile('advisor')),
+    type: 'managedEnum' as const,
+    onChange: () => {},
+  },
   // Teammate mode (only shown when agent swarms are enabled)
   ...(isAgentSwarmsEnabled() ? (() => {
     const cliOverride = getCliTeammateModeOverride();
@@ -1145,15 +1047,6 @@ export function Config({
     if (globalConfig.editorMode !== initialConfig.current.editorMode) {
       formattedChanges.push(`Set editor mode to ${chalk.bold(globalConfig.editorMode || 'emacs')}`);
     }
-    if (globalConfig.diffTool !== initialConfig.current.diffTool) {
-      formattedChanges.push(`Set diff tool to ${chalk.bold(globalConfig.diffTool)}`);
-    }
-    if (globalConfig.autoConnectIde !== initialConfig.current.autoConnectIde) {
-      formattedChanges.push(`${globalConfig.autoConnectIde ? 'Enabled' : 'Disabled'} auto-connect to IDE`);
-    }
-    if (globalConfig.autoInstallIdeExtension !== initialConfig.current.autoInstallIdeExtension) {
-      formattedChanges.push(`${globalConfig.autoInstallIdeExtension ? 'Enabled' : 'Disabled'} auto-install IDE extension`);
-    }
     if (globalConfig.autoCompactEnabled !== initialConfig.current.autoCompactEnabled) {
       formattedChanges.push(`${globalConfig.autoCompactEnabled ? 'Enabled' : 'Disabled'} auto-compact`);
     }
@@ -1179,8 +1072,15 @@ export function Config({
       const remoteLabel = globalConfig.remoteControlAtStartup === undefined ? 'Reset Remote Control to default' : `${globalConfig.remoteControlAtStartup ? 'Enabled' : 'Disabled'} Remote Control for all sessions`;
       formattedChanges.push(remoteLabel);
     }
-    if (settingsData?.autoUpdatesChannel !== initialSettingsData.current?.autoUpdatesChannel) {
-      formattedChanges.push(`Set auto-update channel to ${chalk.bold(settingsData?.autoUpdatesChannel ?? 'latest')}`);
+    // If anything was written to settings (modelProfiles, etc.),
+    // push the latest state into AppState so the Logo and other
+    // subscribers see the changes immediately.
+    if (isDirty.current) {
+      store.setState(prev => ({ ...prev, settings: getInitialSettings() }));
+      // Force every OffscreenFreeze in the tree to invalidate its
+      // cache so that the Logo (frozen in scrollback) picks up the
+      // new modelProfiles on the next render.
+      bumpSettingsVersion();
     }
     if (formattedChanges.length > 0) {
       onClose(formattedChanges.join('\n'));
@@ -1189,7 +1089,7 @@ export function Config({
         display: 'system'
       });
     }
-  }, [showSubmenu, changes, globalConfig, mainLoopModel, currentOutputStyle, currentLanguage, settingsData?.autoUpdatesChannel, isFastModeEnabled() ? (settingsData as Record<string, unknown> | undefined)?.fastMode : undefined, onClose]);
+  }, [showSubmenu, changes, globalConfig, mainLoopModel, currentOutputStyle, currentLanguage, onClose]);
 
   // Restore all state stores to their mount-time snapshots. Changes are
   // applied to disk/AppState immediately on toggle, so "cancel" means
@@ -1218,9 +1118,7 @@ export function Config({
     const iu = initialUserSettings;
     updateSettingsForSource('userSettings', {
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
-      fastMode: iu?.fastMode,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
-      autoUpdatesChannel: iu?.autoUpdatesChannel,
       minimumVersion: iu?.minimumVersion,
       language: iu?.language,
       ...(feature('TRANSCRIPT_CLASSIFIER') ? {
@@ -1250,7 +1148,6 @@ export function Config({
       mainLoopModelForSession: ia.mainLoopModelForSession,
       verbose: ia.verbose,
       thinkingEnabled: ia.thinkingEnabled,
-      fastMode: ia.fastMode,
       promptSuggestionEnabled: ia.promptSuggestionEnabled,
       isBriefOnly: ia.isBriefOnly,
       replBridgeEnabled: ia.replBridgeEnabled,
@@ -1316,7 +1213,7 @@ export function Config({
       }
       return;
     }
-    if (setting_0.id === 'theme' || setting_0.id === 'model' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language') {
+    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language') {
       // managedEnum items open a submenu — isDirty is set by the submenu's
       // completion callback, not here (submenu may be cancelled).
       switch (setting_0.id) {
@@ -1324,8 +1221,19 @@ export function Config({
           setShowSubmenu('Theme');
           setTabsHidden(true);
           return;
-        case 'model':
-          setShowSubmenu('Model');
+        case 'modelProfileMain':
+          setCurrentModelProfileScope('main');
+          setShowSubmenu('ModelProfile');
+          setTabsHidden(true);
+          return;
+        case 'modelProfileSubagent':
+          setCurrentModelProfileScope('subagent');
+          setShowSubmenu('ModelProfile');
+          setTabsHidden(true);
+          return;
+        case 'modelProfileAdvisor':
+          setCurrentModelProfileScope('advisor');
+          setShowSubmenu('ModelProfile');
           setTabsHidden(true);
           return;
         case 'teammateDefaultModel':
@@ -1350,36 +1258,6 @@ export function Config({
           return;
       }
     }
-    if (setting_0.id === 'autoUpdatesChannel') {
-      if (autoUpdaterDisabledReason) {
-        // Auto-updates are disabled - show enable dialog instead
-        setShowSubmenu('EnableAutoUpdates');
-        setTabsHidden(true);
-        return;
-      }
-      const currentChannel = settingsData?.autoUpdatesChannel ?? 'latest';
-      if (currentChannel === 'latest') {
-        // Switching to stable - show downgrade dialog
-        setShowSubmenu('ChannelDowngrade');
-        setTabsHidden(true);
-      } else {
-        // Switching to latest - just do it and clear minimumVersion
-        isDirty.current = true;
-        updateSettingsForSource('userSettings', {
-          autoUpdatesChannel: 'latest',
-          minimumVersion: undefined
-        });
-        setSettingsData(prev_24 => ({
-          ...prev_24,
-          autoUpdatesChannel: 'latest',
-          minimumVersion: undefined
-        }));
-        logEvent('tengu_autoupdate_channel_changed', {
-          channel: 'latest' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
-      }
-      return;
-    }
     if (setting_0.type === 'enum') {
       isDirty.current = true;
       const currentIndex = setting_0.options.indexOf(setting_0.value);
@@ -1387,7 +1265,7 @@ export function Config({
       setting_0.onChange(setting_0.options[nextIndex]!);
       return;
     }
-  }, [autoUpdaterDisabledReason, filteredSettingsItems, selectedIndex, settingsData?.autoUpdatesChannel, setTabsHidden]);
+  }, [filteredSettingsItems, selectedIndex, setTabsHidden]);
   const moveSelection = (delta: -1 | 1): void => {
     setShowThinkingWarning(false);
     const prev = selectedIndexRef.current;
@@ -1498,22 +1376,57 @@ export function Config({
               </Byline>
             </Text>
           </Box>
-        </> : showSubmenu === 'Model' ? <>
-          <ModelPicker initial={mainLoopModel} onSelect={(model_0, _effort) => {
-        isDirty.current = true;
-        onChangeMainModelConfig(model_0);
-        setShowSubmenu(null);
-        setTabsHidden(false);
-      }} onCancel={() => {
-        setShowSubmenu(null);
-        setTabsHidden(false);
-      }} showFastModeNotice={isFastModeEnabled() ? isFastMode && isFastModeSupportedByModel(mainLoopModel) && isFastModeAvailable() : false} />
-          <Text dimColor>
-            <Byline>
-              <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
-            </Byline>
-          </Text>
+        </> : showSubmenu === 'ModelProfile' ? (() => {
+        const scope = currentModelProfileScope;
+        const profile = getModelProfile(scope);
+        const titles: Record<ModelScope, string> = { main: 'Model', subagent: 'Subagent Model', advisor: 'Advisor Model' };
+        return (
+          <>
+          <ModelProfileDialog
+            title={titles[scope]}
+            initialModel={profile.model}
+            initialContext={profile.contextWindowTokens}
+            initialEffort={profile.reasoningEffort}
+            thinkingDisabled={scope === 'main' && !thinkingEnabled}
+            onComplete={(newProfile) => {
+              const prevSummary = formatProfileSummary(profile);
+              const newSummary = formatProfileSummary(newProfile);
+              if (prevSummary !== newSummary) {
+                isDirty.current = true;
+                const profiles = getInitialSettings().modelProfiles ?? {};
+                const updated = { ...profiles, [scope]: newProfile };
+                updateSettingsForSource('userSettings', { modelProfiles: updated });
+                // When main model profile changes, clear any /model
+                // session override so the new settings take effect.
+                if (scope === 'main') {
+                  store.setState(prev => ({
+                    ...prev,
+                    mainLoopModel: null,
+                    mainLoopModelForSession: null,
+                  }));
+                }
+                setChanges(prev => ({ ...prev, [titles[scope]]: newSummary }));
+              }
+              setShowSubmenu(null);
+              setTabsHidden(false);
+            }}
+            onCancel={() => {
+              setShowSubmenu(null);
+              setTabsHidden(false);
+            }}
+          />
+          <Box marginTop={1}>
+            <Text dimColor>
+              <Byline>
+                <KeyboardShortcutHint shortcut="Enter" action="edit field" />
+                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
+              </Byline>
+            </Text>
+          </Box>
+          </>
+        );
+      })() : showSubmenu === 'Model' ? <>
+          <Text dimColor>Model selection removed. Use the Model Profile settings above.</Text>
         </> : showSubmenu === 'TeammateModel' ? <>
           <ModelPicker initial={globalConfig.teammateDefaultModel ?? null} skipSettingsWrite headerText="Default model for newly spawned teammates. The leader can override via the tool call's model parameter." onSelect={(model_1, _effort_0) => {
         setShowSubmenu(null);
@@ -1635,78 +1548,7 @@ export function Config({
               <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
             </Byline>
           </Text>
-        </> : showSubmenu === 'EnableAutoUpdates' ? <Dialog title="Enable Auto-Updates" onCancel={() => {
-      setShowSubmenu(null);
-      setTabsHidden(false);
-    }} hideBorder hideInputGuide>
-          {autoUpdaterDisabledReason?.type !== 'config' ? <>
-              <Text>
-                {autoUpdaterDisabledReason?.type === 'env' ? 'Auto-updates are controlled by an environment variable and cannot be changed here.' : 'Auto-updates are disabled in development builds.'}
-              </Text>
-              {autoUpdaterDisabledReason?.type === 'env' && <Text dimColor>
-                  Unset {autoUpdaterDisabledReason.envVar} to re-enable
-                  auto-updates.
-                </Text>}
-            </> : <Select options={[{
-        label: 'Enable with latest channel',
-        value: 'latest'
-      }, {
-        label: 'Enable with stable channel',
-        value: 'stable'
-      }]} onChange={(channel: string) => {
-        isDirty.current = true;
-        setShowSubmenu(null);
-        setTabsHidden(false);
-        saveGlobalConfig(current_24 => ({
-          ...current_24,
-          autoUpdates: true
-        }));
-        setGlobalConfig({
-          ...getGlobalConfig(),
-          autoUpdates: true
-        });
-        updateSettingsForSource('userSettings', {
-          autoUpdatesChannel: channel as 'latest' | 'stable',
-          minimumVersion: undefined
-        });
-        setSettingsData(prev_26 => ({
-          ...prev_26,
-          autoUpdatesChannel: channel as 'latest' | 'stable',
-          minimumVersion: undefined
-        }));
-        logEvent('tengu_autoupdate_enabled', {
-          channel: channel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
-      }} />}
-        </Dialog> : showSubmenu === 'ChannelDowngrade' ? <ChannelDowngradeDialog currentVersion={MACRO.VERSION} onChoice={(choice: ChannelDowngradeChoice) => {
-      setShowSubmenu(null);
-      setTabsHidden(false);
-      if (choice === 'cancel') {
-        // User cancelled - don't change anything
-        return;
-      }
-      isDirty.current = true;
-      // Switch to stable channel
-      const newSettings: {
-        autoUpdatesChannel: 'stable';
-        minimumVersion?: string;
-      } = {
-        autoUpdatesChannel: 'stable'
-      };
-      if (choice === 'stay') {
-        // User wants to stay on current version until stable catches up
-        newSettings.minimumVersion = MACRO.VERSION;
-      }
-      updateSettingsForSource('userSettings', newSettings);
-      setSettingsData(prev_27 => ({
-        ...prev_27,
-        ...newSettings
-      }));
-      logEvent('tengu_autoupdate_channel_changed', {
-        channel: 'stable' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        minimum_version_set: choice === 'stay'
-      });
-    }} /> : <Box flexDirection="column" gap={1} marginY={insideModal ? undefined : 1}>
+        </> : <Box flexDirection="column" gap={1} marginY={insideModal ? undefined : 1}>
           <SearchBox query={searchQuery} isFocused={isSearchMode && !headerFocused} isTerminalFocused={isTerminalFocused} cursorOffset={searchCursorOffset} placeholder="Search settings…" />
           <Box flexDirection="column">
             {filteredSettingsItems.length === 0 ? <Text dimColor italic>
@@ -1743,16 +1585,7 @@ export function Config({
                                 <NotifChannelLabel value={setting_2.value.toString()} />
                               </Text> : setting_2.id === 'defaultPermissionMode' ? <Text color={isSelected ? 'suggestion' : undefined}>
                                 {permissionModeTitle(setting_2.value as PermissionMode)}
-                              </Text> : setting_2.id === 'autoUpdatesChannel' && autoUpdaterDisabledReason ? <Box flexDirection="column">
-                                <Text color={isSelected ? 'suggestion' : undefined}>
-                                  disabled
-                                </Text>
-                                <Text dimColor>
-                                  (
-                                  {formatAutoUpdaterDisabledReason(autoUpdaterDisabledReason)}
-                                  )
-                                </Text>
-                              </Box> : <Text color={isSelected ? 'suggestion' : undefined}>
+                              </Text> : <Text color={isSelected ? 'suggestion' : undefined}>
                                 {setting_2.value.toString()}
                               </Text>}
                           </Box>
