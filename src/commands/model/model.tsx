@@ -7,8 +7,10 @@ import {
   logEvent,
 } from '../../services/analytics-stub.js'
 import { useAppState, useSetAppState } from '../../state/AppState.js'
+import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import type { EffortLevel } from '../../utils/effort.js'
+import { modelSupportsEffort, resolveAppliedEffort } from '../../utils/effort.js'
 import { isBilledAsExtraUsage } from '../../utils/extraUsage.js'
 import {
   clearFastModeCooldown,
@@ -38,11 +40,18 @@ function ShowAllProfiles({
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
   const effortValue = useAppState(s => s.effortValue)
+  const effectiveModel = useMainLoopModel()
+  // Resolve effort through the same chain as the API, with the same
+  // capability gate — if the model doesn't support effort, don't show it.
+  const effectiveEffort =
+    modelSupportsEffort(effectiveModel)
+      ? resolveAppliedEffort(effectiveModel, effortValue)
+      : undefined
   const mainProfile = getModelProfile('main')
   const mainParts = [
     renderModelLabel(mainLoopModel),
     mainProfile.contextWindowTokens ? formatTokenCount(mainProfile.contextWindowTokens) : 'auto',
-    effortValue ?? 'auto',
+    effectiveEffort ?? 'auto',
   ]
 
   let lines = [`${chalk.bold('Model')}:           ${mainParts.join(' · ')}`]
@@ -185,7 +194,12 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 }
 
 function renderModelLabel(model: string | null): string {
-  const effective = model ?? resolveModelProfileModel('main') ?? getDefaultMainLoopModelSetting()
+  const effective =
+    model ??
+    (process.env.ANTHROPIC_MODEL ||
+      process.env.OPENAI_MODEL ||
+      resolveModelProfileModel('main')) ??
+    getDefaultMainLoopModelSetting()
   const rendered = renderDefaultModelSetting(effective)
   return model === null ? `${rendered} (default)` : rendered
 }

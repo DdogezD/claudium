@@ -6,6 +6,7 @@ import {
   type ModelName,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
+import { isModelAllowed } from '../utils/model/modelAllowlist.js'
 
 // The value of the selector is a full model name that can be used directly in
 // API calls. Use this over getMainLoopModel() when the component needs to
@@ -29,11 +30,19 @@ export function useMainLoopModel(): ModelName {
   const [, forceRerender] = useReducer(x => x + 1, 0)
   useEffect(() => onGrowthBookRefresh(forceRerender), [])
 
-  const model = parseUserSpecifiedModel(
+  const specified =
     mainLoopModelForSession ??
-      mainLoopModel ??
-      settingsModelProfiles?.main?.model ??
-      getDefaultMainLoopModelSetting(),
+    mainLoopModel ??
+    (process.env.ANTHROPIC_MODEL ||
+      process.env.OPENAI_MODEL ||
+      settingsModelProfiles?.main?.model) ??
+    null
+
+  // Match the allowlist gate in getUserSpecifiedModelSetting()
+  const model = parseUserSpecifiedModel(
+    specified && isModelAllowed(specified)
+      ? specified
+      : getDefaultMainLoopModelSetting(),
   )
   return model
 }
