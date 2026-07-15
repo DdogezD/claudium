@@ -24,7 +24,7 @@ import { getDisplayPath } from '../../utils/file.js';
 import { formatDuration, formatNumber } from '../../utils/format.js';
 import { buildSubagentLookups, createAssistantMessage, EMPTY_LOOKUPS } from '../../utils/messages.js';
 import type { ModelAlias } from '../../utils/model/aliases.js';
-import { getMainLoopModel, parseUserSpecifiedModel, renderModelName } from '../../utils/model/model.js';
+import { getMainLoopModel, parseUserSpecifiedModel } from '../../utils/model/model.js';
 import type { Theme, ThemeName } from '../../utils/theme.js';
 import type { outputSchema, Progress, RemoteLaunchedOutput } from './AgentTool.js';
 import { inputSchema } from './AgentTool.js';
@@ -432,7 +432,7 @@ export function renderToolUseTag(input: Partial<{
     const agentModel = parseUserSpecifiedModel(input.model);
     if (agentModel !== mainModel) {
       tags.push(<Box key="model" flexWrap="nowrap" marginLeft={1}>
-          <Text dimColor>{renderModelName(agentModel)}</Text>
+          <Text dimColor>{input.model}</Text>
         </Box>);
     }
   }
