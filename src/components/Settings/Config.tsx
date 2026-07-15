@@ -1147,6 +1147,7 @@ export function Config({
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
       minimumVersion: iu?.minimumVersion,
+      advisorPreference: iu?.advisorPreference,
       language: iu?.language,
       ...(feature('TRANSCRIPT_CLASSIFIER') ? {
         useAutoModeDuringPlan: (iu as {
@@ -1548,7 +1549,8 @@ export function Config({
             setCurrentAdvisorPreference(value)
             setShowSubmenu(null)
             setTabsHidden(false)
-            updateSettingsForSource('localSettings', { advisorPreference: value })
+            // Save to global user settings.
+            updateSettingsForSource('userSettings', { advisorPreference: value })
           }} visibleOptionCount={3} defaultValue={currentAdvisorPreference} />
         </Box>
       </Dialog>
