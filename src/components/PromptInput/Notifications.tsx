@@ -13,7 +13,7 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js';
 import { Box, Text } from '../../ink.js';
 import { useClaudeAiLimits } from '../../services/claudeAiLimitsHook.js';
-import { calculateTokenWarningState } from '../../services/compact/autoCompact.js';
+import { calculateTokenWarningState, isAutoCompactEnabled } from '../../services/compact/autoCompact.js';
 import type { MCPServerConnection } from '../../services/mcp/types.js';
 import type { Message } from '../../types/message.js';
 import { getApiKeyHelperElapsedMs, getConfiguredApiKeyHelper, getSubscriptionType } from '../../utils/auth.js';
@@ -294,20 +294,23 @@ function NotificationContent({
   const effortValue = resolveAppliedEffort(mainLoopModel, undefined);
   const displayWindow = getContextWindowForModel(mainLoopModel);
   const effectiveWindow = getEffectiveContextWindowSize(mainLoopModel);
+  const autoCompactEnabled = isAutoCompactEnabled();
   const warnState = calculateTokenWarningState(tokenUsage, mainLoopModel);
-  const lastStable = useRef({ usage: 0, pct: 100 });
+  const lastStable = useRef({ usage: 0, pct: 100, notice: false });
   if (messages.length === 0) {
-    lastStable.current = { usage: 0, pct: 100 };
+    lastStable.current = { usage: 0, pct: 100, notice: false };
   } else if (tokenUsage > 0) {
-    lastStable.current = { usage: tokenUsage, pct: effectiveWindow > 0 ? Math.max(0, Math.round(((effectiveWindow - tokenUsage) / effectiveWindow) * 100)) : 100 };
+    lastStable.current = {
+      usage: tokenUsage,
+      pct: effectiveWindow > 0 ? Math.max(0, Math.round(((effectiveWindow - tokenUsage) / effectiveWindow) * 100)) : 100,
+      notice: autoCompactEnabled && warnState.isAboveAutoCompactThreshold,
+    };
   }
   const pctAvail = lastStable.current.pct;
   const displayUsage = tokenUsage > 0 ? tokenUsage : lastStable.current.usage;
   const footerColor = warnState.isAboveErrorThreshold ? 'error' : warnState.isAboveWarningThreshold ? 'warning' : undefined;
-  const effortLine = [
-    tokenUsage > 0 || lastStable.current.usage > 0 ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(${pctAvail}% available)` : formatTokenCount(displayWindow),
-    effortValue ?? 'auto',
-  ].join(' · ');
+  const showAutoCompactNotice = autoCompactEnabled && lastStable.current.notice;
+  const contextLine = showAutoCompactNotice ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(Auto-compaction will occur soon)` : tokenUsage > 0 || lastStable.current.usage > 0 ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(${pctAvail}% available)` : formatTokenCount(displayWindow);
 
   // When voice is actively recording or processing, replace all
   // notifications with just the voice indicator.
@@ -358,8 +361,11 @@ function NotificationContent({
       <MemoryUsageIndicator />
       <SandboxPromptFooterHint />
       <Box>
-          <Text dimColor={!footerColor} color={footerColor} wrap="truncate">
-            {effortLine}
+          <Text wrap="truncate">
+            <Text dimColor={!footerColor} color={footerColor}>
+              {contextLine}
+            </Text>
+            <Text dimColor>{` · ${effortValue ?? 'auto'}`}</Text>
           </Text>
         </Box>
     </>;
