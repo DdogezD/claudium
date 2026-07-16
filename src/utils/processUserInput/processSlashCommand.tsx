@@ -32,7 +32,6 @@ import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
 import { logError } from '../log.js';
 import { enqueuePendingNotification } from '../messageQueueManager.js';
 import { createCommandInputMessage, createSyntheticUserCaveatMessage, createSystemMessage, createUserInterruptionMessage, createUserMessage, formatCommandInputTags, isCompactBoundaryMessage, isSystemLocalCommandMessage, normalizeMessages, prepareUserContent } from '../messages.js';
-import type { ModelAlias } from '../model/aliases.js';
 import { parseToolListFromCLI } from '../permissions/permissionSetup.js';
 import { hasPermissionsToUseTool } from '../permissions/permissions.js';
 import { isOfficialMarketplaceName, parsePluginIdentifier } from '../plugins/pluginIdentifier.js';
@@ -157,7 +156,7 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
         canUseTool,
         isAsync: true,
         querySource: 'agent:custom',
-        model: command.model as ModelAlias | undefined,
+        model: command.model,
         availableTools: freshTools,
         override: {
           agentId
@@ -236,7 +235,7 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
       canUseTool,
       isAsync: false,
       querySource: 'agent:custom',
-      model: command.model as ModelAlias | undefined,
+      model: command.model,
       availableTools: context.options.tools
     })) {
       agentMessages.push(message);
