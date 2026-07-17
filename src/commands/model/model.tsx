@@ -11,24 +11,8 @@ import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import type { EffortLevel } from '../../utils/effort.js'
 import { modelSupportsEffort, resolveAppliedEffort } from '../../utils/effort.js'
-import { isBilledAsExtraUsage } from '../../utils/extraUsage.js'
-import {
-  clearFastModeCooldown,
-  isFastModeAvailable,
-  isFastModeEnabled,
-  isFastModeSupportedByModel,
-} from '../../utils/fastMode.js'
-import { formatTokenCount, formatProfileSummary, getModelProfile, resolveModelProfileModel } from '../../utils/model/modelProfiles.js'
-import { MODEL_ALIASES } from '../../utils/model/aliases.js'
-import {
-  checkOpus1mAccess,
-  checkSonnet1mAccess,
-} from '../../utils/model/check1mAccess.js'
-import {
-  getDefaultMainLoopModelSetting,
-  isOpus1mMergeEnabled,
-  renderDefaultModelSetting,
-} from '../../utils/model/model.js'
+import { formatTokenCount, formatProfileSummary, getModelProfile } from '../../utils/model/modelProfiles.js'
+import { getMainLoopModelSetting, renderDefaultModelSetting } from '../../utils/model/model.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
 import { validateModel } from '../../utils/model/validateModel.js'
 
@@ -73,7 +57,6 @@ function SetModelAndClose({
   args: string
   onDone: (result?: string, options?: { display?: CommandResultDisplay }) => void
 }): React.ReactNode {
-  const isFastMode = useAppState(s => s.fastMode)
   const setAppState = useSetAppState()
   const model = args === 'default' ? null : args
 
@@ -86,29 +69,8 @@ function SetModelAndClose({
         return
       }
 
-      if (model && isOpus1mUnavailable(model)) {
-        onDone(
-          `Opus 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`,
-          { display: 'system' },
-        )
-        return
-      }
-
-      if (model && isSonnet1mUnavailable(model)) {
-        onDone(
-          `Sonnet 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`,
-          { display: 'system' },
-        )
-        return
-      }
-
       if (!model) {
         setModel(null)
-        return
-      }
-
-      if (isKnownAlias(model)) {
-        setModel(model)
         return
       }
 
@@ -132,24 +94,6 @@ function SetModelAndClose({
       }))
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`
 
-      let wasFastModeToggledOn = undefined
-      if (isFastModeEnabled()) {
-        clearFastModeCooldown()
-        if (!isFastModeSupportedByModel(modelValue) && isFastMode) {
-          setAppState(prev => ({ ...prev, fastMode: false }))
-          wasFastModeToggledOn = false
-        } else if (isFastModeSupportedByModel(modelValue) && isFastMode) {
-          message += ` · Fast mode ON`
-          wasFastModeToggledOn = true
-        }
-      }
-
-      if (isBilledAsExtraUsage(modelValue, wasFastModeToggledOn === true, isOpus1mMergeEnabled())) {
-        message += ` · Billed as extra usage`
-      }
-      if (wasFastModeToggledOn === false) {
-        message += ` · Fast mode OFF`
-      }
       onDone(message)
     }
 
@@ -157,20 +101,6 @@ function SetModelAndClose({
   }, [model, onDone, setAppState])
 
   return null
-}
-
-function isKnownAlias(model: string): boolean {
-  return (MODEL_ALIASES as readonly string[]).includes(model.toLowerCase().trim())
-}
-
-function isOpus1mUnavailable(model: string): boolean {
-  const m = model.toLowerCase()
-  return !checkOpus1mAccess() && !isOpus1mMergeEnabled() && m.includes('opus') && m.includes('[1m]')
-}
-
-function isSonnet1mUnavailable(model: string): boolean {
-  const m = model.toLowerCase()
-  return !checkSonnet1mAccess() && (m.includes('sonnet[1m]') || m.includes('sonnet-4-6[1m]'))
 }
 
 export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
@@ -194,12 +124,8 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 }
 
 function renderModelLabel(model: string | null): string {
-  const effective =
-    model ??
-    (process.env.ANTHROPIC_MODEL ||
-      process.env.OPENAI_MODEL ||
-      resolveModelProfileModel('main')) ??
-    getDefaultMainLoopModelSetting()
+  const effective = model ?? getMainLoopModelSetting()
+  if (!effective) return 'Not configured'
   const rendered = renderDefaultModelSetting(effective)
-  return model === null ? `${rendered} (default)` : rendered
+  return model === null ? `${rendered} (configured)` : rendered
 }

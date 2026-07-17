@@ -25,7 +25,7 @@ import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
 import { logError } from '../utils/log.js'
 import { extractTextContent } from '../utils/messages.js'
-import { getDefaultOpusModel } from '../utils/model/model.js'
+import { getMainLoopModel } from '../utils/model/model.js'
 import {
   getProjectsDir,
   getSessionFilesWithMtime,
@@ -39,12 +39,12 @@ import { escapeXmlAttr as escapeHtml } from '../utils/xml.js'
 
 // Model for facet extraction and summarization (Opus - best quality)
 function getAnalysisModel(): string {
-  return getDefaultOpusModel()
+  return getMainLoopModel()
 }
 
 // Model for narrative insights (Opus - best quality)
 function getInsightsModel(): string {
-  return getDefaultOpusModel()
+  return getMainLoopModel()
 }
 
 // ============================================================================

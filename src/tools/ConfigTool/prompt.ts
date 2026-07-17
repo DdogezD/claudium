@@ -17,7 +17,7 @@ export function generatePrompt(): string {
 
   for (const [key, config] of Object.entries(SUPPORTED_SETTINGS)) {
     // Skip model - it gets its own section with dynamic options
-    if (key === 'model') continue
+    if (key === 'modelProfiles.main.model') continue
     // Voice settings are registered at build-time but gated by GrowthBook
     // at runtime. Hide from model prompt when the kill-switch is on.
     if (
@@ -71,7 +71,7 @@ ${modelSection}
 - Set dark theme: { "setting": "theme", "value": "dark" }
 - Enable vim mode: { "setting": "editorMode", "value": "vim" }
 - Enable verbose: { "setting": "verbose", "value": true }
-- Change model: { "setting": "model", "value": "opus" }
+- Change model: { "setting": "modelProfiles.main.model", "value": "provider-model-id" }
 - Change permission mode: { "setting": "permissions.defaultMode", "value": "plan" }
 `
 }
@@ -84,10 +84,10 @@ function generateModelSection(): string {
       return `  - ${value}: ${o.descriptionForModel ?? o.description}`
     })
     return `## Model
-- model - Override the default model. Available options:
+- modelProfiles.main.model - Set the explicit main-loop model. Available options:
 ${lines.join('\n')}`
   } catch {
     return `## Model
-- model - Override the default model (sonnet, opus, haiku, best, or full model ID)`
+- modelProfiles.main.model - Set an explicit main-loop model ID. Family aliases are not supported.`
   }
 }

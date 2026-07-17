@@ -19,8 +19,7 @@ import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
-import { modelDisplayString, isOpus1mMergeEnabled } from '../../utils/model/model.js';
-import { isBilledAsExtraUsage } from '../../utils/extraUsage.js';
+import { modelDisplayString } from '../../utils/model/model.js';
 import { ClaudeMdExternalIncludesDialog } from '../ClaudeMdExternalIncludesDialog.js';
 import { Dialog } from '../design-system/Dialog.js';
 import { Select } from '../CustomSelect/index.js';
@@ -44,7 +43,6 @@ import type { LocalJSXCommandContext, CommandResultDisplay } from '../../command
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { getCliTeammateModeOverride, clearCliTeammateModeOverride } from '../../utils/swarm/backends/teammateModeSnapshot.js';
-import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js';
 import { useSearchInput } from '../../hooks/useSearchInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type { AdvisorPreference } from '../tools/AdvisorTool/prompt.js';
@@ -237,7 +235,7 @@ export function Config({
       mainLoopModelForSession: null
     }));
     setChanges(prev_0 => {
-      const valStr = modelDisplayString(value) + (isBilledAsExtraUsage(value, false, isOpus1mMergeEnabled()) ? ' · Billed as extra usage' : '');
+      const valStr = modelDisplayString(value);
       if ('model' in prev_0) {
         const {
           model,
@@ -367,7 +365,6 @@ export function Config({
       });
     }
   },
-  // Fast mode toggle removed (Anthropic online service)
   ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false) ? [{
     id: 'promptSuggestionEnabled',
     label: 'Prompt suggestions',
@@ -1663,10 +1660,7 @@ export function Config({
     </Box>;
 }
 function teammateModelDisplayString(value: string | null | undefined): string {
-  if (value === undefined) {
-    return modelDisplayString(getHardcodedTeammateModelFallback());
-  }
-  if (value === null) return "Default (leader's model)";
+  if (value === undefined || value === null) return "Default (leader's model)";
   return modelDisplayString(value);
 }
 const THEME_LABELS: Record<string, string> = {

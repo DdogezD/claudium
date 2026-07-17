@@ -51,7 +51,7 @@ export function AgentModelInput({
           onSubmit={handleSubmit}
           focus={true}
           showCursor={true}
-          placeholder="e.g., inherit, claude-sonnet-4-6"
+          placeholder="e.g., inherit, my-model-id"
           columns={50}
           cursorOffset={cursorOffset}
           onChangeCursorOffset={setCursorOffset}

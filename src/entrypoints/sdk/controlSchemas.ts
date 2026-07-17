@@ -13,7 +13,6 @@ import {
   AccountInfoSchema,
   AgentDefinitionSchema,
   AgentInfoSchema,
-  FastModeStateSchema,
   HookEventSchema,
   HookInputSchema,
   McpServerConfigForProcessTransportSchema,
@@ -87,7 +86,6 @@ export const SDKControlInitializeResponseSchema = lazySchema(() =>
         .number()
         .optional()
         .describe('@internal CLI process PID for tmux socket isolation'),
-      fast_mode_state: FastModeStateSchema().optional(),
     })
     .describe(
       'Response from session initialization with available commands, models, and account info.',

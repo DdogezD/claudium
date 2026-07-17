@@ -16,10 +16,8 @@ import {
   isFoundationModel,
 } from '../utils/model/bedrock.js'
 import {
-  getDefaultSonnetModel,
   getMainLoopModel,
   getSmallFastModel,
-  normalizeModelStringForAPI,
 } from '../utils/model/model.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { isToolReferenceBlock } from '../utils/toolSearch.js'
@@ -150,7 +148,7 @@ export async function countMessagesTokensWithAPI(
       if (getAPIProvider() === 'bedrock') {
         // @anthropic-sdk/bedrock-sdk doesn't support countTokens currently
         return countTokensWithBedrock({
-          model: normalizeModelStringForAPI(model),
+          model: model,
           messages,
           tools,
           betas,
@@ -170,7 +168,7 @@ export async function countMessagesTokensWithAPI(
           : betas
 
       const response = await anthropic.beta.messages.countTokens({
-        model: normalizeModelStringForAPI(model),
+        model: model,
         messages:
           // When we pass tools and no messages, we need to pass a dummy message
           // to get an accurate tool token count.
@@ -273,7 +271,7 @@ export async function countTokensViaHaikuFallback(
   // with global inference profiles (see issue #10883).
   const model =
     isVertexGlobalEndpoint || isBedrockWithThinking || isVertexWithThinking
-      ? getDefaultSonnetModel()
+      ? getMainLoopModel()
       : getSmallFastModel()
   const anthropic = await getAnthropicClient({
     maxRetries: 1,
@@ -300,7 +298,7 @@ export async function countTokensViaHaikuFallback(
 
   // biome-ignore lint/plugin: token counting needs specialized parameters (thinking, betas) that sideQuery doesn't support
   const response = await anthropic.beta.messages.create({
-    model: normalizeModelStringForAPI(model),
+    model: model,
     max_tokens: containsThinking ? TOKEN_COUNT_MAX_TOKENS : 1,
     messages: messagesToSend,
     tools: tools.length > 0 ? tools : undefined,

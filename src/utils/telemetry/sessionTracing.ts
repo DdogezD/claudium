@@ -275,7 +275,6 @@ export function startLLMRequestSpan(
   model: string,
   newContext?: LLMRequestNewContext,
   messagesForAPI?: APIMessage[],
-  fastMode?: boolean,
 ): Span {
   // Start Perfetto span regardless of OTel tracing state
   const perfettoSpanId = isPerfettoTracingEnabled()
@@ -310,7 +309,6 @@ export function startLLMRequestSpan(
   const attributes = createSpanAttributes('llm_request', {
     model: model,
     'llm_request.context': parentSpanCtx ? 'interaction' : 'standalone',
-    speed: fastMode ? 'fast' : 'normal',
   })
 
   const ctx = parentSpanCtx

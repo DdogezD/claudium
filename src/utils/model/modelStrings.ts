@@ -99,6 +99,15 @@ export function resolveOverriddenModel(modelId: string): string {
   return modelId
 }
 
+/** Apply an exact canonical model override to a provider request model. */
+export function applyModelOverride(modelId: string): string {
+  try {
+    return getInitialSettings().modelOverrides?.[modelId] || modelId
+  } catch {
+    return modelId
+  }
+}
+
 const updateBedrockModelStrings = sequential(async () => {
   if (getModelStringsState() !== null) {
     // Already initialized. Doing the check here, combined with

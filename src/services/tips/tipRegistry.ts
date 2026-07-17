@@ -29,10 +29,7 @@ import {
   isVSCodeInstalled,
   isWindsurfInstalled,
 } from '../../utils/ide.js'
-import {
-  getMainLoopModel,
-  getUserSpecifiedModelSetting,
-} from '../../utils/model/model.js'
+import { getMainLoopModel } from '../../utils/model/model.js'
 import { getPlatform } from '../../utils/platform.js'
 import { isPluginInstalled } from '../../utils/plugins/installedPluginsManager.js'
 import { loadKnownMarketplacesConfigSafe } from '../../utils/plugins/marketplaceManager.js'
@@ -353,23 +350,6 @@ const externalTips: Tip[] = [
     },
   },
   // desktop-app, desktop-shortcut, web-app, mobile-app — Anthropic services stripped
-  {
-    id: 'opusplan-mode-reminder',
-    content: async () =>
-      `Your default model setting is Opus Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode and plan with Opus.`,
-    cooldownSessions: 2,
-    async isRelevant() {
-      if (process.env.USER_TYPE === 'ant') return false
-      const config = getGlobalConfig()
-      const modelSetting = getUserSpecifiedModelSetting()
-      const hasOpusPlanMode = modelSetting === 'opusplan'
-      // Show reminder if they have Opus Plan Mode and haven't used plan mode recently (3+ days)
-      const daysSinceLastUse = config.lastPlanModeUse
-        ? (Date.now() - config.lastPlanModeUse) / (1000 * 60 * 60 * 24)
-        : Infinity
-      return hasOpusPlanMode && daysSinceLastUse > 3
-    },
-  },
   {
     id: 'frontend-design-plugin',
     content: async ctx => {

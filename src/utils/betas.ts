@@ -21,7 +21,6 @@ import {
   TOOL_SEARCH_BETA_HEADER_3P,
   WEB_SEARCH_BETA_HEADER,
 } from '../constants/betas.js'
-import { has1mContext } from './context.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
@@ -242,9 +241,6 @@ export const getAllModelBetas = memoize((model: string): string[] => {
     }
   }
   // OAuth stripped: OAUTH_BETA_HEADER is no longer needed
-  if (has1mContext(model)) {
-    betaHeaders.push(CONTEXT_1M_BETA_HEADER)
-  }
   if (
     !isEnvTruthy(process.env.DISABLE_INTERLEAVED_THINKING) &&
     modelSupportsISP(model)

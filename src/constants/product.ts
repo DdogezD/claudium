@@ -1,3 +1,4 @@
+export const PRODUCT_NAME = 'Claudium'
 export const PRODUCT_URL = ''
 
 /**

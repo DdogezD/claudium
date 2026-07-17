@@ -1077,11 +1077,6 @@ export function getAutoModeUnavailableNotification(
  */
 export async function verifyAutoModeGateAccess(
   currentContext: ToolPermissionContext,
-  // Runtime AppState.fastMode — passed from callers with AppState access so
-  // the disableFastMode circuit breaker reads current state, not stale
-  // settings.fastMode (which is intentionally sticky across /model auto-
-  // downgrades). Optional for callers without AppState (e.g. SDK init paths).
-  fastMode?: boolean,
 ): Promise<AutoModeGateCheckResult> {
   // Auto-mode config — runs in ALL builds (circuit breaker, carousel, kick-out)
   // Fresh read of tengu_auto_mode_config.enabled — this async check runs once
@@ -1090,7 +1085,6 @@ export async function verifyAutoModeGateAccess(
   // corrects it. Circuit breaker (enabled==='disabled') takes effect here.
   const autoModeConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
     enabled?: AutoModeEnabledState
-    disableFastMode?: boolean
   }>('tengu_auto_mode_config', {})
   const enabledState = parseAutoModeEnabledState(autoModeConfig?.enabled)
   const disabledBySettings = isAutoModeDisabledBySettings()
@@ -1101,20 +1095,9 @@ export async function verifyAutoModeGateAccess(
   )
 
   // Carousel availability: not circuit-broken, not disabled-by-settings,
-  // model supports it, disableFastMode breaker not firing, and (enabled or opted-in)
+  // model supports it, and (enabled or opted-in).
   const mainModel = getMainLoopModel()
-  // Temp circuit breaker: tengu_auto_mode_config.disableFastMode blocks auto
-  // mode when fast mode is on. Checks runtime AppState.fastMode (if provided)
-  // and, for ants, model name '-fast' substring (ant-internal fast models
-  // like capybara-v2-fast[1m] encode speed in the model ID itself).
-  // Remove once auto+fast mode interaction is validated.
-  const disableFastModeBreakerFires =
-    !!autoModeConfig?.disableFastMode &&
-    (!!fastMode ||
-      (process.env.USER_TYPE === 'ant' &&
-        mainModel.toLowerCase().includes('-fast')))
-  const modelSupported =
-    modelSupportsAutoMode(mainModel) && !disableFastModeBreakerFires
+  const modelSupported = modelSupportsAutoMode(mainModel)
   let carouselAvailable = false
   if (enabledState !== 'disabled' && !disabledBySettings && modelSupported) {
     carouselAvailable =
@@ -1125,7 +1108,7 @@ export async function verifyAutoModeGateAccess(
   const canEnterAuto =
     enabledState !== 'disabled' && !disabledBySettings && modelSupported
   logForDebugging(
-    `[auto-mode] verifyAutoModeGateAccess: enabledState=${enabledState} disabledBySettings=${disabledBySettings} model=${mainModel} modelSupported=${modelSupported} disableFastModeBreakerFires=${disableFastModeBreakerFires} carouselAvailable=${carouselAvailable} canEnterAuto=${canEnterAuto}`,
+    `[auto-mode] verifyAutoModeGateAccess: enabledState=${enabledState} disabledBySettings=${disabledBySettings} model=${mainModel} modelSupported=${modelSupported} carouselAvailable=${carouselAvailable} canEnterAuto=${canEnterAuto}`,
   )
 
   // Capture CLI-flag intent now (doesn't depend on context).

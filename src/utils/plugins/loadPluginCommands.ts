@@ -23,7 +23,6 @@ import {
   extractDescriptionFromMarkdown,
   parseSlashCommandToolsFromFrontmatter,
 } from '../markdownConfigLoader.js'
-import { parseUserSpecifiedModel } from '../model/model.js'
 import { executeShellCommandsInPrompt } from '../promptShellExecution.js'
 import { loadAllPluginsCacheOnly } from './pluginLoader.js'
 import {
@@ -268,13 +267,10 @@ function createPluginCommand(
     const version = frontmatter.version as string | undefined
     const displayName = frontmatter.name as string | undefined
 
-    // Handle model configuration, resolving aliases like 'haiku', 'sonnet', 'opus'
     const model =
-      frontmatter.model === 'inherit'
-        ? undefined
-        : frontmatter.model
-          ? parseUserSpecifiedModel(frontmatter.model as string)
-          : undefined
+      typeof frontmatter.model === 'string'
+        ? frontmatter.model.trim() || undefined
+        : undefined
 
     const effortRaw = frontmatter['effort']
     const effort =

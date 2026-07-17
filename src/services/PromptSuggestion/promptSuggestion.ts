@@ -1,4 +1,5 @@
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
+import { PRODUCT_NAME } from '../../constants/product.js'
 import type { AppState } from '../../state/AppState.js'
 import type { Message } from '../../types/message.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
@@ -255,7 +256,7 @@ export function getParentCacheSuppressReason(
     : null
 }
 
-const SUGGESTION_PROMPT = `[SUGGESTION MODE: Suggest what the user might naturally type next into Claudium.]
+const SUGGESTION_PROMPT = `[SUGGESTION MODE: Suggest what the user might naturally type next into ${PRODUCT_NAME}.]
 
 FIRST: Look at the user's recent messages and original request.
 

@@ -72,7 +72,7 @@ export function ModelProfileDialog({
                   onSubmit={handleFieldSubmit}
                   focus={isActive}
                   showCursor={isActive}
-                  placeholder="e.g., claude-sonnet-4-6"
+                  placeholder="e.g., my-model-id"
                   columns={50}
                   cursorOffset={modelOffset}
                   onChangeCursorOffset={setModelOffset}

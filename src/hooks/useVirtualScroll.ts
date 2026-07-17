@@ -457,7 +457,7 @@ export function useVirtualScroll(
     // a fresh range would otherwise mount 194 items at PESSIMISTIC_HEIGHT=1
     // coverage — ~290ms React render block. Gates on scroll VELOCITY
     // (|scrollTop delta since last commit| > 2×viewportH — key-repeat PageUp
-    // moves ~viewportH/2 per press, 3+ presses batched = fast mode). Covers
+    // moves ~viewportH/2 per press, 3+ presses batched). Covers
     // both scrollBy (pendingDelta) and scrollTo (direct write). Normal
     // single-PageUp or sticky-break jumps skip this. The clamp
     // (setClampBounds) holds the viewport at the mounted edge during

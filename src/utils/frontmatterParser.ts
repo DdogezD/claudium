@@ -20,8 +20,7 @@ export type FrontmatterData = {
   // Only applicable to slash commands -- a string similar to a boolean env var
   // to determine whether to make them visible to the SlashCommand tool.
   'hide-from-slash-command-tool'?: string | null
-  // Model alias or name (e.g., 'haiku', 'sonnet', 'opus', or specific model names)
-  // Use 'inherit' for commands to use the parent model
+  // Optional plugin/skill model marker, resolved to the active main-loop model at execution time.
   model?: string | null
   // Comma-separated list of skill names to preload (only applicable to agents)
   skills?: string | null
