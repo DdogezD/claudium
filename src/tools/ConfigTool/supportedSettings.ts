@@ -104,6 +104,11 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     validateOnWrite: v => validateModel(String(v)),
     formatOnRead: v => (v === null ? 'not configured' : v),
   },
+  'modelProfiles.advisor.enabled': {
+    source: 'settings',
+    type: 'boolean',
+    description: 'Enable or disable the Advisor tool',
+  },
   alwaysThinkingEnabled: {
     source: 'settings',
     type: 'boolean',

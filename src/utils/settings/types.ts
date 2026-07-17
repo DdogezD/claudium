@@ -214,15 +214,22 @@ export const ModelProfileSchema = lazySchema(() =>
   }),
 )
 
+export const AdvisorProfileSchema = lazySchema(() =>
+  ModelProfileSchema().extend({
+    enabled: z.boolean().optional(),
+  }),
+)
+
 export const ModelProfilesSchema = lazySchema(() =>
   z.object({
     main: ModelProfileSchema().optional(),
     subagent: ModelProfileSchema().optional(),
-    advisor: ModelProfileSchema().optional(),
+    advisor: AdvisorProfileSchema().optional(),
   }),
 )
 
 export type ModelProfile = z.infer<ReturnType<typeof ModelProfileSchema>>
+export type AdvisorProfile = z.infer<ReturnType<typeof AdvisorProfileSchema>>
 export type ModelProfiles = z.infer<ReturnType<typeof ModelProfilesSchema>>
 
 /**

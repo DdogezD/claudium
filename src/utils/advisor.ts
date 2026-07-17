@@ -2,10 +2,14 @@
 // Config
 // ---------------------------------------------------------------------------
 
-import { resolveModelProfileModel } from './model/modelProfiles.js'
+import { resolveModelProfileModel, resolveAdvisorEnabled } from './model/modelProfiles.js'
 import { applyModelOverride } from './model/modelStrings.js'
 
 export function getAdvisorModel(): string | undefined {
+  // Explicitly disabled overrides any model configuration.
+  const enabled = resolveAdvisorEnabled()
+  if (enabled === false) return undefined
+
   const model =
     process.env.CLAUDE_CODE_ADVISOR_MODEL?.trim() ||
     resolveModelProfileModel('advisor') ||
@@ -15,8 +19,12 @@ export function getAdvisorModel(): string | undefined {
 
 /** Read advisor model from an explicit modelProfiles object (reactive, no cache). */
 export function getAdvisorModelFromProfiles(
-  modelProfiles: { advisor?: { model?: string } } | undefined,
+  modelProfiles: { advisor?: { enabled?: boolean; model?: string } } | undefined,
 ): string | undefined {
+  // Explicitly disabled overrides any model configuration.
+  const enabled = modelProfiles?.advisor?.enabled
+  if (enabled === false) return undefined
+
   const model =
     process.env.CLAUDE_CODE_ADVISOR_MODEL?.trim() ||
     modelProfiles?.advisor?.model ||

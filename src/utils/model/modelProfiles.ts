@@ -1,9 +1,9 @@
-import type { ModelProfile, ModelProfiles } from '../settings/types.js'
+import type { AdvisorProfile, ModelProfile, ModelProfiles } from '../settings/types.js'
 import { getInitialSettings } from '../settings/settings.js'
 
 export type ModelScope = 'main' | 'subagent' | 'advisor'
 
-export function getModelProfile(scope: ModelScope): ModelProfile {
+export function getModelProfile(scope: ModelScope): ModelProfile | AdvisorProfile {
   return getInitialSettings().modelProfiles?.[scope] ?? {}
 }
 
@@ -32,10 +32,27 @@ export function resolveModelProfileEffort(scope: ModelScope): string | undefined
   return getInitialSettings().modelProfiles?.[scope]?.reasoningEffort
 }
 
-export function formatProfileSummary(p: ModelProfile): string {
+/**
+ * Check whether the advisor is explicitly enabled.
+ * Returns undefined (not configured — implicit off), true (explicitly on),
+ * or false (explicitly disabled, overrides model presence).
+ */
+export function resolveAdvisorEnabled(): boolean | undefined {
+  return getInitialSettings().modelProfiles?.advisor?.enabled
+}
+
+export function formatProfileSummary(p: ModelProfile | AdvisorProfile, scope?: ModelScope): string {
+  if (scope === 'advisor' && (p as AdvisorProfile).enabled === false) {
+    return 'Disabled'
+  }
+  if (scope === 'advisor' && !p.model && !(p as AdvisorProfile).enabled) {
+    return 'Not configured'
+  }
   const parts: string[] = []
   if (p.model) parts.push(p.model)
-  else parts.push('default')
+  else if (scope === 'advisor') parts.push('Not configured')
+  else if (scope === 'subagent') parts.push('Inherit main')
+  else parts.push('Not configured')
   if (p.contextWindowTokens) parts.push(`${formatTokenCount(p.contextWindowTokens)}`)
   else parts.push('auto')
   if (p.reasoningEffort) parts.push(p.reasoningEffort)
