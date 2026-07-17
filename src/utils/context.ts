@@ -33,13 +33,6 @@ export function is1mContextDisabled(): boolean {
   return isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT)
 }
 
-export function has1mContext(model: string): boolean {
-  if (is1mContextDisabled()) {
-    return false
-  }
-  return /\[1m\]/i.test(model)
-}
-
 // @[MODEL LAUNCH]: Update this pattern if the new model supports 1M context
 export function modelSupports1M(model: string): boolean {
   if (is1mContextDisabled()) {
@@ -65,9 +58,16 @@ export function getContextWindowForModel(
     }
   }
 
-  // [1m] suffix — explicit client-side opt-in, respected over all detection
-  if (has1mContext(model)) {
-    return 1_000_000
+  // User-configured context window from /config is the primary model profile
+  // setting. A global disable still caps extended windows for safety.
+  if (scope) {
+    const profileWindow = resolveModelProfileContext(scope)
+    if (profileWindow) {
+      return is1mContextDisabled() &&
+        profileWindow > MODEL_CONTEXT_WINDOW_DEFAULT
+        ? MODEL_CONTEXT_WINDOW_DEFAULT
+        : profileWindow
+    }
   }
 
   const cap = getModelCapability(model)
@@ -93,20 +93,11 @@ export function getContextWindowForModel(
       return antModel.contextWindow
     }
   }
-  // User-configured context window override from /config → Model → Context tokens
-  if (scope) {
-    const profileWindow = resolveModelProfileContext(scope)
-    if (profileWindow) return profileWindow
-  }
   return MODEL_CONTEXT_WINDOW_DEFAULT
 }
 
 export function getSonnet1mExpTreatmentEnabled(model: string): boolean {
   if (is1mContextDisabled()) {
-    return false
-  }
-  // Only applies to sonnet 4.6 without an explicit [1m] suffix
-  if (has1mContext(model)) {
     return false
   }
   if (!getCanonicalName(model).includes('sonnet-4-6')) {

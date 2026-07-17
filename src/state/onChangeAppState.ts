@@ -96,7 +96,8 @@ export function onChangeAppState({
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel === null
   ) {
-    // Remove from settings
+    // Clear the runtime override while preserving the configured main profile.
+    // Profile edits and the ModelPicker's Default action both use this path.
     updateSettingsForSource('userSettings', { model: undefined })
     setMainLoopModelOverride(null)
   }
@@ -107,7 +108,10 @@ export function onChangeAppState({
     newState.mainLoopModel !== null
   ) {
     // Save to settings
-    updateSettingsForSource('userSettings', { model: newState.mainLoopModel })
+    updateSettingsForSource('userSettings', {
+      model: undefined,
+      modelProfiles: { main: { model: newState.mainLoopModel } },
+    })
     setMainLoopModelOverride(newState.mainLoopModel)
   }
 

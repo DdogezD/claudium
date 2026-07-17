@@ -226,10 +226,6 @@ type State = {
   // activated, keep sending the header for the rest of the session so
   // Shift+Tab toggles don't bust the ~50-70K token prompt cache.
   afkModeHeaderLatched: boolean | null
-  // Sticky-on latch for FAST_MODE_BETA_HEADER. Once fast mode is first
-  // enabled, keep sending the header so cooldown enter/exit doesn't
-  // double-bust the prompt cache. The `speed` body param stays dynamic.
-  fastModeHeaderLatched: boolean | null
   // Sticky-on latch for the cache-editing beta header. Once cached
   // microcompact is first enabled, keep sending the header so mid-session
   // GrowthBook/settings toggles don't bust the prompt cache.
@@ -409,7 +405,6 @@ function getInitialState(): State {
     promptCache1hEligible: null,
     // Beta header latches (null = not yet triggered)
     afkModeHeaderLatched: null,
-    fastModeHeaderLatched: null,
     cacheEditingHeaderLatched: null,
     thinkingClearLatched: null,
     // Current prompt ID
@@ -1702,14 +1697,6 @@ export function setAfkModeHeaderLatched(v: boolean): void {
   STATE.afkModeHeaderLatched = v
 }
 
-export function getFastModeHeaderLatched(): boolean | null {
-  return STATE.fastModeHeaderLatched
-}
-
-export function setFastModeHeaderLatched(v: boolean): void {
-  STATE.fastModeHeaderLatched = v
-}
-
 export function getCacheEditingHeaderLatched(): boolean | null {
   return STATE.cacheEditingHeaderLatched
 }
@@ -1732,7 +1719,6 @@ export function setThinkingClearLatched(v: boolean): void {
  */
 export function clearBetaHeaderLatches(): void {
   STATE.afkModeHeaderLatched = null
-  STATE.fastModeHeaderLatched = null
   STATE.cacheEditingHeaderLatched = null
   STATE.thinkingClearLatched = null
 }

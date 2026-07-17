@@ -419,8 +419,6 @@ export type AppState = DeepImmutable<{
   denialTracking?: DenialTrackingState
   // Active overlays (Select dialogs, etc.) for Escape key coordination
   activeOverlays: ReadonlySet<string>
-  // Fast mode
-  fastMode?: boolean
   // Effort value
   effortValue?: EffortValue
   // Set synchronously in launchUltraplan before the detached flow starts.
@@ -564,6 +562,5 @@ export function getDefaultAppState(): AppState {
     initialMessage: null,
     effortValue: undefined,
     activeOverlays: new Set<string>(),
-    fastMode: false,
   }
 }

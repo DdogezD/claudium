@@ -1066,10 +1066,6 @@ export const ModelInfoSchema = lazySchema(() =>
         .describe(
           'Whether this model supports adaptive thinking (Claude decides when and how much to think)',
         ),
-      supportsFastMode: z
-        .boolean()
-        .optional()
-        .describe('Whether this model supports fast mode'),
       supportsAutoMode: z
         .boolean()
         .optional()
@@ -1419,7 +1415,6 @@ export const SDKResultSuccessSchema = lazySchema(() =>
     modelUsage: z.record(z.string(), ModelUsageSchema()),
     permission_denials: z.array(SDKPermissionDenialSchema()),
     structured_output: z.unknown().optional(),
-    fast_mode_state: FastModeStateSchema().optional(),
     uuid: UUIDPlaceholder(),
     session_id: z.string(),
   }),
@@ -1444,7 +1439,6 @@ export const SDKResultErrorSchema = lazySchema(() =>
     modelUsage: z.record(z.string(), ModelUsageSchema()),
     permission_denials: z.array(SDKPermissionDenialSchema()),
     errors: z.array(z.string()),
-    fast_mode_state: FastModeStateSchema().optional(),
     uuid: UUIDPlaceholder(),
     session_id: z.string(),
   }),
@@ -1487,7 +1481,6 @@ export const SDKSystemMessageSchema = lazySchema(() =>
           ),
       }),
     ),
-    fast_mode_state: FastModeStateSchema().optional(),
     uuid: UUIDPlaceholder(),
     session_id: z.string(),
   }),
@@ -1855,12 +1848,4 @@ export const SDKMessageSchema = lazySchema(() =>
     SDKElicitationCompleteMessageSchema(),
     SDKPromptSuggestionMessageSchema(),
   ]),
-)
-
-export const FastModeStateSchema = lazySchema(() =>
-  z
-    .enum(['off', 'cooldown', 'on'])
-    .describe(
-      'Fast mode state: off, in cooldown after rate limit, or actively enabled.',
-    ),
 )

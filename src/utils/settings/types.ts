@@ -401,11 +401,8 @@ export const SettingsSchema = lazySchema(() =>
         .array(z.string())
         .optional()
         .describe(
-          'Allowlist of models that users can select. ' +
-            'Accepts family aliases ("opus" allows any opus version), ' +
-            'version prefixes ("opus-4-5" allows only that version), ' +
-            'and full model IDs. ' +
-            'If undefined, all models are available. If empty array, only the default model is available. ' +
+          'Allowlist of exact model IDs that users can select. ' +
+            'If undefined, all models are available. If empty, no models are available. ' +
             'Typically set in managed settings by enterprise administrators.',
         ),
       modelOverrides: z
@@ -773,18 +770,6 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Override the summary output token reservation for advisor compaction.',
-        ),
-      fastMode: z
-        .boolean()
-        .optional()
-        .describe(
-          'When true, fast mode is enabled. When absent or false, fast mode is off.',
-        ),
-      fastModePerSessionOptIn: z
-        .boolean()
-        .optional()
-        .describe(
-          'When true, fast mode does not persist across sessions. Each session starts with fast mode off.',
         ),
       promptSuggestionEnabled: z
         .boolean()

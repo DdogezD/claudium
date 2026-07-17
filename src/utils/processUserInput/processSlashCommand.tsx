@@ -32,6 +32,7 @@ import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
 import { logError } from '../log.js';
 import { enqueuePendingNotification } from '../messageQueueManager.js';
 import { createCommandInputMessage, createSyntheticUserCaveatMessage, createSystemMessage, createUserInterruptionMessage, createUserMessage, formatCommandInputTags, isCompactBoundaryMessage, isSystemLocalCommandMessage, normalizeMessages, prepareUserContent } from '../messages.js';
+import { resolveFrontmatterModel } from '../model/frontmatterModel.js';
 import { parseToolListFromCLI } from '../permissions/permissionSetup.js';
 import { hasPermissionsToUseTool } from '../permissions/permissions.js';
 import { isOfficialMarketplaceName, parsePluginIdentifier } from '../plugins/pluginIdentifier.js';
@@ -156,7 +157,7 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
         canUseTool,
         isAsync: true,
         querySource: 'agent:custom',
-        model: command.model,
+        model: resolveFrontmatterModel(command.model, context.options.mainLoopModel),
         availableTools: freshTools,
         override: {
           agentId
@@ -235,7 +236,7 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
       canUseTool,
       isAsync: false,
       querySource: 'agent:custom',
-      model: command.model,
+      model: resolveFrontmatterModel(command.model, context.options.mainLoopModel),
       availableTools: context.options.tools
     })) {
       agentMessages.push(message);
@@ -860,7 +861,7 @@ async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCom
         isMeta: true
       })],
       shouldQuery: true,
-      model: command.model,
+      model: resolveFrontmatterModel(command.model, context.options.mainLoopModel),
       effort: command.effort,
       command
     };
@@ -907,13 +908,13 @@ async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCom
   }), ...attachmentMessages, createAttachmentMessage({
     type: 'command_permissions',
     allowedTools: additionalAllowedTools,
-    model: command.model
+    model: resolveFrontmatterModel(command.model, context.options.mainLoopModel)
   })];
   return {
     messages,
     shouldQuery: true,
     allowedTools: additionalAllowedTools,
-    model: command.model,
+    model: resolveFrontmatterModel(command.model, context.options.mainLoopModel),
     effort: command.effort,
     command
   };

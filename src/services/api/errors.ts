@@ -22,11 +22,7 @@ import {
   createAssistantAPIErrorMessage,
   NO_RESPONSE_REQUESTED,
 } from 'src/utils/messages.js'
-import {
-  getDefaultMainLoopModelSetting,
-  isNonCustomOpusModel,
-} from 'src/utils/model/model.js'
-import { getModelStrings } from 'src/utils/model/modelStrings.js'
+import { getDefaultMainLoopModelSetting } from 'src/utils/model/model.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import {
@@ -158,8 +154,8 @@ export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
 export const CCR_AUTH_ERROR_MESSAGE =
   'Authentication error · This may be a temporary network issue, please try again'
 export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
-export const CUSTOM_OFF_SWITCH_MESSAGE =
-  'Opus is experiencing high load, please use /model to switch to Sonnet'
+export const CAPACITY_OFF_SWITCH_MESSAGE =
+  'The service is temporarily unavailable due to capacity. Try again later.'
 export const API_TIMEOUT_ERROR_MESSAGE = 'Request timed out'
 export function getPdfTooLargeErrorMessage(): string {
   const limits = `max ${API_PDF_MAX_PAGES} pages, ${formatFileSize(PDF_TARGET_RAW_SIZE)}`
@@ -433,10 +429,10 @@ export function getAssistantMessageFromError(
   // Check for emergency capacity off switch for Opus PAYG users
   if (
     error instanceof Error &&
-    error.message.includes(CUSTOM_OFF_SWITCH_MESSAGE)
+    error.message.includes(CAPACITY_OFF_SWITCH_MESSAGE)
   ) {
     return createAssistantAPIErrorMessage({
-      content: CUSTOM_OFF_SWITCH_MESSAGE,
+      content: CAPACITY_OFF_SWITCH_MESSAGE,
       error: 'rate_limit',
     })
   }
@@ -711,21 +707,6 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for invalid model name error for subscription users trying to use Opus
-  if (
-    isClaudeAISubscriber() &&
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.toLowerCase().includes('invalid model name') &&
-    (isNonCustomOpusModel(model) || model === 'opus')
-  ) {
-    return createAssistantAPIErrorMessage({
-      content:
-        'Opus is not available with the Claude Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
-      error: 'invalid_request',
-    })
-  }
-
   // Check for invalid model name error for Ant users. Claudium may be
   // defaulting to a custom internal-only model for Ants, and there might be
   // Ants using new or unknown org IDs that haven't been gated in.
@@ -838,25 +819,17 @@ export function getAssistantMessageFromError(
     error.message.toLowerCase().includes('model id')
   ) {
     const switchCmd = getIsNonInteractiveSession() ? '--model' : '/model'
-    const fallbackSuggestion = get3PModelFallbackSuggestion(model)
     return createAssistantAPIErrorMessage({
-      content: fallbackSuggestion
-        ? `${API_ERROR_MESSAGE_PREFIX} (${model}): ${error.message}. Try ${switchCmd} to switch to ${fallbackSuggestion}.`
-        : `${API_ERROR_MESSAGE_PREFIX} (${model}): ${error.message}. Run ${switchCmd} to pick a different model.`,
+      content: `${API_ERROR_MESSAGE_PREFIX} (${model}): ${error.message}. Run ${switchCmd} to pick a different configured model.`,
       error: 'invalid_request',
     })
   }
 
-  // 404 Not Found — usually means the selected model doesn't exist or isn't
-  // available. Guide the user to /model so they can pick a valid one.
-  // For 3P users, suggest a specific fallback model they can try.
+  // 404 Not Found — the selected model doesn't exist or isn't available.
   if (error instanceof APIError && error.status === 404) {
     const switchCmd = getIsNonInteractiveSession() ? '--model' : '/model'
-    const fallbackSuggestion = get3PModelFallbackSuggestion(model)
     return createAssistantAPIErrorMessage({
-      content: fallbackSuggestion
-        ? `The model ${model} is not available on your ${getAPIProvider()} deployment. Try ${switchCmd} to switch to ${fallbackSuggestion}, or ask your admin to enable this model.`
-        : `There's an issue with the selected model (${model}). It may not exist or you may not have access to it. Run ${switchCmd} to pick a different model.`,
+      content: `There's an issue with the selected model (${model}). It may not exist or you may not have access to it. Run ${switchCmd} to pick a different configured model.`,
       error: 'invalid_request',
     })
   }
@@ -881,30 +854,6 @@ export function getAssistantMessageFromError(
   })
 }
 
-/**
- * For 3P users, suggest a fallback model when the selected model is unavailable.
- * Returns a model name suggestion, or undefined if no suggestion is applicable.
- */
-function get3PModelFallbackSuggestion(model: string): string | undefined {
-  if (getAPIProvider() === 'firstParty') {
-    return undefined
-  }
-  // @[MODEL LAUNCH]: Add a fallback suggestion chain for the new model → previous version for 3P
-  const m = model.toLowerCase()
-  // If the failing model looks like an Opus 4.6 variant, suggest the default Opus (4.1 for 3P)
-  if (m.includes('opus-4-6') || m.includes('opus_4_6')) {
-    return getModelStrings().opus41
-  }
-  // If the failing model looks like a Sonnet 4.6 variant, suggest Sonnet 4.5
-  if (m.includes('sonnet-4-6') || m.includes('sonnet_4_6')) {
-    return getModelStrings().sonnet45
-  }
-  // If the failing model looks like a Sonnet 4.5 variant, suggest Sonnet 4
-  if (m.includes('sonnet-4-5') || m.includes('sonnet_4_5')) {
-    return getModelStrings().sonnet40
-  }
-  return undefined
-}
 
 /**
  * Classifies an API error into a specific error type for analytics tracking.
@@ -936,7 +885,7 @@ export function classifyAPIError(error: unknown): string {
   // Check for emergency capacity off switch
   if (
     error instanceof Error &&
-    error.message.includes(CUSTOM_OFF_SWITCH_MESSAGE)
+    error.message.includes(CAPACITY_OFF_SWITCH_MESSAGE)
   ) {
     return 'capacity_off_switch'
   }

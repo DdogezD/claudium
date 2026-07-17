@@ -3,7 +3,6 @@ import { REMOTE_CONTROL_DISCONNECTED_MSG } from '../bridge/types.js';
 import type { Command } from '../commands.js';
 import { DIAMOND_OPEN } from '../constants/figures.js';
 import { getRemoteSessionUrl } from '../constants/product.js';
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../services/analytics-stub.js';
 import type { AppState } from '../state/AppStateStore.js';
 import { checkRemoteAgentEligibility, formatPreconditionError, RemoteAgentTask, type RemoteAgentTaskState, registerRemoteAgentTask } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
@@ -12,7 +11,7 @@ import { logForDebugging } from '../utils/debug.js';
 import { errorMessage } from '../utils/errors.js';
 import { logError } from '../utils/log.js';
 import { enqueuePendingNotification } from '../utils/messageQueueManager.js';
-import { ALL_MODEL_CONFIGS } from '../utils/model/configs.js';
+import { getMainLoopModel } from '../utils/model/model.js';
 import { updateTaskState } from '../utils/task/framework.js';
 import { archiveRemoteSession, teleportToRemote } from '../utils/teleport.js';
 import { pollForApprovedExitPlanMode, UltraplanPollError } from '../utils/ultraplan/ccrSession.js';
@@ -24,13 +23,8 @@ import { pollForApprovedExitPlanMode, UltraplanPollError } from '../utils/ultrap
 const ULTRAPLAN_TIMEOUT_MS = 30 * 60 * 1000;
 export const CCR_TERMS_URL = 'https://code.claude.com/docs/en/claude-code-on-the-web';
 
-// CCR runs against the first-party API — use the canonical ID, not the
-// provider-specific string getModelStrings() would return (which may be a
-// Bedrock ARN or Vertex ID on the local CLI). Read at call time, not module
-// load: the GrowthBook cache is empty at import and `/config` Gates can flip
-// it between invocations.
 function getUltraplanModel(): string {
-  return getFeatureValue_CACHED_MAY_BE_STALE('tengu_ultraplan_model', ALL_MODEL_CONFIGS.opus46.firstParty);
+  return getMainLoopModel()
 }
 
 // prompt.txt is wrapped in <system-reminder> so the CCR browser hides

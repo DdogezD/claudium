@@ -1,7 +1,7 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js'
 
 /**
- * Whether inference-config commands (/model, /fast, /effort) should execute
+ * Whether inference-config commands (/model, /effort) should execute
  * immediately (during a running query) rather than waiting for the current
  * turn to finish.
  *

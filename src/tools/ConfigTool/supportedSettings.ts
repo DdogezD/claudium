@@ -87,10 +87,10 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Enable todo/task tracking',
   },
-  model: {
+  'modelProfiles.main.model': {
     source: 'settings',
     type: 'string',
-    description: 'Override the default model',
+    description: 'Set the explicit main-loop model',
     appStateKey: 'mainLoopModel',
     getOptions: () => {
       try {
@@ -98,11 +98,11 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
           .filter(o => o.value !== null)
           .map(o => o.value as string)
       } catch {
-        return ['sonnet', 'opus', 'haiku']
+        return []
       }
     },
     validateOnWrite: v => validateModel(String(v)),
-    formatOnRead: v => (v === null ? 'default' : v),
+    formatOnRead: v => (v === null ? 'not configured' : v),
   },
   alwaysThinkingEnabled: {
     source: 'settings',

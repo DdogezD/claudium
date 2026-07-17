@@ -68,7 +68,6 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+x ctrl+k': 'chat:killAgents',
       [MODE_CYCLE_KEY]: 'chat:cycleMode',
       'meta+p': 'chat:modelPicker',
-      'meta+o': 'chat:fastMode',
       'meta+t': 'chat:thinkingToggle',
       enter: 'chat:submit',
       up: 'history:previous',

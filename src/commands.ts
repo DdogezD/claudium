@@ -111,7 +111,6 @@ import thinkback from './commands/thinkback/index.js'
 import thinkbackPlay from './commands/thinkback-play/index.js'
 import permissions from './commands/permissions/index.js'
 import plan from './commands/plan/index.js'
-// fast mode removed
 // privacy-settings removed (Anthropic online service)
 import hooks from './commands/hooks/index.js'
 import files from './commands/files/index.js'

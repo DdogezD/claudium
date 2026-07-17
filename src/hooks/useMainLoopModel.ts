@@ -3,6 +3,7 @@ import { onGrowthBookRefresh } from '../services/analytics-stub.js'
 import { useAppState } from '../state/AppState.js'
 import {
   getDefaultMainLoopModelSetting,
+  getMainLoopModelSetting,
   type ModelName,
   parseUserSpecifiedModel,
 } from '../utils/model/model.js'
@@ -17,7 +18,7 @@ export function useMainLoopModel(): ModelName {
   // Subscribe to AppState.settings so /config changes trigger re-render.
   // OffscreenFreeze is reset via settingsVersion, so this subscription
   // ensures the Logo computes fresh values on the post-invalidation render.
-  const settingsModelProfiles = useAppState(s => s.settings.modelProfiles)
+  useAppState(s => s.settings.modelProfiles)
 
   // parseUserSpecifiedModel reads tengu_ant_model_override via
   // _CACHED_MAY_BE_STALE (in resolveAntModel). Until GB init completes,
@@ -30,13 +31,8 @@ export function useMainLoopModel(): ModelName {
   const [, forceRerender] = useReducer(x => x + 1, 0)
   useEffect(() => onGrowthBookRefresh(forceRerender), [])
 
-  const specified =
-    mainLoopModelForSession ??
-    mainLoopModel ??
-    (process.env.ANTHROPIC_MODEL ||
-      process.env.OPENAI_MODEL ||
-      settingsModelProfiles?.main?.model) ??
-    null
+  const appStateModel = mainLoopModelForSession ?? mainLoopModel
+  const specified = appStateModel ?? getMainLoopModelSetting() ?? null
 
   // Match the allowlist gate in getUserSpecifiedModelSetting()
   const model = parseUserSpecifiedModel(

@@ -1,8 +1,6 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { isUltrathinkEnabled } from './thinking.js'
 import { resolveModelProfileEffort } from './model/modelProfiles.js'
-import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from './auth.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js'
 import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -201,7 +199,7 @@ export function getEffortLevelDescription(level: EffortLevel): string {
     case 'high':
       return 'Comprehensive implementation with extensive testing and documentation'
     case 'max':
-      return 'Maximum capability with deepest reasoning (Opus 4.6 only)'
+      return 'Maximum available reasoning effort for this model'
   }
 }
 
@@ -216,31 +214,22 @@ export function getEffortValueDescription(value: EffortValue): string {
   return 'Balanced approach with standard implementation and testing'
 }
 
-export type OpusDefaultEffortConfig = {
+export type EffortDefaultConfig = {
   enabled: boolean
   dialogTitle: string
   dialogDescription: string
 }
 
-const OPUS_DEFAULT_EFFORT_CONFIG_DEFAULT: OpusDefaultEffortConfig = {
-  enabled: true,
-  dialogTitle: 'We recommend medium effort for Opus',
-  dialogDescription:
-    'Effort determines how long Claude thinks for when completing your task. We recommend medium effort for most tasks to balance speed and intelligence and maximize rate limits. Use ultrathink to trigger high effort when needed.',
+const DEFAULT_EFFORT_CONFIG: EffortDefaultConfig = {
+  enabled: false,
+  dialogTitle: 'Configure reasoning effort',
+  dialogDescription: 'Choose the reasoning effort for the selected model.',
 }
 
-export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'tengu_grey_step2',
-    OPUS_DEFAULT_EFFORT_CONFIG_DEFAULT,
-  )
-  return {
-    ...OPUS_DEFAULT_EFFORT_CONFIG_DEFAULT,
-    ...config,
-  }
+export function getEffortDefaultConfig(): EffortDefaultConfig {
+  return DEFAULT_EFFORT_CONFIG
 }
 
-// @[MODEL LAUNCH]: Update the default effort levels for new models
 export function getDefaultEffortForModel(
   model: string,
 ): EffortValue | undefined {
@@ -262,17 +251,6 @@ export function getDefaultEffortForModel(
       }
     }
     return undefined
-  }
-  if (model.toLowerCase().includes('opus-4-6')) {
-    if (isProSubscriber()) {
-      return 'medium'
-    }
-    if (
-      getOpusDefaultEffortConfig().enabled &&
-      (isMaxSubscriber() || isTeamSubscriber())
-    ) {
-      return 'medium'
-    }
   }
   if (isUltrathinkEnabled() && modelSupportsEffort(model)) {
     return 'medium'

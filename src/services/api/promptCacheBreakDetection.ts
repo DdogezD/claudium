@@ -40,7 +40,6 @@ type PreviousState = {
   perToolHashes: Record<string, number>
   systemCharCount: number
   model: string
-  fastMode: boolean
   /** 'tool_based' | 'system_prompt' | 'none' — flips when MCP tools are
    *  discovered/removed. */
   globalCacheStrategy: string
@@ -74,7 +73,6 @@ type PendingChanges = {
   systemPromptChanged: boolean
   toolSchemasChanged: boolean
   modelChanged: boolean
-  fastModeChanged: boolean
   cacheControlChanged: boolean
   globalCacheStrategyChanged: boolean
   betasChanged: boolean
@@ -232,7 +230,6 @@ export type PromptStateSnapshot = {
   querySource: QuerySource
   model: string
   agentId?: AgentId
-  fastMode?: boolean
   globalCacheStrategy?: string
   betas?: readonly string[]
   autoModeActive?: boolean
@@ -254,7 +251,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
       querySource,
       model,
       agentId,
-      fastMode,
       globalCacheStrategy = '',
       betas = [],
       autoModeActive = false,
@@ -289,7 +285,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
     const systemCharCount = getSystemCharCount(system)
     const lazyDiffableContent = () =>
       buildDiffableContent(system, toolSchemas, model)
-    const isFastMode = fastMode ?? false
     const sortedBetas = [...betas].sort()
     const effortStr = effortValue === undefined ? '' : String(effortValue)
     const extraBodyHash =
@@ -311,7 +306,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
         toolNames,
         systemCharCount,
         model,
-        fastMode: isFastMode,
         globalCacheStrategy,
         betas: sortedBetas,
         autoModeActive,
@@ -334,7 +328,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
     const systemPromptChanged = systemHash !== prev.systemHash
     const toolSchemasChanged = toolsHash !== prev.toolsHash
     const modelChanged = model !== prev.model
-    const fastModeChanged = isFastMode !== prev.fastMode
     const cacheControlChanged = cacheControlHash !== prev.cacheControlHash
     const globalCacheStrategyChanged =
       globalCacheStrategy !== prev.globalCacheStrategy
@@ -351,7 +344,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
       systemPromptChanged ||
       toolSchemasChanged ||
       modelChanged ||
-      fastModeChanged ||
       cacheControlChanged ||
       globalCacheStrategyChanged ||
       betasChanged ||
@@ -382,7 +374,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
         systemPromptChanged,
         toolSchemasChanged,
         modelChanged,
-        fastModeChanged,
         cacheControlChanged,
         globalCacheStrategyChanged,
         betasChanged,
@@ -417,7 +408,6 @@ export function recordPromptState(snapshot: PromptStateSnapshot): void {
     prev.toolNames = toolNames
     prev.systemCharCount = systemCharCount
     prev.model = model
-    prev.fastMode = isFastMode
     prev.globalCacheStrategy = globalCacheStrategy
     prev.betas = sortedBetas
     prev.autoModeActive = autoModeActive
@@ -518,9 +508,6 @@ export async function checkResponseForCacheBreak(
             : ' (tool prompt/schema changed, same tool set)'
         parts.push(`tools changed${toolDiff}`)
       }
-      if (changes.fastModeChanged) {
-        parts.push('fast mode toggled')
-      }
       if (changes.globalCacheStrategyChanged) {
         parts.push(
           `global cache strategy changed (${changes.prevGlobalCacheStrategy || 'none'} → ${changes.newGlobalCacheStrategy || 'none'})`,
@@ -593,7 +580,6 @@ export async function checkResponseForCacheBreak(
       systemPromptChanged: changes?.systemPromptChanged ?? false,
       toolSchemasChanged: changes?.toolSchemasChanged ?? false,
       modelChanged: changes?.modelChanged ?? false,
-      fastModeChanged: changes?.fastModeChanged ?? false,
       cacheControlChanged: changes?.cacheControlChanged ?? false,
       globalCacheStrategyChanged: changes?.globalCacheStrategyChanged ?? false,
       betasChanged: changes?.betasChanged ?? false,

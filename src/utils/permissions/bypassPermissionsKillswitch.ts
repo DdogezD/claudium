@@ -74,7 +74,6 @@ let autoModeCheckRan = false
 export async function checkAndDisableAutoModeIfNeeded(
   toolPermissionContext: ToolPermissionContext,
   setAppState: (f: (prev: AppState) => AppState) => void,
-  fastMode?: boolean,
 ): Promise<void> {
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     if (autoModeCheckRan) {
@@ -84,7 +83,6 @@ export async function checkAndDisableAutoModeIfNeeded(
 
     const { updateContext, notification } = await verifyAutoModeGateAccess(
       toolPermissionContext,
-      fastMode,
     )
     setAppState(prev => {
       // Apply the transform to CURRENT context, not the stale snapshot we
@@ -127,16 +125,13 @@ export function resetAutoModeGateCheck(): void {
 export function useKickOffCheckAndDisableAutoModeIfNeeded(): void {
   const mainLoopModel = useAppState(s => s.mainLoopModel)
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession)
-  const fastMode = useAppState(s => s.fastMode)
   const setAppState = useSetAppState()
   const store = useAppStateStore()
   const isFirstRunRef = useRef(true)
 
-  // Runs on mount (startup check) AND whenever the model or fast mode changes
-  // (kick-out / carousel-restore). Watching both model fields covers /model,
-  // Cmd+P picker, /config, and bridge onSetModel paths; fastMode covers
-  // /fast on|off for the tengu_auto_mode_config.disableFastMode circuit
-  // breaker. The print.ts headless paths are covered by the sync
+  // Runs on mount (startup check) and whenever the model changes. Watching both
+  // model fields covers /model, Cmd+P picker, /config, and bridge onSetModel
+  // paths. The print.ts headless paths are covered by the sync
   // isAutoModeGateEnabled() check.
   useEffect(() => {
     if (getIsRemoteMode()) return
@@ -148,8 +143,7 @@ export function useKickOffCheckAndDisableAutoModeIfNeeded(): void {
     void checkAndDisableAutoModeIfNeeded(
       store.getState().toolPermissionContext,
       setAppState,
-      fastMode,
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainLoopModel, mainLoopModelForSession, fastMode])
+  }, [mainLoopModel, mainLoopModelForSession])
 }

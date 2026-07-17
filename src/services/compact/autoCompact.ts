@@ -111,7 +111,7 @@ export function getEffectiveContextWindowSize(
         )
   }
 
-  let contextWindow = getContextWindowForModel(model, getSdkBetas())
+  let contextWindow = getContextWindowForModel(model, getSdkBetas(), ctxType)
 
   // Apply context-type specific overrides (subagent / advisor)
   // These are applied BEFORE the CLAUDE_CODE_AUTO_COMPACT_WINDOW cap

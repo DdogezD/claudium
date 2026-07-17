@@ -38,7 +38,7 @@ const inputSchema = lazySchema(() =>
     setting: z
       .string()
       .describe(
-        'The setting key (e.g., "theme", "model", "permissions.defaultMode")',
+        'The setting key (e.g., "theme", "modelProfiles.main.model", "permissions.defaultMode")',
       ),
     value: z
       .union([z.string(), z.boolean(), z.number()])
@@ -66,7 +66,7 @@ export type Output = z.infer<OutputSchema>
 
 export const ConfigTool = buildTool({
   name: CONFIG_TOOL_NAME,
-  searchHint: 'get or set Claudium settings (theme, model)',
+  searchHint: 'get or set Claudium settings (theme, modelProfiles.main.model)',
   maxResultSizeChars: 100_000,
   async description() {
     return DESCRIPTION
@@ -200,8 +200,11 @@ export const ConfigTool = buildTool({
       }
     }
 
-    // Check options
-    const options = getOptionsForSetting(setting)
+    // Model IDs are open-ended; picker options are suggestions, not an allowlist.
+    const options =
+      setting === 'modelProfiles.main.model'
+        ? undefined
+        : getOptionsForSetting(setting)
     if (options && !options.includes(String(finalValue))) {
       return {
         data: {

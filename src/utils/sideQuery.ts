@@ -15,8 +15,8 @@ import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 
 import { getAPIMetadata } from '../services/api/claude.js'
 import { getAnthropicClient } from '../services/api/client.js'
 import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
+import { applyModelOverride } from './model/modelStrings.js'
 import { computeFingerprint } from './fingerprint-stub.js'
-import { normalizeModelStringForAPI } from './model/model.js'
 
 type MessageParam = Anthropic.MessageParam
 type TextBlockParam = Anthropic.TextBlockParam
@@ -90,7 +90,7 @@ function extractFirstUserMessageText(messages: MessageParam[]): string {
  * - CLI system prompt prefix
  * - Proper betas for the model
  * - API metadata
- * - Model string normalization (strips [1m] suffix for API)
+ * - The configured model ID is passed through unchanged
  *
  * @example
  * // Permission explainer
@@ -120,17 +120,18 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     thinking,
     stop_sequences,
   } = opts
+  const resolvedModel = applyModelOverride(model)
 
   const client = await getAnthropicClient({
     maxRetries,
-    model,
+    model: resolvedModel,
     source: 'side_query',
   })
-  const betas = [...getModelBetas(model)]
+  const betas = [...getModelBetas(resolvedModel)]
   // Add structured-outputs beta if using output_format and provider supports it
   if (
     output_format &&
-    modelSupportsStructuredOutputs(model) &&
+    modelSupportsStructuredOutputs(resolvedModel) &&
     !betas.includes(STRUCTURED_OUTPUTS_BETA_HEADER)
   ) {
     betas.push(STRUCTURED_OUTPUTS_BETA_HEADER)
@@ -176,12 +177,11 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     }
   }
 
-  const normalizedModel = normalizeModelStringForAPI(model)
   const start = Date.now()
   // biome-ignore lint/plugin: this IS the wrapper that handles OAuth attribution
   const response = await client.beta.messages.create(
     {
-      model: normalizedModel,
+      model: resolvedModel,
       max_tokens,
       system: systemBlocks,
       messages,
@@ -207,7 +207,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     querySource:
       opts.querySource as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     model:
-      normalizedModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      resolvedModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
     cachedInputTokens: response.usage.cache_read_input_tokens ?? 0,
