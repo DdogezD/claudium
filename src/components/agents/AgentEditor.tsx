@@ -165,10 +165,10 @@ export function AgentEditor({
         });
       }} />;
     case 'edit-model':
-      return <AgentModelInput initialModel={agent.model} onComplete={async model => {
+      return <AgentModelInput initialModel={agent.model} onComplete={async (result) => {
         setEditMode('menu');
         await handleSave({
-          model
+          model: result.model,
         });
       }} onCancel={() => setEditMode('menu')} />;
     default:

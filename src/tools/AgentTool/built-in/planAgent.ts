@@ -82,6 +82,7 @@ export const PLAN_AGENT: BuiltInAgentDefinition = {
     NOTEBOOK_EDIT_TOOL_NAME,
   ],
   source: 'built-in',
+  model: 'inherit',
   tools: EXPLORE_AGENT.tools,
   baseDir: 'built-in',
   // Plan is read-only and can Read CLAUDE.md directly if it needs conventions.

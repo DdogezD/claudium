@@ -83,6 +83,7 @@ const AgentJsonSchema = lazySchema(() =>
       .transform(m => (m.toLowerCase() === 'inherit' ? 'inherit' : m))
       .optional(),
     effort: z.union([z.enum(EFFORT_LEVELS), z.number().int()]).optional(),
+    contextWindowTokens: z.number().int().positive().optional(),
     permissionMode: z.enum(PERMISSION_MODES).optional(),
     mcpServers: z.array(AgentMcpServerSpecSchema()).optional(),
     hooks: HooksSchema().optional(),
@@ -114,6 +115,7 @@ export type BaseAgentDefinition = {
   color?: AgentColorName
   model?: string
   effort?: EffortValue
+  contextWindowTokens?: number
   permissionMode?: PermissionMode
   maxTurns?: number // Maximum number of agentic turns before stopping
   filename?: string // Original filename without .md extension (for user/project/managed agents)
@@ -489,6 +491,9 @@ export function parseAgentFromJson(
       source,
       ...(parsed.model ? { model: parsed.model } : {}),
       ...(parsed.effort !== undefined ? { effort: parsed.effort } : {}),
+      ...(parsed.contextWindowTokens !== undefined
+        ? { contextWindowTokens: parsed.contextWindowTokens }
+        : {}),
       ...(parsed.permissionMode
         ? { permissionMode: parsed.permissionMode }
         : {}),
@@ -631,6 +636,15 @@ export function parseAgentFromMarkdown(
       )
     }
 
+    // Parse contextWindowTokens from frontmatter
+    const contextTokensRaw = frontmatter['contextWindowTokens']
+    const contextWindowTokens: number | undefined =
+      typeof contextTokensRaw === 'number' && contextTokensRaw > 0
+        ? contextTokensRaw
+        : typeof contextTokensRaw === 'string' && /^\d+$/.test(contextTokensRaw)
+          ? parseInt(contextTokensRaw, 10)
+          : undefined
+
     // Parse permissionMode from frontmatter
     const permissionModeRaw = frontmatter['permissionMode'] as
       | string
@@ -737,6 +751,9 @@ export function parseAgentFromMarkdown(
         : {}),
       ...(model !== undefined ? { model } : {}),
       ...(parsedEffort !== undefined ? { effort: parsedEffort } : {}),
+      ...(contextWindowTokens !== undefined
+        ? { contextWindowTokens }
+        : {}),
       ...(isValidPermissionMode
         ? { permissionMode: permissionModeRaw as PermissionMode }
         : {}),
