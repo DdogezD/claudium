@@ -1,7 +1,4 @@
 import React, { type ReactNode } from 'react'
-import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js'
-import { Byline } from '../../../design-system/Byline.js'
-import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHint.js'
 import { useWizard } from '../../../wizard/index.js'
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js'
 import { AgentModelInput } from '../../AgentModelInput.js'
@@ -11,31 +8,21 @@ export function ModelStep(): ReactNode {
   const { goNext, goBack, updateWizardData, wizardData } =
     useWizard<AgentWizardData>()
 
-  const handleComplete = (model?: string): void => {
-    updateWizardData({ selectedModel: model })
+  const handleComplete = (result: { model?: string; contextWindowTokens?: number; reasoningEffort?: string }): void => {
+    updateWizardData({
+      selectedModel: result.model,
+      selectedModelContext: result.contextWindowTokens,
+      selectedModelEffort: result.reasoningEffort,
+    })
     goNext()
   }
 
   return (
-    <WizardDialogLayout
-      subtitle="Select model"
-      footerText={
-        <Byline>
-          <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-          <ConfigurableShortcutHint
-            action="confirm:no"
-            context="Confirmation"
-            fallback="Esc"
-            description="go back"
-          />
-        </Byline>
-      }
-    >
+    <WizardDialogLayout subtitle="Select model" footerText={null}>
       <AgentModelInput
         initialModel={wizardData.selectedModel}
         onComplete={handleComplete}
         onCancel={goBack}
-        hideFooter
       />
     </WizardDialogLayout>
   )

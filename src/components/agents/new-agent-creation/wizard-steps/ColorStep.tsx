@@ -29,7 +29,7 @@ export function ColorStep() {
   }
   useKeybinding("confirm:no", goBack, t0);
   let t1;
-  if ($[1] !== goNext || $[2] !== updateWizardData || $[3] !== wizardData.agentType || $[4] !== wizardData.location || $[5] !== wizardData.selectedModel || $[6] !== wizardData.selectedTools || $[7] !== wizardData.systemPrompt || $[8] !== wizardData.whenToUse) {
+  if ($[1] !== goNext || $[2] !== updateWizardData || $[3] !== wizardData.agentType || $[4] !== wizardData.location || $[5] !== wizardData.selectedModel || $[6] !== wizardData.selectedTools || $[7] !== wizardData.systemPrompt || $[8] !== wizardData.whenToUse || $[9] !== wizardData.selectedModelEffort || $[10] !== wizardData.selectedModelContext) {
     t1 = color => {
       updateWizardData({
         selectedColor: color,
@@ -40,6 +40,12 @@ export function ColorStep() {
           tools: wizardData.selectedTools,
           ...(wizardData.selectedModel ? {
             model: wizardData.selectedModel
+          } : {}),
+          ...(wizardData.selectedModelEffort !== undefined ? {
+            effort: wizardData.selectedModelEffort
+          } : {}),
+          ...(wizardData.selectedModelContext !== undefined ? {
+            contextWindowTokens: wizardData.selectedModelContext
           } : {}),
           ...(color ? {
             color: color as AgentColorName
@@ -57,6 +63,8 @@ export function ColorStep() {
     $[6] = wizardData.selectedTools;
     $[7] = wizardData.systemPrompt;
     $[8] = wizardData.whenToUse;
+    $[9] = wizardData.selectedModelEffort;
+    $[10] = wizardData.selectedModelContext;
     $[9] = t1;
   } else {
     t1 = $[9];

@@ -15,7 +15,7 @@ export function WizardNavigationFooter({
     </Byline>
 }: Props): ReactNode {
   const exitState = useExitOnCtrlCDWithKeybindings();
-  return <Box marginLeft={3} marginTop={1}>
+  return <Box marginLeft={2} marginTop={1}>
       <Text dimColor>
         {exitState.pending ? `Press ${exitState.keyName} again to exit` : instructions}
       </Text>

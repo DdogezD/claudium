@@ -26,6 +26,7 @@ export function formatAgentAsMarkdown(
   model?: string,
   memory?: AgentMemoryScope,
   effort?: EffortValue,
+  contextWindowTokens?: number,
 ): string {
   // For YAML double-quoted strings, we need to escape:
   // - Backslashes: \ -> \\
@@ -42,12 +43,13 @@ export function formatAgentAsMarkdown(
   const toolsLine = isAllTools ? '' : `\ntools: ${tools.join(', ')}`
   const modelLine = model ? `\nmodel: ${model}` : ''
   const effortLine = effort !== undefined ? `\neffort: ${effort}` : ''
+  const contextLine = contextWindowTokens ? `\ncontextWindowTokens: ${contextWindowTokens}` : ''
   const colorLine = color ? `\ncolor: ${color}` : ''
   const memoryLine = memory ? `\nmemory: ${memory}` : ''
 
   return `---
 name: ${agentType}
-description: "${escapedWhenToUse}"${toolsLine}${modelLine}${effortLine}${colorLine}${memoryLine}
+description: "${escapedWhenToUse}"${toolsLine}${modelLine}${effortLine}${contextLine}${colorLine}${memoryLine}
 ---
 
 ${systemPrompt}
@@ -174,6 +176,7 @@ export async function saveAgentToFile(
   model?: string,
   memory?: AgentMemoryScope,
   effort?: EffortValue,
+  contextWindowTokens?: number,
 ): Promise<void> {
   if (source === 'built-in') {
     throw new Error('Cannot save built-in agents')
@@ -191,6 +194,7 @@ export async function saveAgentToFile(
     model,
     memory,
     effort,
+    contextWindowTokens,
   )
   try {
     await writeFileAndFlush(filePath, content, checkExists ? 'wx' : 'w')
@@ -214,6 +218,7 @@ export async function updateAgentFile(
   newModel?: string,
   newMemory?: AgentMemoryScope,
   newEffort?: EffortValue,
+  newContextWindowTokens?: number,
 ): Promise<void> {
   if (agent.source === 'built-in') {
     throw new Error('Cannot update built-in agents')
@@ -230,6 +235,7 @@ export async function updateAgentFile(
     newModel,
     newMemory,
     newEffort,
+    newContextWindowTokens,
   )
 
   await writeFileAndFlush(filePath, content)
