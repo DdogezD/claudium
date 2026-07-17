@@ -789,19 +789,19 @@ export function Config({
   }, {
     id: 'modelProfileMain',
     label: 'Model',
-    value: formatProfileSummary(getModelProfile('main')),
+    value: formatProfileSummary(getModelProfile('main'), 'main'),
     type: 'managedEnum' as const,
     onChange: () => {},
   }, {
     id: 'modelProfileSubagent',
     label: 'Subagent Model',
-    value: formatProfileSummary(getModelProfile('subagent')),
+    value: formatProfileSummary(getModelProfile('subagent'), 'subagent'),
     type: 'managedEnum' as const,
     onChange: () => {},
   }, {
     id: 'modelProfileAdvisor',
     label: 'Advisor Model',
-    value: formatProfileSummary(getModelProfile('advisor')),
+    value: formatProfileSummary(getModelProfile('advisor'), 'advisor'),
     type: 'managedEnum' as const,
     onChange: () => {},
   },
@@ -1012,6 +1012,10 @@ export function Config({
         key: key as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         value: value_2 as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
+      // Advisor Model toggles use Enabled/Disabled like boolean settings
+      if (key === 'Advisor Model' && (value_2 === 'Enabled' || value_2 === 'Disabled')) {
+        return `${value_2} advisor`;
+      }
       return `Set ${key} to ${chalk.bold(value_2)}`;
     });
     // Check for API key changes
@@ -1409,13 +1413,15 @@ export function Config({
           <>
           <ModelProfileDialog
             title={titles[scope]}
+            showEnabled={scope === 'advisor'}
+            initialEnabled={scope === 'advisor' ? (profile as { enabled?: boolean }).enabled : undefined}
             initialModel={profile.model}
             initialContext={profile.contextWindowTokens}
             initialEffort={profile.reasoningEffort}
             thinkingDisabled={scope === 'main' && !thinkingEnabled}
             onComplete={(newProfile) => {
-              const prevSummary = formatProfileSummary(profile);
-              const newSummary = formatProfileSummary(newProfile);
+              const prevSummary = formatProfileSummary(profile, scope);
+              const newSummary = formatProfileSummary(newProfile, scope);
               if (prevSummary !== newSummary) {
                 isDirty.current = true;
                 const userProfiles = getSettingsForSource('userSettings')?.modelProfiles ?? {};
@@ -1440,7 +1446,23 @@ export function Config({
                     mainLoopModelForSession: null,
                   }));
                 }
-                setChanges(prev => ({ ...prev, [titles[scope]]: newSummary }));
+                // For advisor, detect if only the enabled toggle changed.
+                // In that case use boolean format; otherwise show full summary.
+                let displayValue = newSummary
+                if (scope === 'advisor' && newProfile.enabled !== undefined) {
+                  const prevEnabled = (profile as { enabled?: boolean }).enabled
+                  // Build a comparison profile with only non-enabled fields.
+                  const prevWithoutEnabled: Record<string, unknown> = { ...profile }
+                  delete prevWithoutEnabled.enabled
+                  const newWithoutEnabled: Record<string, unknown> = { ...newProfile }
+                  delete newWithoutEnabled.enabled
+                  const detailsUnchanged =
+                    JSON.stringify(prevWithoutEnabled) === JSON.stringify(newWithoutEnabled)
+                  if (detailsUnchanged && prevEnabled !== newProfile.enabled) {
+                    displayValue = newProfile.enabled ? 'Enabled' : 'Disabled'
+                  }
+                }
+                setChanges(prev => ({ ...prev, [titles[scope]]: displayValue }));
               }
               setShowSubmenu(null);
               setTabsHidden(false);
@@ -1450,14 +1472,6 @@ export function Config({
               setTabsHidden(false);
             }}
           />
-          <Box marginTop={1}>
-            <Text dimColor>
-              <Byline>
-                <KeyboardShortcutHint shortcut="Enter" action="edit field" />
-                <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
-              </Byline>
-            </Text>
-          </Box>
           </>
         );
       })() : showSubmenu === 'Model' ? <>

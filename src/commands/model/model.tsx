@@ -42,8 +42,8 @@ function ShowAllProfiles({
   if (mainLoopModelForSession) {
     lines.push(`  (overridden for this session: ${chalk.bold(renderModelLabel(mainLoopModelForSession))})`)
   }
-  lines.push(`${chalk.bold('Advisor model')}:   ${formatProfileSummary(getModelProfile('advisor'))}`)
-  lines.push(`${chalk.bold('Subagent model')}:  ${formatProfileSummary(getModelProfile('subagent'))}`)
+  lines.push(`${chalk.bold('Subagent model')}:  ${formatProfileSummary(getModelProfile('subagent'), 'subagent')}`)
+  lines.push(`${chalk.bold('Advisor model')}:   ${formatProfileSummary(getModelProfile('advisor'), 'advisor')}`)
   lines.push('')
   lines.push(`Configure with ${chalk.bold('/config')}. Run ${chalk.bold('/model [model]')} to switch the main model temporary.`)
   onDone(lines.join('\n'))
