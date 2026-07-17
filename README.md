@@ -2,11 +2,21 @@
 
 All Anthropic OAuth stripped. All telemetry stripped. All injected security-prompt guardrails removed. All experimental features unlocked. One binary, zero callbacks home.
 
+### Stable (main branch)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
 > Checks your system, installs Bun if needed, clones, builds with all features enabled, installs `claudium`, and creates a `claudium-bypass` launcher that starts in bypass permission mode. See [API Configuration](#api-configuration) for API setup.
+
+### Dev (bleeding edge)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install_dev.sh | bash
+```
+
+> Installs from the `dev` branch as `claudium` (and `claudium-bypass`). Same binary names as the stable installer — only the source branch differs.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="claudium screenshot" width="800" />
