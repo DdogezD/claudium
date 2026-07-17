@@ -296,19 +296,21 @@ function NotificationContent({
   const effectiveWindow = getEffectiveContextWindowSize(mainLoopModel);
   const autoCompactEnabled = isAutoCompactEnabled();
   const warnState = calculateTokenWarningState(tokenUsage, mainLoopModel);
-  const lastStable = useRef({ usage: 0, pct: 100, notice: false });
+  const footerColorRaw = warnState.isAboveErrorThreshold ? 'error' as const : warnState.isAboveWarningThreshold ? 'warning' as const : undefined;
+  const lastStable = useRef({ usage: 0, pct: 100, notice: false, color: undefined as 'error' | 'warning' | undefined });
   if (messages.length === 0) {
-    lastStable.current = { usage: 0, pct: 100, notice: false };
+    lastStable.current = { usage: 0, pct: 100, notice: false, color: undefined };
   } else if (tokenUsage > 0) {
     lastStable.current = {
       usage: tokenUsage,
       pct: effectiveWindow > 0 ? Math.max(0, Math.round(((effectiveWindow - tokenUsage) / effectiveWindow) * 100)) : 100,
       notice: autoCompactEnabled && warnState.isAboveAutoCompactThreshold,
+      color: footerColorRaw,
     };
   }
   const pctAvail = lastStable.current.pct;
   const displayUsage = tokenUsage > 0 ? tokenUsage : lastStable.current.usage;
-  const footerColor = warnState.isAboveErrorThreshold ? 'error' : warnState.isAboveWarningThreshold ? 'warning' : undefined;
+  const footerColor = lastStable.current.color;
   const showAutoCompactNotice = autoCompactEnabled && lastStable.current.notice;
   const contextLine = showAutoCompactNotice ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(Auto-compaction will occur soon)` : tokenUsage > 0 || lastStable.current.usage > 0 ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(${pctAvail}% available)` : formatTokenCount(displayWindow);
 
