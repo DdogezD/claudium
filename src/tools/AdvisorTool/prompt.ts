@@ -124,8 +124,10 @@ CONVERSATION HISTORY:
 - The main agent's question should be self-contained; the log is supplementary context
 
 AVAILABLE TOOLS:
-  You have access to a set of read-only investigation tools.  Use them to
-  verify claims and gather evidence before giving your final analysis.
+  You have access to local, read-only investigation tools. Use them to verify
+  claims and gather evidence before giving your final analysis.
+  External web search and web fetching are intentionally unavailable for code
+  reviews; do not attempt network access or wait for external URLs.
   Only the tools actually listed in your tool schema are available —
   do not assume a tool exists just because this prompt mentions it.
   If a commonly expected tool (e.g. Read, Bash) is absent, report that
