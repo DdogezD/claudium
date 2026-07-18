@@ -122,15 +122,28 @@ install_bun() {
 
 clone_repo() {
   if [ -d "$BUILD_DIR" ]; then
-    warn "$BUILD_DIR already exists"
-    if [ -d "$BUILD_DIR/.git" ]; then
-      info "Pulling latest changes from $BRANCH..."
-      git -C "$BUILD_DIR" fetch origin "$BRANCH" 2>/dev/null
-      git -C "$BUILD_DIR" checkout "$BRANCH" 2>/dev/null || true
-      git -C "$BUILD_DIR" pull --ff-only origin "$BRANCH" 2>/dev/null || {
-        warn "Pull failed, continuing with existing copy"
-      }
+    if [ ! -d "$BUILD_DIR/.git" ]; then
+      fail "$BUILD_DIR exists but is not a Git checkout. Remove it and retry."
     fi
+
+    local remote
+    remote="$(git -C "$BUILD_DIR" remote get-url origin 2>/dev/null)" || \
+      fail "$BUILD_DIR has no origin remote. Remove it and retry."
+    if [ "$remote" != "$REPO" ]; then
+      fail "$BUILD_DIR points to an unexpected origin ($remote). Remove it and retry."
+    fi
+    if [ -n "$(git -C "$BUILD_DIR" status --porcelain)" ]; then
+      fail "$BUILD_DIR has local changes. Remove it or clean the checkout before retrying."
+    fi
+
+    info "Pulling latest changes from $BRANCH..."
+    git -C "$BUILD_DIR" fetch origin "$BRANCH"
+    git -C "$BUILD_DIR" checkout "$BRANCH"
+    git -C "$BUILD_DIR" pull --ff-only origin "$BRANCH"
+    local head remote_head
+    head="$(git -C "$BUILD_DIR" rev-parse HEAD)"
+    remote_head="$(git -C "$BUILD_DIR" rev-parse "origin/$BRANCH")"
+    [ "$head" = "$remote_head" ] || fail "Could not update the checkout to origin/$BRANCH."
   else
     info "Cloning repository ($BRANCH branch) to cache..."
     git clone --depth 1 --branch "$BRANCH" "$REPO" "$BUILD_DIR"
@@ -150,6 +163,7 @@ build_binary() {
   cd "$BUILD_DIR" || fail "Cannot enter $BUILD_DIR"
   bun run build:dev:claudium
   local binary="$BUILD_DIR/claudium-cli-dev"
+  [ -x "$binary" ] || fail "Build completed without producing $binary."
   ok "Binary built: $binary"
 }
 
