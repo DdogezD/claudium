@@ -10,7 +10,7 @@ import { getWorkload } from '../utils/workloadContext.js'
 import { PRODUCT_NAME } from './product.js'
 
 const DEFAULT_PREFIX = `You are ${PRODUCT_NAME}, a terminal-native AI coding agent.`
-const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX = `You are ${PRODUCT_NAME}, a terminal-native AI coding agent running within an SDK context.`
+const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX = `You are ${PRODUCT_NAME}, a terminal-native AI coding agent running within the Claude Agent SDK.`
 const AGENT_SDK_PREFIX = `You are a terminal-native AI coding agent, built on Anthropic's Claude Agent SDK.`
 
 const CLI_SYSPROMPT_PREFIX_VALUES = [
