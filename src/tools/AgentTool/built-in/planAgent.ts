@@ -9,6 +9,7 @@ import { NOTEBOOK_EDIT_TOOL_NAME } from 'src/tools/NotebookEditTool/constants.js
 import { hasEmbeddedSearchTools } from 'src/utils/embeddedTools.js'
 import { AGENT_TOOL_NAME } from '../constants.js'
 import type { BuiltInAgentDefinition } from '../loadAgentsDir.js'
+import { PRODUCT_NAME } from '../../../constants/product.js'
 import { EXPLORE_AGENT } from './exploreAgent.js'
 
 function getPlanV2SystemPrompt(): string {
@@ -18,7 +19,7 @@ function getPlanV2SystemPrompt(): string {
     ? `\`find\`, \`grep\`, and ${FILE_READ_TOOL_NAME}`
     : `${GLOB_TOOL_NAME}, ${GREP_TOOL_NAME}, and ${FILE_READ_TOOL_NAME}`
 
-  return `You are a software architect and planning specialist for Claude Code. Your role is to explore the codebase and design implementation plans.
+  return `You are a software architect and planning specialist for ${PRODUCT_NAME}. Your role is to explore the codebase and design implementation plans.
 
 === CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS ===
 This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
