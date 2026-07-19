@@ -10,18 +10,23 @@ const args = process.argv.slice(2)
 const compile = args.includes('--compile')
 const dev = args.includes('--dev')
 
-const fullExperimentalFeatures = [
+function buildSubprocessEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase() === 'CLAUDE_CODE_SESSION_ACCESS_TOKEN') {
+      delete env[key]
+    }
+  }
+  return env
+}
+
+const supportedExperimentalFeatures = [
   'AGENT_MEMORY_SNAPSHOT',
   'AGENT_TRIGGERS',
-  'AGENT_TRIGGERS_REMOTE',
   'AWAY_SUMMARY',
   'BASH_CLASSIFIER',
-  'BRIDGE_MODE',
   'BUILTIN_EXPLORE_PLAN_AGENTS',
   'CACHED_MICROCOMPACT',
-  'CCR_AUTO_CONNECT',
-  'CCR_MIRROR',
-  'CCR_REMOTE_SETUP',
   'COMPACTION_REMINDERS',
   'CONNECTOR_TEXT',
   'EXTRACT_MEMORIES',
@@ -42,8 +47,6 @@ const fullExperimentalFeatures = [
   'TOKEN_BUDGET',
   'TREE_SITTER_BASH',
   'TREE_SITTER_BASH_SHADOW',
-  'ULTRAPLAN',
-  'ULTRATHINK',
   'UNATTENDED_RETRY',
   'VERIFICATION_AGENT',
   'VOICE_MODE',
@@ -55,6 +58,7 @@ function runCommand(cmd: string[]): string | null {
     cwd: process.cwd(),
     stdout: 'pipe',
     stderr: 'pipe',
+    env: buildSubprocessEnv(),
   })
 
   if (proc.exitCode !== 0) {
@@ -80,19 +84,41 @@ function getVersionChangelog(): string {
 }
 
 const defaultFeatures = ['VOICE_MODE']
+const bundleCleanSupportFeatures = [
+  'ABLATION_BASELINE',
+  'ALLOW_TEST_VERSIONS',
+  'ANTI_DISTILLATION_CC',
+  'BREAK_CACHE_COMMAND',
+  'COWORKER_TYPE_TELEMETRY',
+  'DUMP_SYSTEM_PROMPT',
+  'FILE_PERSISTENCE',
+  'HARD_FAIL',
+  'IS_LIBC_GLIBC',
+  'IS_LIBC_MUSL',
+  'NATIVE_CLIENT_ATTESTATION',
+  'PERFETTO_TRACING',
+  'SKILL_IMPROVEMENT',
+  'SKIP_DETECTION_WHEN_AUTOUPDATES_DISABLED',
+  'SLOW_OPERATION_LOGGING',
+] as const
+const supportedFeatures = new Set([
+  ...supportedExperimentalFeatures,
+  ...bundleCleanSupportFeatures,
+])
 const featureSet = new Set(defaultFeatures)
+function addFeature(feature: string): void {
+  if (!supportedFeatures.has(feature)) {
+    throw new Error(`Feature ${feature} is not supported in this build snapshot`)
+  }
+  featureSet.add(feature)
+}
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]
   if (arg === '--feature-set' && args[i + 1]) {
-    if (args[i + 1] === 'dev-full') {
-      for (const feature of fullExperimentalFeatures) {
-        featureSet.add(feature)
-      }
-    } else if (args[i + 1] === 'claudium') {
+    if (args[i + 1] === 'claudium') {
       const claudiumFeatures = [
         'AGENT_MEMORY_SNAPSHOT',
         'AGENT_TRIGGERS',
-        'AGENT_TRIGGERS_REMOTE',
         'AWAY_SUMMARY',
         'BASH_CLASSIFIER',
         'BUILTIN_EXPLORE_PLAN_AGENTS',
@@ -123,23 +149,33 @@ for (let i = 0; i < args.length; i += 1) {
       for (const feature of claudiumFeatures) {
         featureSet.add(feature)
       }
+    } else {
+      throw new Error(`Feature set ${args[i + 1]} is not supported`)
     }
     i += 1
     continue
   }
-  if (arg === '--feature-set=dev-full') {
-    for (const feature of fullExperimentalFeatures) {
-      featureSet.add(feature)
+  if (arg === '--feature-set=claudium') {
+    for (const feature of supportedExperimentalFeatures) {
+      if (feature !== 'CONNECTOR_TEXT') {
+        featureSet.add(feature)
+      }
     }
     continue
+  }
+  if (arg.startsWith('--feature-set=')) {
+    throw new Error(`Feature set ${arg.slice('--feature-set='.length)} is not supported`)
   }
   if (arg === '--feature' && args[i + 1]) {
-    featureSet.add(args[i + 1]!)
+    addFeature(args[i + 1]!)
     i += 1
     continue
   }
+  if (arg === '--feature-set' || arg === '--feature') {
+    throw new Error(`${arg} requires a value`)
+  }
   if (arg.startsWith('--feature=')) {
-    featureSet.add(arg.slice('--feature='.length))
+    addFeature(arg.slice('--feature='.length))
   }
 }
 const features = [...featureSet]
@@ -171,7 +207,6 @@ const defines = {
       }
     : {}),
   'process.env.CLAUDE_CODE_VERIFY_PLAN': JSON.stringify('false'),
-  'process.env.CCR_FORCE_BUNDLE': JSON.stringify('true'),
   'MACRO.VERSION': JSON.stringify(version),
   'MACRO.BUILD_TIME': JSON.stringify(buildTime),
   'MACRO.PACKAGE_URL': JSON.stringify(pkg.name),
@@ -221,6 +256,7 @@ const proc = Bun.spawnSync({
   cwd: process.cwd(),
   stdout: 'inherit',
   stderr: 'inherit',
+  env: buildSubprocessEnv(),
 })
 
 if (proc.exitCode !== 0) {

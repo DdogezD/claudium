@@ -20,12 +20,9 @@ externalized `@ant/*` packages.
 - `bun run compile`
   Builds the regular external binary at `./dist/claudium-cli`.
 - `bun run build:dev`
-  Builds `./claudium-cli-dev` with a dev-stamped version and experimental GrowthBook key.
-- `bun run build:dev:full`
-  Builds `./claudium-cli-dev` with the entire current "Working Experimental Features"
-  bundle from this document, minus `CHICAGO_MCP`. That flag still compiles,
-  but the external binary does not boot cleanly with it because startup
-  reaches the missing `@ant/computer-use-mcp` runtime package.
+  Builds `./claudium-cli-dev` with a dev-stamped version.
+- `bun run build:dev:claudium`
+  Builds `./claudium-cli-dev` with the supported Claudium preset used by the installers.
 
 ## Default Build Flags
 
@@ -53,8 +50,8 @@ explicitly called out as default-on.
   Enables brief-only transcript layout and BriefTool-oriented UX without the
   full assistant stack.
 - `KAIROS_CHANNELS`
-  Enables channel notices and channel callback plumbing around MCP/channel
-  messaging.
+  Enables local channel notices and channel callback plumbing around
+  MCP/channel messaging.
 - `LODESTONE`
   Enables deep-link / protocol-registration related flows and settings wiring.
 - `MESSAGE_ACTIONS`
@@ -67,10 +64,6 @@ explicitly called out as default-on.
   Enables additional shot-distribution stats views.
 - `TOKEN_BUDGET`
   Enables token budget tracking, prompt triggers, and token warning UI.
-- `ULTRAPLAN`
-  Enables `/ultraplan`, prompt triggers, and exit-plan affordances.
-- `ULTRATHINK`
-  Enables the extra thinking-depth mode switch.
 - `VOICE_MODE`
   Enables voice toggling, dictation keybindings, voice notices, and voice UI.
 
@@ -80,8 +73,6 @@ explicitly called out as default-on.
   Stores extra custom-agent memory snapshot state in the app.
 - `AGENT_TRIGGERS`
   Enables local cron/trigger tools and bundled trigger-related skills.
-- `AGENT_TRIGGERS_REMOTE`
-  Enables the remote trigger tool path.
 - `BUILTIN_EXPLORE_PLAN_AGENTS`
   Enables built-in explore/plan agent presets.
 - `CACHED_MICROCOMPACT`
@@ -93,22 +84,14 @@ explicitly called out as default-on.
 - `PROMPT_CACHE_BREAK_DETECTION`
   Enables cache-break detection around compaction/query/API flow.
 - `TEAMMEM`
-  Enables team-memory files, watcher hooks, and related UI messages.
+  Enables local per-project team-memory files and related UI messages.
 - `VERIFICATION_AGENT`
   Enables verification-agent guidance in prompts and task/todo tooling.
 
-### Tools, Permissions, and Remote Experiments
+### Tools, Permissions, and Platform Experiments
 
 - `BASH_CLASSIFIER`
   Enables classifier-assisted bash permission decisions.
-- `BRIDGE_MODE`
-  Enables Remote Control / REPL bridge command and entitlement paths.
-- `CCR_AUTO_CONNECT`
-  Enables the CCR auto-connect default path.
-- `CCR_MIRROR`
-  Enables outbound-only CCR mirror sessions.
-- `CCR_REMOTE_SETUP`
-  Enables the remote setup command path.
 - `CHICAGO_MCP`
   Enables computer-use MCP integration paths and wrapper loading.
 - `CONNECTOR_TEXT`
@@ -141,8 +124,6 @@ or plumbing toggles rather than user-facing experimental features.
   Injects the break-cache command path.
 - `COWORKER_TYPE_TELEMETRY`
   Adds coworker-type telemetry fields.
-- `DOWNLOAD_USER_SETTINGS`
-  Enables settings-sync pull paths.
 - `DUMP_SYSTEM_PROMPT`
   Enables the system-prompt dump path.
 - `FILE_PERSISTENCE`
@@ -163,8 +144,6 @@ or plumbing toggles rather than user-facing experimental features.
   Skips updater detection when auto-updates are disabled.
 - `SLOW_OPERATION_LOGGING`
   Enables slow-operation logging.
-- `UPLOAD_USER_SETTINGS`
-  Enables settings-sync push paths.
 
 ## Compile-Safe But Runtime-Caveated
 
@@ -178,10 +157,6 @@ have meaningful runtime caveats:
 - `NATIVE_CLIPBOARD_IMAGE`
   Bundles cleanly, but only accelerates macOS clipboard reads when
   `image-processor-napi` is present.
-- `BRIDGE_MODE`, `CCR_AUTO_CONNECT`, `CCR_MIRROR`, `CCR_REMOTE_SETUP`
-  Bundle cleanly, but are gated at runtime on claude.ai OAuth plus GrowthBook
-  entitlement checks. Note: claude.ai OAuth has been stripped in Claudium, so
-  these features are unavailable at runtime.
 - `KAIROS_BRIEF`, `KAIROS_CHANNELS`
   Bundle cleanly, but they do not restore the full missing assistant stack.
   They only expose the brief/channel-specific surfaces that still exist.
@@ -264,8 +239,6 @@ than a single wrapper or asset.
   Missing `src/coordinator/workerAgent.js`.
 - `DAEMON`
   Missing `src/daemon/workerRegistry.js`.
-- `DIRECT_CONNECT`
-  Missing `src/server/parseConnectUrl.js`.
 - `EXPERIMENTAL_SKILL_SEARCH`
   Missing `src/services/skillSearch/localSearch.js`.
 - `MONITOR_TOOL`
@@ -276,8 +249,6 @@ than a single wrapper or asset.
   Missing `src/hunter.js`.
 - `SELF_HOSTED_RUNNER`
   Missing `src/self-hosted-runner/main.js`.
-- `SSH_REMOTE`
-  Missing `src/ssh/createSSHSession.js`.
 - `TERMINAL_PANEL`
   Missing `src/tools/TerminalCaptureTool/TerminalCaptureTool.js`.
 - `UDS_INBOX`
@@ -305,14 +276,14 @@ missing import is only the visible edge of a broader absent subsystem.
 ## Useful Entry Points
 
 - Feature-aware build logic:
-  [scripts/build.ts](/Users/paolo/Repos/claude-code/scripts/build.ts)
+  [scripts/build.ts](/scripts/build.ts)
 - Feature-gated command imports:
-  [src/commands.ts](/Users/paolo/Repos/claude-code/src/commands.ts)
+  [src/commands.ts](/src/commands.ts)
 - Feature-gated tool imports:
-  [src/tools.ts](/Users/paolo/Repos/claude-code/src/tools.ts)
+  [src/tools.ts](/src/tools.ts)
 - Feature-gated task imports:
-  [src/tasks.ts](/Users/paolo/Repos/claude-code/src/tasks.ts)
+  [src/tasks.ts](/src/tasks.ts)
 - Feature-gated query behavior:
-  [src/query.ts](/Users/paolo/Repos/claude-code/src/query.ts)
+  [src/query.ts](/src/query.ts)
 - Feature-gated CLI entry paths:
-  [src/entrypoints/cli.tsx](/Users/paolo/Repos/claude-code/src/entrypoints/cli.tsx)
+  [src/entrypoints/cli.tsx](/src/entrypoints/cli.tsx)

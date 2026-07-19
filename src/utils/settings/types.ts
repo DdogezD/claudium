@@ -938,40 +938,6 @@ export const SettingsSchema = lazySchema(() =>
               ),
           }
         : {}),
-      // Teams/Enterprise opt-IN for channel notifications. Default OFF.
-      // MCP servers that declare the claude/channel capability can push
-      // inbound messages into the conversation; for managed orgs this only
-      // works when explicitly enabled. Which servers can connect at all is
-      // still governed by allowedMcpServers/deniedMcpServers. Not
-      // feature-spread: KAIROS_CHANNELS is external:true, and the spread
-      // wrecks type inference for allowedChannelPlugins (the .passthrough()
-      // catch-all gives {} instead of the array type).
-      channelsEnabled: z
-        .boolean()
-        .optional()
-        .describe(
-          'Teams/Enterprise opt-in for channel notifications (MCP servers with the ' +
-            'claude/channel capability pushing inbound messages). Default off. ' +
-            'Set true to allow; users then select servers via --channels.',
-        ),
-      // Org-level channel plugin allowlist. When set, REPLACES the
-      // Anthropic ledger — admin owns the trust decision. Undefined means
-      // fall back to the ledger. Plugin-only entry shape (same as the
-      // ledger); server-kind entries still need the dev flag.
-      allowedChannelPlugins: z
-        .array(
-          z.object({
-            marketplace: z.string(),
-            plugin: z.string(),
-          }),
-        )
-        .optional()
-        .describe(
-          'Teams/Enterprise allowlist of channel plugins. When set, ' +
-            'replaces the default Anthropic allowlist — admins decide which ' +
-            'plugins may push inbound messages. Undefined falls back to the default. ' +
-            'Requires channelsEnabled: true.',
-        ),
       ...(feature('KAIROS') || feature('KAIROS_BRIEF')
         ? {
             defaultView: z
