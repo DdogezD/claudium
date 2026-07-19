@@ -31,6 +31,7 @@ import {
 import { errorMessage } from './errors.js'
 import { execSyncWithDefaults_DEPRECATED } from './execFileNoThrow.js'
 import { logError } from './log.js'
+import { subprocessEnv } from './subprocessEnv.js'
 import {
   clearLegacyApiKeyPrefetch,
   getLegacyApiKeyPrefetchResult,
@@ -115,11 +116,7 @@ export function getAnthropicApiKeyWithSource(
       }
     }
 
-    if (
-      !apiKeyEnv &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN &&
-      !process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
-    ) {
+    if (!apiKeyEnv && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
       throw new Error(
         'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required',
       )
@@ -352,6 +349,7 @@ async function _executeApiKeyHelper(
     shell: true,
     timeout: 10 * 60 * 1000,
     reject: false,
+    env: subprocessEnv(),
   })
   if (result.failed) {
     // reject:false — execa resolves on exit≠0/timeout, stderr is on result
@@ -466,6 +464,7 @@ export async function saveApiKey(apiKey: string): Promise<void> {
       await execa('security', ['-i'], {
         input: command,
         reject: false,
+        env: subprocessEnv(),
       })
 
       logEvent('tengu_api_key_saved_to_keychain', {})

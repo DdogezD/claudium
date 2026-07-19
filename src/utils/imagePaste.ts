@@ -18,6 +18,7 @@ import {
   maybeResizeAndDownsampleImageBuffer,
 } from './imageResizer.js'
 import { logError } from './log.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 // Native NSPasteboard reader. GrowthBook gate tengu_collage_kaleidoscope is
 // a kill switch (default on). Falls through to osascript when off.
@@ -189,6 +190,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     const checkResult = await execa(commands.checkImage, {
       shell: true,
       reject: false,
+      env: subprocessEnv(),
     })
     if (checkResult.exitCode !== 0) {
       return null
@@ -198,6 +200,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     const saveResult = await execa(commands.saveImage, {
       shell: true,
       reject: false,
+      env: subprocessEnv(),
     })
     if (saveResult.exitCode !== 0) {
       return null
@@ -229,7 +232,11 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     const mediaType = detectImageFormatFromBase64(base64Image)
 
     // Cleanup (fire-and-forget, don't await)
-    void execa(commands.deleteFile, { shell: true, reject: false })
+    void execa(commands.deleteFile, {
+      shell: true,
+      reject: false,
+      env: subprocessEnv(),
+    })
 
     return {
       base64: base64Image,
@@ -249,6 +256,7 @@ export async function getImagePathFromClipboard(): Promise<string | null> {
     const result = await execa(commands.getPath, {
       shell: true,
       reject: false,
+      env: subprocessEnv(),
     })
     if (result.exitCode !== 0 || !result.stdout) {
       return null

@@ -59,6 +59,7 @@ function isExecutable(shellPath: string): boolean {
       execFileSync(shellPath, ['--version'], {
         timeout: 1000,
         stdio: 'ignore',
+        env: subprocessEnv(),
       })
       return true
     } catch {
@@ -314,8 +315,7 @@ export async function exec(
 
   try {
     const childProcess = spawn(spawnBinary, shellArgs, {
-      env: {
-        ...subprocessEnv(),
+      env: subprocessEnv({
         SHELL: shellType === 'bash' ? binShell : undefined,
         GIT_EDITOR: 'true',
         CLAUDECODE: '1',
@@ -325,7 +325,7 @@ export async function exec(
               CLAUDE_CODE_SESSION_ID: getSessionId(),
             }
           : {}),
-      },
+      }),
       cwd,
       stdio: usePipeMode
         ? ['pipe', 'pipe', 'pipe']

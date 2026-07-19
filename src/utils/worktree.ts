@@ -38,6 +38,7 @@ import {
 } from './hooks.js'
 import { containsPathTraversal } from './path.js'
 import { getPlatform } from './platform.js'
+import { subprocessEnv } from './subprocessEnv.js'
 import {
   getInitialSettings,
   getRelativeSettingsFilePathForSource,
@@ -257,7 +258,7 @@ async function getOrCreateWorktree(
   // New worktree: fetch base branch then add
   await mkdir(worktreesDir(repoRoot), { recursive: true })
 
-  const fetchEnv = { ...process.env, ...GIT_NO_PROMPT_ENV }
+  const fetchEnv = { ...subprocessEnv(), ...GIT_NO_PROMPT_ENV }
 
   let baseBranch: string
   let baseSha: string | null = null
@@ -1190,7 +1191,10 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
   }
 
   // Check if tmux is available
-  const tmuxCheck = spawnSync('tmux', ['-V'], { encoding: 'utf-8' })
+  const tmuxCheck = spawnSync('tmux', ['-V'], {
+    encoding: 'utf-8',
+    env: subprocessEnv(),
+  })
   if (tmuxCheck.status !== 0) {
     const installHint =
       process.platform === 'darwin'
@@ -1331,6 +1335,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
   let tmuxPrefix = 'C-b' // default
   const prefixResult = spawnSync('tmux', ['show-options', '-g', 'prefix'], {
     encoding: 'utf-8',
+    env: subprocessEnv(),
   })
   if (prefixResult.status === 0 && prefixResult.stdout) {
     const match = prefixResult.stdout.match(/prefix\s+(\S+)/)
@@ -1356,7 +1361,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
 
   // Set env vars for the inner Claude to display tmux info in welcome message
   const tmuxEnv = {
-    ...process.env,
+    ...subprocessEnv(),
     CLAUDE_CODE_TMUX_SESSION: tmuxSessionName,
     CLAUDE_CODE_TMUX_PREFIX: tmuxPrefix,
     CLAUDE_CODE_TMUX_PREFIX_CONFLICTS: prefixConflicts ? '1' : '',
@@ -1366,7 +1371,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
   const hasSessionResult = spawnSync(
     'tmux',
     ['has-session', '-t', tmuxSessionName],
-    { encoding: 'utf-8' },
+    { encoding: 'utf-8', env: subprocessEnv() },
   )
   const sessionExists = hasSessionResult.status === 0
 
@@ -1419,27 +1424,29 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     spawnSync(
       'tmux',
       ['split-window', '-h', '-t', tmuxSessionName, '-c', worktreeDir],
-      { cwd: worktreeDir },
+      { cwd: worktreeDir, env: subprocessEnv() },
     )
     spawnSync(
       'tmux',
       ['send-keys', '-t', tmuxSessionName, 'bun run watch', 'Enter'],
-      { cwd: worktreeDir },
+      { cwd: worktreeDir, env: subprocessEnv() },
     )
 
     // Split vertically and run start
     spawnSync(
       'tmux',
       ['split-window', '-v', '-t', tmuxSessionName, '-c', worktreeDir],
-      { cwd: worktreeDir },
+      { cwd: worktreeDir, env: subprocessEnv() },
     )
     spawnSync('tmux', ['send-keys', '-t', tmuxSessionName, 'bun run start'], {
       cwd: worktreeDir,
+      env: subprocessEnv(),
     })
 
     // Select the first pane (Claude)
     spawnSync('tmux', ['select-pane', '-t', `${tmuxSessionName}:0.0`], {
       cwd: worktreeDir,
+      env: subprocessEnv(),
     })
 
     // Attach or switch to the session
@@ -1447,6 +1454,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
       // Switch to sibling session (avoid nesting)
       spawnSync('tmux', ['switch-client', '-t', tmuxSessionName], {
         stdio: 'inherit',
+        env: subprocessEnv(),
       })
     } else {
       // Attach to the session
@@ -1456,6 +1464,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
         {
           stdio: 'inherit',
           cwd: worktreeDir,
+          env: subprocessEnv(),
         },
       )
     }
@@ -1468,6 +1477,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
         // Just switch to existing session
         spawnSync('tmux', ['switch-client', '-t', tmuxSessionName], {
           stdio: 'inherit',
+          env: subprocessEnv(),
         })
       } else {
         // Create new detached session
@@ -1490,6 +1500,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
         // Switch to the new session
         spawnSync('tmux', ['switch-client', '-t', tmuxSessionName], {
           stdio: 'inherit',
+          env: subprocessEnv(),
         })
       }
     } else {

@@ -95,9 +95,10 @@ export function createLSPClient(
     ): Promise<void> {
       try {
         // 1. Spawn LSP server process
+        const lspEnv = subprocessEnv(options?.env)
         process = spawn(command, args, {
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...subprocessEnv(), ...options?.env },
+          env: lspEnv,
           cwd: options?.cwd,
           // Prevent visible console window on Windows (no-op on other platforms)
           windowsHide: true,

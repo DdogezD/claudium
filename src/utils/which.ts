@@ -1,5 +1,6 @@
 import { execa } from 'execa'
 import { execSync_DEPRECATED } from './execSyncWrapper.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 async function whichNodeAsync(command: string): Promise<string | null> {
   if (process.platform === 'win32') {
@@ -8,6 +9,7 @@ async function whichNodeAsync(command: string): Promise<string | null> {
       shell: true,
       stderr: 'ignore',
       reject: false,
+      env: subprocessEnv(),
     })
     if (result.exitCode !== 0 || !result.stdout) {
       return null
@@ -23,6 +25,7 @@ async function whichNodeAsync(command: string): Promise<string | null> {
     shell: true,
     stderr: 'ignore',
     reject: false,
+    env: subprocessEnv(),
   })
   if (result.exitCode !== 0 || !result.stdout) {
     return null

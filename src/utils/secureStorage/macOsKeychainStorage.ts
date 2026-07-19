@@ -3,6 +3,7 @@ import { logForDebugging } from '../debug.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { execSyncWithDefaults_DEPRECATED } from '../execFileNoThrowPortable.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { subprocessEnv } from '../subprocessEnv.js'
 import {
   CREDENTIALS_SERVICE_SUFFIX,
   clearKeychainCache,
@@ -123,6 +124,7 @@ export const macOsKeychainStorage = {
           input: command,
           stdio: ['pipe', 'pipe', 'pipe'],
           reject: false,
+          env: subprocessEnv(),
         })
       } else {
         logForDebugging(
@@ -141,7 +143,11 @@ export const macOsKeychainStorage = {
             '-X',
             hexValue,
           ],
-          { stdio: ['ignore', 'pipe', 'pipe'], reject: false },
+          {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            reject: false,
+            env: subprocessEnv(),
+          },
         )
       }
 
@@ -220,6 +226,7 @@ export function isMacOsKeychainLocked(): boolean {
     const result = execaSync('security', ['show-keychain-info'], {
       reject: false,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: subprocessEnv(),
     })
     // Exit code 36 indicates the keychain is locked
     keychainLockedCache = result.exitCode === 36

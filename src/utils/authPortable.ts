@@ -1,12 +1,13 @@
 import { execa } from 'execa'
 import { getMacOsKeychainStorageServiceName } from 'src/utils/secureStorage/macOsKeychainHelpers.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 export async function maybeRemoveApiKeyFromMacOSKeychainThrows(): Promise<void> {
   if (process.platform === 'darwin') {
     const storageServiceName = getMacOsKeychainStorageServiceName()
     const result = await execa(
       `security delete-generic-password -a $USER -s "${storageServiceName}"`,
-      { shell: true, reject: false },
+      { shell: true, reject: false, env: subprocessEnv() },
     )
     if (result.exitCode !== 0) {
       throw new Error('Failed to delete keychain entry')

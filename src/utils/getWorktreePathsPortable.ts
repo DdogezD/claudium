@@ -1,5 +1,6 @@
 import { execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
+import { subprocessEnv } from './subprocessEnv.js'
 
 const execFileAsync = promisify(execFileCb)
 
@@ -14,7 +15,7 @@ export async function getWorktreePathsPortable(cwd: string): Promise<string[]> {
     const { stdout } = await execFileAsync(
       'git',
       ['worktree', 'list', '--porcelain'],
-      { cwd, timeout: 5000 },
+      { cwd, timeout: 5000, env: subprocessEnv() },
     )
     if (!stdout) return []
     return stdout

@@ -21,6 +21,7 @@ import instances from '../ink/instances.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { pwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 const TMUX_SESSION = 'panel'
 
@@ -61,7 +62,10 @@ class TerminalPanel {
 
   private checkTmux(): boolean {
     if (this.hasTmux !== undefined) return this.hasTmux
-    const result = spawnSync('tmux', ['-V'], { encoding: 'utf-8' })
+    const result = spawnSync('tmux', ['-V'], {
+      encoding: 'utf-8',
+      env: subprocessEnv(),
+    })
     this.hasTmux = result.status === 0
     if (!this.hasTmux) {
       logForDebugging(
@@ -75,7 +79,7 @@ class TerminalPanel {
     const result = spawnSync(
       'tmux',
       ['-L', getTerminalPanelSocket(), 'has-session', '-t', TMUX_SESSION],
-      { encoding: 'utf-8' },
+      { encoding: 'utf-8', env: subprocessEnv() },
     )
     return result.status === 0
   }
@@ -99,7 +103,7 @@ class TerminalPanel {
         shell,
         '-l',
       ],
-      { encoding: 'utf-8' },
+      { encoding: 'utf-8', env: subprocessEnv() },
     )
 
     if (result.status !== 0) {
@@ -120,7 +124,7 @@ class TerminalPanel {
       'set-option', '-g', 'status-left', '', ';',
       'set-option', '-g', 'status-right', ' Alt+J to return to Claude ', ';',
       'set-option', '-g', 'status-right-style', 'fg=brightblack',
-    ])
+    ], { env: subprocessEnv() })
 
     if (!this.cleanupRegistered) {
       this.cleanupRegistered = true
@@ -132,6 +136,7 @@ class TerminalPanel {
         spawn('tmux', ['-L', socket, 'kill-server'], {
           detached: true,
           stdio: 'ignore',
+          env: subprocessEnv(),
         })
           .on('error', () => {})
           .unref()
@@ -145,7 +150,7 @@ class TerminalPanel {
     spawnSync(
       'tmux',
       ['-L', getTerminalPanelSocket(), 'attach-session', '-t', TMUX_SESSION],
-      { stdio: 'inherit' },
+      { stdio: 'inherit', env: subprocessEnv() },
     )
   }
 
@@ -185,7 +190,7 @@ class TerminalPanel {
     spawnSync(shell, ['-i', '-l'], {
       stdio: 'inherit',
       cwd,
-      env: process.env,
+      env: subprocessEnv(),
     })
   }
 }

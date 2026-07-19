@@ -346,13 +346,16 @@ export class StructuredIO {
         return undefined
       }
       if (message.type === 'update_environment_variables') {
-        // Apply environment variable updates directly to process.env.
-        // Used by bridge session runner for auth token refresh
-        // (CLAUDE_CODE_SESSION_ACCESS_TOKEN) which must be readable
-        // by the REPL process itself, not just child Bash commands.
-        const keys = Object.keys(message.variables)
-        for (const [key, value] of Object.entries(message.variables)) {
-          process.env[key] = value
+        // Apply permitted environment variable updates directly to process.env.
+        const entries = Object.entries(message.variables).filter(
+          ([key]) =>
+            key.toUpperCase() !== 'CLAUDE_CODE_SESSION_ACCESS_TOKEN',
+        )
+        const keys = entries.map(([key]) => key)
+        for (const [key, value] of entries) {
+          if (typeof value === 'string') {
+            process.env[key] = value
+          }
         }
         logForDebugging(
           `[structuredIO] applied update_environment_variables: ${keys.join(', ')}`,

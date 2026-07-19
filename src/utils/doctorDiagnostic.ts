@@ -1,4 +1,5 @@
 import { execa } from 'execa'
+import { subprocessEnv } from './subprocessEnv.js'
 import { readFile, realpath } from 'fs/promises'
 import { homedir } from 'os'
 import { delimiter, join, posix, win32 } from 'path'
@@ -133,6 +134,7 @@ export async function getCurrentInstallationType(): Promise<InstallationType> {
   const npmConfigResult = await execa('npm config get prefix', {
     shell: true,
     reject: false,
+    env: subprocessEnv(),
   })
   const globalPrefix =
     npmConfigResult.exitCode === 0 ? npmConfigResult.stdout.trim() : null

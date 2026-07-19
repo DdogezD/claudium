@@ -4,6 +4,7 @@
  */
 
 import { execFileSync } from 'child_process'
+import { subprocessEnv } from './subprocessEnv.js'
 
 export interface IDEPathConverter {
   /**
@@ -44,6 +45,7 @@ export class WindowsToWSLConverter implements IDEPathConverter {
       const result = execFileSync('wslpath', ['-u', windowsPath], {
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'ignore'], // wslpath writes "wslpath: <errortext>" to stderr
+        env: subprocessEnv(),
       }).trim()
 
       return result
@@ -63,6 +65,7 @@ export class WindowsToWSLConverter implements IDEPathConverter {
       const result = execFileSync('wslpath', ['-w', wslPath], {
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'ignore'], // wslpath writes "wslpath: <errortext>" to stderr
+        env: subprocessEnv(),
       }).trim()
 
       return result

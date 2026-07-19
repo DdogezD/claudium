@@ -1,5 +1,6 @@
 import { execa } from 'execa'
 import { which } from '../which.js'
+import { subprocessEnv } from '../subprocessEnv.js'
 
 export type GhAuthStatus =
   | 'authenticated'
@@ -24,6 +25,7 @@ export async function getGhAuthStatus(): Promise<GhAuthStatus> {
     stderr: 'ignore',
     timeout: 5000,
     reject: false,
+    env: subprocessEnv(),
   })
   return exitCode === 0 ? 'authenticated' : 'not_authenticated'
 }

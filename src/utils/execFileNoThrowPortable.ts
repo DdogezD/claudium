@@ -1,5 +1,6 @@
 import { type Options as ExecaOptions, execaSync } from 'execa'
 import { getCwd } from '../utils/cwd.js'
+import { subprocessEnv } from './subprocessEnv.js'
 import { slowLogging } from './slowOperations.js'
 
 const MS_IN_SECOND = 1000
@@ -70,7 +71,7 @@ export function execSyncWithDefaults_DEPRECATED(
   using _ = slowLogging`exec: ${command.slice(0, 200)}`
   try {
     const result = execaSync(command, {
-      env: process.env,
+      env: subprocessEnv(),
       maxBuffer: 1_000_000,
       timeout: finalTimeout,
       cwd: getCwd(),

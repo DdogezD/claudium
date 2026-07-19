@@ -5,6 +5,7 @@ import {
   execSync as nodeExecSync,
 } from 'child_process'
 import { slowLogging } from './slowOperations.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 /**
  * @deprecated Use async alternatives when possible. Sync exec calls block the event loop.
@@ -34,5 +35,8 @@ export function execSync_DEPRECATED(
   options?: ExecSyncOptions,
 ): Buffer | string {
   using _ = slowLogging`execSync: ${command.slice(0, 100)}`
-  return nodeExecSync(command, options)
+  return nodeExecSync(command, {
+    ...options,
+    env: subprocessEnv(options?.env),
+  })
 }

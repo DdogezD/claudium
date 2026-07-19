@@ -3,6 +3,7 @@ import { getIsInteractive } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 let loggedTmuxCcDisable = false
 let checkedTmuxMouseHint = false
@@ -71,7 +72,7 @@ function probeTmuxControlModeSync(): void {
     result = spawnSync(
       'tmux',
       ['display-message', '-p', '#{client_control_mode}'],
-      { encoding: 'utf8', timeout: 2000 },
+      { encoding: 'utf8', timeout: 2000, env: subprocessEnv() },
     )
   } catch {
     // spawnSync can throw on some platforms (e.g. ENOENT on Windows if tmux

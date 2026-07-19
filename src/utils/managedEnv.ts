@@ -1,4 +1,3 @@
-import { isRemoteManagedSettingsEligible } from '../services/remoteManagedSettings/syncCache.js'
 import { clearCACertsCache } from './caCerts.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -13,27 +12,6 @@ import {
   getSettings_DEPRECATED,
   getSettingsForSource,
 } from './settings/settings.js'
-
-/**
- * `claude ssh` remote: ANTHROPIC_UNIX_SOCKET routes auth through a -R forwarded
- * socket to a local proxy, and the launcher sets a handful of placeholder auth
- * env vars that the remote's ~/.claude settings.env MUST NOT clobber (see
- * isAnthropicAuthEnabled). Strip them from any settings-sourced env object.
- */
-function withoutSSHTunnelVars(
-  env: Record<string, string> | undefined,
-): Record<string, string> {
-  if (!env || !process.env.ANTHROPIC_UNIX_SOCKET) return env || {}
-  const {
-    ANTHROPIC_UNIX_SOCKET: _1,
-    ANTHROPIC_BASE_URL: _2,
-    ANTHROPIC_API_KEY: _3,
-    ANTHROPIC_AUTH_TOKEN: _4,
-    CLAUDE_CODE_OAUTH_TOKEN: _5,
-    ...rest
-  } = env
-  return rest
-}
 
 /**
  * When the host owns inference routing (sets
@@ -85,9 +63,7 @@ function withoutCcdSpawnEnvKeys(
 function filterSettingsEnv(
   env: Record<string, string> | undefined,
 ): Record<string, string> {
-  return withoutCcdSpawnEnvKeys(
-    withoutHostManagedProviderVars(withoutSSHTunnelVars(env)),
-  )
+  return withoutCcdSpawnEnvKeys(withoutHostManagedProviderVars(env))
 }
 
 /**
@@ -147,14 +123,6 @@ export function applySafeConfigEnvironmentVariables(): void {
       filterSettingsEnv(getSettingsForSource(source)?.env),
     )
   }
-
-  // Compute remote-managed-settings eligibility now, with userSettings and
-  // flagSettings env applied. Eligibility reads CLAUDE_CODE_USE_BEDROCK,
-  // ANTHROPIC_BASE_URL — both settable via settings.env.
-  // getSettingsForSource('policySettings') below consults the remote cache,
-  // which guards on this. The two-phase structure makes the ordering
-  // dependency visible: non-policy env → eligibility → policy env.
-  isRemoteManagedSettingsEligible()
 
   Object.assign(
     process.env,
