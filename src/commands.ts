@@ -147,21 +147,6 @@ import outputStyle from './commands/output-style/index.js'
 // rate-limit-options removed (Anthropic online service)
 // effort removed (replaced by modelProfiles in /config)
 import stats from './commands/stats/index.js'
-// insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
-// shim defers the heavy module until /insights is actually invoked.
-const usageReport: Command = {
-  type: 'prompt',
-  name: 'insights',
-  description: 'Generate a report analyzing your Claudium sessions',
-  contentLength: 0,
-  progressMessage: 'analyzing your sessions',
-  source: 'builtin',
-  async getPromptForCommand(args, context) {
-    const real = (await import('./commands/insights.js')).default
-    if (real.type !== 'prompt') throw new Error('unreachable')
-    return real.getPromptForCommand(args, context)
-  },
-}
 import debugToolCall from './commands/debug-tool-call/index.js'
 import { getSettingSourceName } from './utils/settings/constants.js'
 import {
@@ -262,7 +247,7 @@ const COMMANDS = memoize((): Command[] => [
   // extra-usage removed
   // rateLimitOptions removed
   // usage removed
-  usageReport,
+  // insights removed
   vim,
   ...(forkCmd ? [forkCmd] : []),
   ...(buddy ? [buddy] : []),

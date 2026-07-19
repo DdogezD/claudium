@@ -10,6 +10,7 @@
  * - Support for both JS and native builds
  */
 
+import { PRODUCT_NAME } from '../../constants/product.js'
 import { constants as fsConstants, type Stats } from 'fs'
 import {
   access,
