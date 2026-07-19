@@ -335,7 +335,6 @@ export async function handlePromptSubmit(
     // at execution time when processUserInput runs (not baked in here).
     enqueue({
       value: finalInput.trim(),
-      preExpansionValue: input.trim(),
       mode,
       pastedContents: hasImages ? pastedContents : undefined,
       skipSlashCommands,
@@ -358,7 +357,6 @@ export async function handlePromptSubmit(
   // resized via processUserInput regardless of how the command arrives.
   const cmd: QueuedCommand = {
     value: finalInput,
-    preExpansionValue: input,
     mode,
     pastedContents: hasImages ? pastedContents : undefined,
     skipSlashCommands,
@@ -475,7 +473,6 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
         const isFirst = i === 0
         const result = await processUserInput({
           input: cmd.value,
-          preExpansionInput: cmd.preExpansionValue,
           mode: cmd.mode,
           setToolJSX,
           context: makeContext(),

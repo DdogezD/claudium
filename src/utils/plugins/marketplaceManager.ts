@@ -37,6 +37,7 @@ import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { gitExe } from '../git.js'
 import { logError } from '../log.js'
+import { subprocessEnv } from '../subprocessEnv.js'
 import {
   getInitialSettings,
   getSettingsForSource,
@@ -531,7 +532,7 @@ export async function gitPull(
   options?: { disableCredentialHelper?: boolean; sparsePaths?: string[] },
 ): Promise<{ code: number; stderr: string }> {
   logForDebugging(`git pull: cwd=${cwd} ref=${ref ?? 'default'}`)
-  const env = { ...process.env, ...GIT_NO_PROMPT_ENV }
+  const env = { ...subprocessEnv(), ...GIT_NO_PROMPT_ENV }
   const credentialArgs = options?.disableCredentialHelper
     ? ['-c', 'credential.helper=']
     : []
@@ -839,7 +840,7 @@ export async function gitClone(
   const result = await execFileNoThrowWithCwd(gitExe(), args, {
     timeout: timeoutMs,
     stdin: 'ignore',
-    env: { ...process.env, ...GIT_NO_PROMPT_ENV },
+    env: { ...subprocessEnv(), ...GIT_NO_PROMPT_ENV },
   })
 
   // Scrub credentials from execa's error/stderr fields before any logging or
@@ -865,7 +866,7 @@ export async function gitClone(
           cwd: targetPath,
           timeout: timeoutMs,
           stdin: 'ignore',
-          env: { ...process.env, ...GIT_NO_PROMPT_ENV },
+          env: { ...subprocessEnv(), ...GIT_NO_PROMPT_ENV },
         },
       )
       if (sparseResult.code !== 0) {
@@ -884,7 +885,7 @@ export async function gitClone(
           cwd: targetPath,
           timeout: timeoutMs,
           stdin: 'ignore',
-          env: { ...process.env, ...GIT_NO_PROMPT_ENV },
+          env: { ...subprocessEnv(), ...GIT_NO_PROMPT_ENV },
         },
       )
       if (checkoutResult.code !== 0) {
@@ -1035,7 +1036,7 @@ export async function reconcileSparseCheckout(
   cwd: string,
   sparsePaths: string[] | undefined,
 ): Promise<{ code: number; stderr: string }> {
-  const env = { ...process.env, ...GIT_NO_PROMPT_ENV }
+  const env = { ...subprocessEnv(), ...GIT_NO_PROMPT_ENV }
 
   if (sparsePaths && sparsePaths.length > 0) {
     return execFileNoThrowWithCwd(
@@ -2467,50 +2468,35 @@ export async function refreshMarketplace(
     if (source.source === 'github' || source.source === 'git') {
       // Git sources: do in-place git pull
       if (source.source === 'github') {
-        // Same SSH/HTTPS fallback as loadAndCacheMarketplace: if the pull
-        // succeeds the remote URL in .git/config is used, but a re-clone
-        // needs a URL — pick the right protocol up-front and fall back.
+        // Prefer a configured GitHub SSH key, then fall back to HTTPS.
         const sshUrl = `git@github.com:${source.repo}.git`
         const httpsUrl = `https://github.com/${source.repo}.git`
+        const sshConfigured = await isGitHubSshLikelyConfigured()
+        const primaryUrl = sshConfigured ? sshUrl : httpsUrl
+        const fallbackUrl = sshConfigured ? httpsUrl : sshUrl
 
-        if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)) {
-          // CCR: always HTTPS (no SSH keys available)
+        try {
           await cacheMarketplaceFromGit(
-            httpsUrl,
+            primaryUrl,
             installLocation,
             source.ref,
             source.sparsePaths,
             onProgress,
             options,
           )
-        } else {
-          const sshConfigured = await isGitHubSshLikelyConfigured()
-          const primaryUrl = sshConfigured ? sshUrl : httpsUrl
-          const fallbackUrl = sshConfigured ? httpsUrl : sshUrl
-
-          try {
-            await cacheMarketplaceFromGit(
-              primaryUrl,
-              installLocation,
-              source.ref,
-              source.sparsePaths,
-              onProgress,
-              options,
-            )
-          } catch {
-            logForDebugging(
-              `Marketplace refresh failed with ${sshConfigured ? 'SSH' : 'HTTPS'} for ${source.repo}, falling back to ${sshConfigured ? 'HTTPS' : 'SSH'}`,
-              { level: 'info' },
-            )
-            await cacheMarketplaceFromGit(
-              fallbackUrl,
-              installLocation,
-              source.ref,
-              source.sparsePaths,
-              onProgress,
-              options,
-            )
-          }
+        } catch {
+          logForDebugging(
+            `Marketplace refresh failed with ${sshConfigured ? 'SSH' : 'HTTPS'} for ${source.repo}, falling back to ${sshConfigured ? 'HTTPS' : 'SSH'}`,
+            { level: 'info' },
+          )
+          await cacheMarketplaceFromGit(
+            fallbackUrl,
+            installLocation,
+            source.ref,
+            source.sparsePaths,
+            onProgress,
+            options,
+          )
         }
       } else {
         // Explicit git URL: use as-is (no fallback available)

@@ -160,6 +160,8 @@ export type ToolUseContext = {
     commands: Command[]
     debug: boolean
     mainLoopModel: string
+    /** Per-agent context window override, when configured. */
+    contextWindowTokens?: number
     tools: Tools
     verbose: boolean
     thinkingConfig: ThinkingConfig

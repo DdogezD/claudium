@@ -1,5 +1,4 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
-import { isUltrathinkEnabled } from './thinking.js'
 import { resolveModelProfileEffort } from './model/modelProfiles.js'
 import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
@@ -251,9 +250,6 @@ export function getDefaultEffortForModel(
       }
     }
     return undefined
-  }
-  if (isUltrathinkEnabled() && modelSupportsEffort(model)) {
-    return 'medium'
   }
   return undefined
 }

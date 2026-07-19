@@ -306,13 +306,6 @@ export type QueuedCommand = {
   /** Raw pasted contents including images. Images are resized at execution time. */
   pastedContents?: Record<number, PastedContent>
   /**
-   * The input string before [Pasted text #N] placeholders were expanded.
-   * Used for ultraplan keyword detection so pasted content containing the
-   * keyword does not trigger a CCR session. Falls back to `value` when
-   * unset (bridge/UDS/MCP sources have no paste expansion).
-   */
-  preExpansionValue?: string
-  /**
    * When true, the input is treated as plain text even if it starts with `/`.
    * Used for remotely-received messages (e.g. bridge/CCR) that should not
    * trigger local slash commands or skills.

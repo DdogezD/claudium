@@ -204,7 +204,6 @@ const sessionTranscriptModule = feature('KAIROS')
   ? (require('../services/sessionTranscript/sessionTranscript.js') as typeof import('../services/sessionTranscript/sessionTranscript.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { hasUltrathinkKeyword, isUltrathinkEnabled } from './thinking.js'
 import {
   tokenCountFromLastAPIResponse,
   tokenCountWithEstimation,
@@ -676,10 +675,6 @@ export type Attachment =
       newDate: string
     }
   | {
-      type: 'ultrathink_effort'
-      level: 'high'
-    }
-  | {
       type: 'deferred_tools_delta'
       addedNames: string[]
       addedLines: string[]
@@ -832,9 +827,6 @@ export async function getAttachments(
     maybe('queued_commands', () => getQueuedCommandAttachments(queuedCommands)),
     maybe('date_change', () =>
       Promise.resolve(getDateChangeAttachments(messages)),
-    ),
-    maybe('ultrathink_effort', () =>
-      Promise.resolve(getUltrathinkEffortAttachment(input)),
     ),
     maybe('deferred_tools_delta', () =>
       Promise.resolve(
@@ -1449,14 +1441,6 @@ export function getDateChangeAttachments(
   }
 
   return [{ type: 'date_change', newDate: currentDate }]
-}
-
-function getUltrathinkEffortAttachment(input: string | null): Attachment[] {
-  if (!isUltrathinkEnabled() || !input || !hasUltrathinkKeyword(input)) {
-    return []
-  }
-  logEvent('tengu_ultrathink', {})
-  return [{ type: 'ultrathink_effort', level: 'high' }]
 }
 
 // Exported for compact.ts — the gate must be identical at both call sites.

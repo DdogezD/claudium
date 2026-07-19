@@ -587,17 +587,6 @@ function shouldRetry(error: APIError): boolean {
     return true
   }
 
-  // CCR mode: auth is via infrastructure-provided JWTs, so a 401/403 is a
-  // transient blip (auth service flap, network hiccup) rather than bad
-  // credentials. Bypass x-should-retry:false — the server assumes we'd retry
-  // the same bad key, but our key is fine.
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-    (error.status === 401 || error.status === 403)
-  ) {
-    return true
-  }
-
   // Check for overloaded errors first by examining the message content
   // The SDK sometimes fails to properly pass the 529 status code during streaming,
   // so we need to check the error message directly

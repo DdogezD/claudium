@@ -13,7 +13,8 @@ type Props = {
   /** When true, show an Enabled toggle (for advisor). */
   showEnabled?: boolean
   initialEnabled?: boolean
-  onComplete: (profile: { model?: string; contextWindowTokens?: number; reasoningEffort?: string; enabled?: boolean }) => void
+  initialEnabledValue?: boolean
+  onComplete: (profile: { model?: string | null; contextWindowTokens?: number | null; reasoningEffort?: string | null; enabled?: boolean }) => void
   onCancel: () => void
 }
 
@@ -26,6 +27,7 @@ export function ModelProfileDialog({
   thinkingDisabled,
   showEnabled,
   initialEnabled,
+  initialEnabledValue,
   onComplete,
   onCancel,
   title,
@@ -34,6 +36,10 @@ export function ModelProfileDialog({
   const [contextStr, setContextStr] = useState(initialContext ? String(initialContext) : '')
   const [effort, setEffort] = useState(initialEffort ?? '')
   const [enabled, setEnabled] = useState(initialEnabled ?? false)
+  const [modelChanged, setModelChanged] = useState(false)
+  const [contextChanged, setContextChanged] = useState(false)
+  const [effortChanged, setEffortChanged] = useState(false)
+  const [enabledChanged, setEnabledChanged] = useState(false)
   // -1 = enabled toggle, 0/1/2 = text fields
   const [focusedField, setFocusedField] = useState(showEnabled ? -1 : 0)
   const isTerminalFocused = useTerminalFocus()
@@ -45,16 +51,30 @@ export function ModelProfileDialog({
   useKeybinding('confirm:no', onCancel, { context: 'Settings' })
 
   const showFields = !showEnabled || enabled
-  const lastField = showFields ? 2 : (showEnabled ? -1 : 2)
+  const lastField = showFields
+    ? thinkingDisabled
+      ? 1
+      : 2
+    : showEnabled
+      ? -1
+      : 2
 
   function handleSubmit() {
     const ctxNum = contextStr.trim() ? Number(contextStr.trim()) : undefined
-    onComplete({
-      model: model.trim() || undefined,
-      contextWindowTokens: ctxNum && Number.isFinite(ctxNum) && ctxNum > 0 ? ctxNum : undefined,
-      reasoningEffort: effort.trim().toLowerCase() || undefined,
-      enabled: showEnabled ? enabled : undefined,
-    })
+    const profile: {
+      model?: string | null
+      contextWindowTokens?: number | null
+      reasoningEffort?: string | null
+      enabled?: boolean
+    } = {}
+    if (modelChanged) profile.model = model.trim() || null
+    if (contextChanged) {
+      profile.contextWindowTokens =
+        ctxNum && Number.isFinite(ctxNum) && ctxNum > 0 ? ctxNum : null
+    }
+    if (effortChanged) profile.reasoningEffort = effort.trim().toLowerCase() || null
+    if (showEnabled && enabledChanged) profile.enabled = enabled
+    onComplete(profile)
   }
 
   // Enter on a text field: advance to next, or submit on last.
@@ -75,6 +95,7 @@ export function ModelProfileDialog({
       if (focusedField === -1) {
         if (input === ' ') {
           setEnabled(e => !e)
+          setEnabledChanged(true)
           return
         }
         if (key.return) {
@@ -118,6 +139,9 @@ export function ModelProfileDialog({
     <Box flexDirection="column" gap={1}>
       <Text bold>{title}</Text>
       {!showEnabled && <Text dimColor>Leave blank to use defaults</Text>}
+      {showEnabled && initialEnabledValue === undefined && (
+        <Text dimColor>Leave unchanged to preserve the current setting</Text>
+      )}
       {thinkingDisabled && (
         <Text color="warning">Reasoning effort temporarily disabled (/thinking is off)</Text>
       )}
@@ -129,7 +153,7 @@ export function ModelProfileDialog({
         </Box>
       )}
 
-      {showFields && MAIN_FIELDS.map((label, idx) => {
+      {showFields && MAIN_FIELDS.slice(0, thinkingDisabled ? 2 : 3).map((label, idx) => {
         const isActive = isTerminalFocused && focusedField === idx
         const dimmed = !isActive
 
@@ -141,7 +165,10 @@ export function ModelProfileDialog({
               {idx === 0 ? (
                 <TextInput
                   value={model}
-                  onChange={setModel}
+                  onChange={value => {
+                    setModel(value)
+                    setModelChanged(true)
+                  }}
                   onSubmit={advanceOrSubmit}
                   focus={isActive}
                   showCursor={isActive}
@@ -153,7 +180,10 @@ export function ModelProfileDialog({
               ) : idx === 1 ? (
                 <TextInput
                   value={contextStr}
-                  onChange={(v: string) => setContextStr(v.replace(/[^0-9]/g, ''))}
+                  onChange={(v: string) => {
+                    setContextStr(v.replace(/[^0-9]/g, ''))
+                    setContextChanged(true)
+                  }}
                   onSubmit={advanceOrSubmit}
                   focus={isActive}
                   showCursor={isActive}
@@ -165,7 +195,10 @@ export function ModelProfileDialog({
               ) : (
                 <TextInput
                   value={effort}
-                  onChange={setEffort}
+                  onChange={value => {
+                    setEffort(value)
+                    setEffortChanged(true)
+                  }}
                   onSubmit={handleSubmit}
                   focus={isActive && !thinkingDisabled}
                   showCursor={isActive && !thinkingDisabled}

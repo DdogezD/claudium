@@ -425,13 +425,10 @@ export type EnvContext = {
   isRunningWithBun: boolean
   isCi: boolean
   isClaubbit: boolean
-  isClaudeCodeRemote: boolean
   isLocalAgentMode: boolean
   isConductor: boolean
-  remoteEnvironmentType?: string
   coworkerType?: string
   claudeCodeContainerId?: string
-  claudeCodeRemoteSessionId?: string
   tags?: string
   isGithubAction: boolean
   isClaudeCodeAction: boolean
@@ -593,12 +590,8 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     isRunningWithBun: env.isRunningWithBun(),
     isCi: isEnvTruthy(process.env.CI),
     isClaubbit: isEnvTruthy(process.env.CLAUBBIT),
-    isClaudeCodeRemote: isEnvTruthy(process.env.CLAUDE_CODE_REMOTE),
     isLocalAgentMode: process.env.CLAUDE_CODE_ENTRYPOINT === 'local-agent',
     isConductor: env.isConductor(),
-    ...(process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE && {
-      remoteEnvironmentType: process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE,
-    }),
     // Gated by feature flag to prevent leaking "coworkerType" string in external builds
     ...(feature('COWORKER_TYPE_TELEMETRY')
       ? process.env.CLAUDE_CODE_COWORKER_TYPE
@@ -607,9 +600,6 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
       : {}),
     ...(process.env.CLAUDE_CODE_CONTAINER_ID && {
       claudeCodeContainerId: process.env.CLAUDE_CODE_CONTAINER_ID,
-    }),
-    ...(process.env.CLAUDE_CODE_REMOTE_SESSION_ID && {
-      claudeCodeRemoteSessionId: process.env.CLAUDE_CODE_REMOTE_SESSION_ID,
     }),
     ...(process.env.CLAUDE_CODE_TAGS && {
       tags: process.env.CLAUDE_CODE_TAGS,
@@ -828,7 +818,6 @@ export function to1PEventFormat(
     is_running_with_bun: envContext.isRunningWithBun,
     is_ci: envContext.isCi,
     is_claubbit: envContext.isClaubbit,
-    is_claude_code_remote: envContext.isClaudeCodeRemote,
     is_local_agent_mode: envContext.isLocalAgentMode,
     is_conductor: envContext.isConductor,
     is_github_action: envContext.isGithubAction,
@@ -839,18 +828,12 @@ export function to1PEventFormat(
     deployment_environment: envContext.deploymentEnvironment,
   }
 
-  // Add optional env fields
-  if (envContext.remoteEnvironmentType) {
-    env.remote_environment_type = envContext.remoteEnvironmentType
-  }
+  // Add optional environment fields
   if (feature('COWORKER_TYPE_TELEMETRY') && envContext.coworkerType) {
     env.coworker_type = envContext.coworkerType
   }
   if (envContext.claudeCodeContainerId) {
     env.claude_code_container_id = envContext.claudeCodeContainerId
-  }
-  if (envContext.claudeCodeRemoteSessionId) {
-    env.claude_code_remote_session_id = envContext.claudeCodeRemoteSessionId
   }
   if (envContext.tags) {
     env.tags = envContext.tags

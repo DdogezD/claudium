@@ -1,6 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
-import { DIAMOND_FILLED, DIAMOND_OPEN } from '../../constants/figures.js';
 import { NO_CONTENT_MESSAGE } from '../../constants/messages.js';
 import { Box, Text } from '../../ink.js';
 import { extractTag } from '../../utils/messages.js';
@@ -57,17 +56,6 @@ function IndentedContent(t0) {
   const {
     children
   } = t0;
-  if (children.startsWith(`${DIAMOND_OPEN} `) || children.startsWith(`${DIAMOND_FILLED} `)) {
-    let t1;
-    if ($[0] !== children) {
-      t1 = <CloudLaunchContent>{children}</CloudLaunchContent>;
-      $[0] = children;
-      $[1] = t1;
-    } else {
-      t1 = $[1];
-    }
-    return t1;
-  }
   let t1;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = <Text dimColor={true}>{"  \u23BF  "}</Text>;

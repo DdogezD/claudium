@@ -3,7 +3,6 @@ import { c as _c } from "react/compiler-runtime";
 import { Box, Text } from '../ink.js';
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { computeGlimmerIndex, computeShimmerSegments, SHIMMER_INTERVAL_MS } from '../bridge/bridgeStatusUtil.js';
 import { feature } from 'bun:bundle';
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js';
@@ -368,8 +367,7 @@ function BriefSpinner(t0) {
   const verbWidth = t4;
   let t5;
   if ($[8] !== reducedMotion || $[9] !== showConnWarning || $[10] !== time || $[11] !== verb || $[12] !== verbWidth) {
-    const glimmerIndex = reducedMotion || showConnWarning ? -100 : computeGlimmerIndex(Math.floor(time / SHIMMER_INTERVAL_MS), verbWidth);
-    t5 = computeShimmerSegments(verb, glimmerIndex);
+    t5 = { before: '', shimmer: verb, after: '' };
     $[8] = reducedMotion;
     $[9] = showConnWarning;
     $[10] = time;
@@ -439,10 +437,10 @@ function BriefSpinner(t0) {
 // working/idle/disconnected. See BriefSpinner's comment for the
 // Notifications overlay coupling.
 function _temp6(s_0) {
-  return count(Object.values(s_0.tasks), isBackgroundTask) + s_0.remoteBackgroundTaskCount;
+  return count(Object.values(s_0.tasks), isBackgroundTask);
 }
-function _temp5(s) {
-  return s.remoteConnectionStatus;
+function _temp5() {
+  return null;
 }
 function _temp4() {
   return sample(getSpinnerVerbs()) ?? "Working";
@@ -498,10 +496,10 @@ export function BriefIdleStatus() {
   return t2;
 }
 function _temp8(s_0) {
-  return count(Object.values(s_0.tasks), isBackgroundTask) + s_0.remoteBackgroundTaskCount;
+  return count(Object.values(s_0.tasks), isBackgroundTask);
 }
-function _temp7(s) {
-  return s.remoteConnectionStatus;
+function _temp7() {
+  return null;
 }
 export function Spinner() {
   const $ = _c(8);

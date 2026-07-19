@@ -670,24 +670,18 @@ async function installFromGitHub(
       `Invalid GitHub repository format: ${repo}. Expected format: owner/repo`,
     )
   }
-  // Use HTTPS for CCR (no SSH keys), SSH for normal CLI
-  const gitUrl = isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)
-    ? `https://github.com/${repo}.git`
-    : `git@github.com:${repo}.git`
+  const gitUrl = `git@github.com:${repo}.git`
   return installFromGit(gitUrl, targetPath, ref, sha)
 }
 
 /**
  * Resolve a git-subdir `url` field to a clonable git URL.
- * Accepts GitHub owner/repo shorthand (converted to ssh or https depending on
- * CLAUDE_CODE_REMOTE) or any URL that passes validateGitUrl (https, http,
- * file, git@ ssh).
+ * Accepts GitHub owner/repo shorthand or any URL that passes validateGitUrl
+ * (https, http, file, git@ ssh).
  */
 function resolveGitSubdirUrl(url: string): string {
   if (/^[a-zA-Z0-9-_.]+\/[a-zA-Z0-9-_.]+$/.test(url)) {
-    return isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)
-      ? `https://github.com/${url}.git`
-      : `git@github.com:${url}.git`
+    return `git@github.com:${url}.git`
   }
   return validateGitUrl(url)
 }

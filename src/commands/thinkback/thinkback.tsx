@@ -17,6 +17,7 @@ import { execFileNoThrow } from '../../utils/execFileNoThrow.js';
 import { pathExists } from '../../utils/file.js';
 import { logError } from '../../utils/log.js';
 import { getPlatform } from '../../utils/platform.js';
+import { subprocessEnv } from '../../utils/subprocessEnv.js';
 import { clearAllCaches } from '../../utils/plugins/cacheUtils.js';
 import { isPluginInstalled } from '../../utils/plugins/installedPluginsManager.js';
 import { addMarketplaceSource, clearMarketplacesCache, loadKnownMarketplacesConfig, refreshMarketplace } from '../../utils/plugins/marketplaceManager.js';
@@ -115,7 +116,8 @@ export async function playAnimation(skillDir: string): Promise<{
     await execa('node', [playerPath], {
       stdio: 'inherit',
       cwd: skillDir,
-      reject: false
+      reject: false,
+      env: subprocessEnv(),
     });
   } catch {
     // Animation may have been interrupted (e.g., Ctrl+C)
