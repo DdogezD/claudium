@@ -158,12 +158,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
         message.data.type === 'bash_progress' ||
         message.data.type === 'powershell_progress'
       ) {
-        // Filter bash progress to send only one per minute
-        // Only emit from container sessions for now
-        if (!process.env.CLAUDE_CODE_CONTAINER_ID) {
-          break
-        }
-
+        // Throttle bash progress to one update per 30s per tool
         // Use parentToolUseID as the key since toolUseID changes for each progress message
         const trackingKey = message.parentToolUseID
         const now = Date.now()
