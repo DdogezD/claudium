@@ -46,7 +46,7 @@ function ShowAllProfiles({
   lines.push(`${chalk.bold('Subagent model')}:  ${formatProfileSummary(getModelProfile('subagent'), 'subagent')}`)
   lines.push(`${chalk.bold('Advisor model')}:   ${formatProfileSummary(getModelProfile('advisor'), 'advisor')}`)
   lines.push('')
-  lines.push(`Run ${chalk.bold('/model [model]')} to set the main model. Add ${chalk.bold('[context]')} (e.g. 200000) and ${chalk.bold('[effort]')} (low/medium/high/max) to configure the profile.`)
+  lines.push(`Run ${chalk.bold('/model')} ${chalk.dim('[model] [context] [effort]')} to configure the main model. Run ${chalk.bold('/config')} to configure all models.`)
   onDone(lines.join('\n'))
   return null
 }
@@ -180,7 +180,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
 
   if (COMMON_HELP_ARGS.includes(args)) {
     onDone(
-      'Run /model to view all model profiles, or /model [model] [context] [effort] to configure the main model profile.',
+      'Run /model [model .e.g,my-model-id] [context .e.g,200000/200K] [effort .e.g,max] to configure the main model. Run /config to configure all models',
       { display: 'system' },
     )
     return
