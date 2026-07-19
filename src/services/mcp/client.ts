@@ -94,7 +94,6 @@ import {
   getWebSocketProxyUrl,
 } from '../../utils/proxy.js'
 import { recursivelySanitizeUnicode } from '../../utils/sanitization.js'
-import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
 import { subprocessEnv } from '../../utils/subprocessEnv.js'
 import {
   isPersistError,
@@ -112,6 +111,16 @@ import {
 import { buildMcpToolName } from './mcpStringUtils.js'
 import { normalizeNameForMCP } from './normalization.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
+
+const SAFE_MCP_DEBUG_HEADERS = new Set(['accept', 'content-type', 'user-agent'])
+
+function redactMcpHeaders(
+  headers: Record<string, unknown>,
+): Record<string, unknown> {
+  return mapValues(headers, (value, key) =>
+    SAFE_MCP_DEBUG_HEADERS.has(key.toLowerCase()) ? value : '[REDACTED]',
+  )
+}
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fetchMcpSkillsForClient = feature('MCP_SKILLS')
@@ -612,10 +621,6 @@ export const connectToServer = memoize(
     try {
       let transport
 
-      // If we have the session ingress JWT, we will connect via the session ingress rather than
-      // to remote MCP's directly.
-      const sessionIngressToken = getSessionIngressAuthToken()
-
       if (serverRef.type === 'sse') {
         // Create an auth provider for this server
         const authProvider = new ClaudeAuthProvider(name, serverRef)
@@ -743,23 +748,17 @@ export const connectToServer = memoize(
         const tlsOptions = getWebSocketTLSOptions()
         const wsHeaders = {
           'User-Agent': getMCPUserAgent(),
-          ...(sessionIngressToken && {
-            Authorization: `Bearer ${sessionIngressToken}`,
-          }),
           ...combinedHeaders,
         }
 
         // Redact sensitive headers before logging
-        const wsHeadersForLogging = mapValues(wsHeaders, (value, key) =>
-          key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
-        )
+        const wsHeadersForLogging = redactMcpHeaders(wsHeaders)
 
         logMCPDebug(
           name,
           `WebSocket transport options: ${jsonStringify({
             url: serverRef.url,
             headers: wsHeadersForLogging,
-            hasSessionAuth: !!sessionIngressToken,
           })}`,
         )
 
@@ -804,13 +803,6 @@ export const connectToServer = memoize(
         // Get combined headers (static + dynamic)
         const combinedHeaders = await getMcpServerHeaders(name, serverRef)
 
-        // Check if this server has stored OAuth tokens. If so, the SDK's
-        // authProvider will set Authorization — don't override with the
-        // session ingress token (SDK merges requestInit AFTER authProvider).
-        // CCR proxy URLs (ccr_shttp_mcp) have no stored OAuth, so they still
-        // get the ingress token. See PR #24454 discussion.
-        const hasOAuthTokens = !!(await authProvider.tokens())
-
         // Use the auth provider with StreamableHTTPClientTransport
         const proxyOptions = getProxyFetchOptions()
         logMCPDebug(
@@ -830,21 +822,15 @@ export const connectToServer = memoize(
             ...proxyOptions,
             headers: {
               'User-Agent': getMCPUserAgent(),
-              ...(sessionIngressToken &&
-                !hasOAuthTokens && {
-                  Authorization: `Bearer ${sessionIngressToken}`,
-                }),
               ...combinedHeaders,
-            },
+            }
           },
         }
 
         // Redact sensitive headers before logging
         const headersForLogging = transportOptions.requestInit?.headers
-          ? mapValues(
-              transportOptions.requestInit.headers as Record<string, string>,
-              (value, key) =>
-                key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
+          ? redactMcpHeaders(
+              transportOptions.requestInit.headers as Record<string, unknown>,
             )
           : undefined
 
@@ -949,13 +935,11 @@ export const connectToServer = memoize(
         const finalArgs = process.env.CLAUDE_CODE_SHELL_PREFIX
           ? [[serverRef.command, ...serverRef.args].join(' ')]
           : serverRef.args
+        const stdioEnv = subprocessEnv(serverRef.env)
         transport = new StdioClientTransport({
           command: finalCommand,
           args: finalArgs,
-          env: {
-            ...subprocessEnv(),
-            ...serverRef.env,
-          } as Record<string, string>,
+          env: stdioEnv as Record<string, string>,
           stderr: 'pipe', // prevents error output from the MCP server from printing to the UI
         })
       } else {

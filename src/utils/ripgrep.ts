@@ -9,6 +9,7 @@ import { findExecutable } from './findExecutable.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
 import { countCharInString } from './stringUtils.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 /**
  * Error thrown when ripgrep is not installed / not found on PATH.
@@ -99,6 +100,7 @@ function ripGrepRaw(
       signal: abortSignal,
       timeout,
       killSignal: process.platform === 'win32' ? undefined : 'SIGKILL',
+      env: subprocessEnv(),
     },
     callback,
   )
@@ -119,6 +121,7 @@ async function ripGrepFileCount(
       signal: abortSignal,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'ignore'],
+      env: subprocessEnv(),
     })
 
     let lines = 0
@@ -157,6 +160,7 @@ export async function ripGrepStream(
       signal: abortSignal,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'ignore'],
+      env: subprocessEnv(),
     })
 
     const stripCR = (l: string) => (l.endsWith('\r') ? l.slice(0, -1) : l)

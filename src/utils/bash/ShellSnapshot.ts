@@ -261,6 +261,7 @@ async function getClaudeCodeSnapshotContent(): Promise<string> {
     const cygwinResult = await execa('echo $PATH', {
       shell: true,
       reject: false,
+      env: subprocessEnv(),
     })
     if (cygwinResult.exitCode === 0 && cygwinResult.stdout) {
       pathValue = cygwinResult.stdout.trim()

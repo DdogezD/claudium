@@ -10,6 +10,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { isEnvTruthy, isRunningOnHomespace } from '../utils/envUtils.js'
 import { logError } from '../utils/log.js'
 import { getPlatform } from '../utils/platform.js'
+import { subprocessEnv } from '../utils/subprocessEnv.js'
 
 // Lazy-loaded native audio module. audio-capture.node links against
 // CoreAudio.framework + AudioUnit.framework; dlopen is synchronous and
@@ -84,6 +85,7 @@ function hasCommand(cmd: string): boolean {
   const result = spawnSync(cmd, ['--version'], {
     stdio: 'ignore',
     timeout: 3000,
+    env: subprocessEnv(),
   })
   return result.error === undefined
 }
@@ -115,7 +117,7 @@ function probeArecord(): Promise<ArecordProbeResult> {
         'raw',
         '/dev/null',
       ],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
+      { stdio: ['ignore', 'ignore', 'pipe'], env: subprocessEnv() },
     )
     let stderr = ''
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -285,8 +287,8 @@ export async function requestMicrophonePermission(): Promise<boolean> {
 }
 
 export async function checkRecordingAvailability(): Promise<RecordingAvailability> {
-  // Remote environments have no local microphone
-  if (isRunningOnHomespace() || isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)) {
+  // Homespace environments have no local microphone
+  if (isRunningOnHomespace()) {
     return {
       available: false,
       reason:
@@ -468,6 +470,7 @@ function startSoxRecording(
 
   const child = spawn('rec', args, {
     stdio: ['pipe', 'pipe', 'pipe'],
+    env: subprocessEnv(),
   })
 
   activeRecorder = child
@@ -515,6 +518,7 @@ function startArecordRecording(
 
   const child = spawn('arecord', args, {
     stdio: ['pipe', 'pipe', 'pipe'],
+    env: subprocessEnv(),
   })
 
   activeRecorder = child

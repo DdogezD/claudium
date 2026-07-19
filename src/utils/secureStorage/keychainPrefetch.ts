@@ -29,6 +29,7 @@ import {
   getUsername,
   primeKeychainCacheFromPrefetch,
 } from './macOsKeychainHelpers.js'
+import { subprocessEnv } from '../subprocessEnv.js'
 
 const KEYCHAIN_PREFETCH_TIMEOUT_MS = 10_000
 
@@ -47,7 +48,11 @@ function spawnSecurity(serviceName: string): Promise<SpawnResult> {
     execFile(
       'security',
       ['find-generic-password', '-a', getUsername(), '-w', '-s', serviceName],
-      { encoding: 'utf-8', timeout: KEYCHAIN_PREFETCH_TIMEOUT_MS },
+      {
+        encoding: 'utf-8',
+        timeout: KEYCHAIN_PREFETCH_TIMEOUT_MS,
+        env: subprocessEnv(),
+      },
       (err, stdout) => {
         // Exit 44 (entry not found) is a valid "no key" result and safe to
         // prime as null. But timeout (err.killed) means the keychain MAY have

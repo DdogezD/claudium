@@ -17,6 +17,7 @@ import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { which } from '../which.js'
+import { subprocessEnv } from '../subprocessEnv.js'
 
 export type TerminalInfo = {
   name: string
@@ -484,6 +485,7 @@ function spawnDetached(
       stdio: 'ignore',
       cwd: opts.cwd,
       windowsVerbatimArguments: opts.windowsVerbatimArguments,
+      env: subprocessEnv(),
     })
     child.once('error', err => {
       logForDebugging(`Failed to spawn ${command}: ${err.message}`, {

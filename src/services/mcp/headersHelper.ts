@@ -4,6 +4,7 @@ import { logAntError } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { logError, logMCPDebug, logMCPError } from '../../utils/log.js'
+import { subprocessEnv } from '../../utils/subprocessEnv.js'
 import { jsonParse } from '../../utils/slowOperations.js'
 import { logEvent } from '../analytics-stub.js'
 import type {
@@ -64,7 +65,7 @@ export async function getMcpHeadersFromHelper(
       // Pass server context so one helper script can serve multiple MCP servers
       // (git credential-helper style). See deshaw/anthropic-issues#28.
       env: {
-        ...process.env,
+        ...subprocessEnv(),
         CLAUDE_CODE_MCP_SERVER_NAME: serverName,
         CLAUDE_CODE_MCP_SERVER_URL: config.url,
       },

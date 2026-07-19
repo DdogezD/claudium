@@ -9,6 +9,7 @@ import { basename } from 'path'
 import instances from '../ink/instances.js'
 import { logForDebugging } from './debug.js'
 import { whichSync } from './which.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 function isCommandAvailable(command: string): boolean {
   return !!whichSync(command)
@@ -95,7 +96,11 @@ export function openFileInExternalEditor(
 
   if (guiFamily) {
     const gotoArgv = guiGotoArgv(guiFamily, filePath, line)
-    const detachedOpts: SpawnOptions = { detached: true, stdio: 'ignore' }
+    const detachedOpts: SpawnOptions = {
+      detached: true,
+      stdio: 'ignore',
+      env: subprocessEnv(),
+    }
     let child
     if (process.platform === 'win32') {
       // shell: true on win32 so code.cmd / cursor.cmd / windsurf.cmd resolve —
@@ -129,7 +134,10 @@ export function openFileInExternalEditor(
   const useGotoLine = line && PLUS_N_EDITORS.test(basename(base))
   inkInstance.enterAlternateScreen()
   try {
-    const syncOpts: SpawnSyncOptions = { stdio: 'inherit' }
+    const syncOpts: SpawnSyncOptions = {
+      stdio: 'inherit',
+      env: subprocessEnv(),
+    }
     let result
     if (process.platform === 'win32') {
       // On Windows use shell: true so cmd.exe builtins like `start` resolve.

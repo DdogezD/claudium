@@ -15,6 +15,7 @@
 import { type ChildProcess, spawn } from 'child_process'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { logForDebugging } from '../utils/debug.js'
+import { subprocessEnv } from '../utils/subprocessEnv.js'
 
 // Caffeinate timeout in seconds. Process auto-exits after this duration.
 // We restart it before expiry to maintain continuous sleep prevention.
@@ -127,6 +128,7 @@ function spawnCaffeinate(): void {
       ['-i', '-t', String(CAFFEINATE_TIMEOUT_SECONDS)],
       {
         stdio: 'ignore',
+        env: subprocessEnv(),
       },
     )
 

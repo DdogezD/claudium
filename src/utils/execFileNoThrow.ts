@@ -5,6 +5,7 @@
 import { type ExecaError, execa } from 'execa'
 import { getCwd } from '../utils/cwd.js'
 import { logError } from './log.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 export { execSyncWithDefaults_DEPRECATED } from './execFileNoThrowPortable.js'
 
@@ -37,7 +38,7 @@ export function execFileNoThrow(
     timeout: options.timeout,
     preserveOutputOnError: options.preserveOutputOnError,
     cwd: options.useCwd ? getCwd() : undefined,
-    env: options.env,
+    env: subprocessEnv(options.env),
     stdin: options.stdin,
     input: options.input,
   })
@@ -112,7 +113,7 @@ export function execFileNoThrowWithCwd(
       signal: abortSignal,
       timeout: finalTimeout,
       cwd: finalCwd,
-      env: finalEnv,
+      env: subprocessEnv(finalEnv),
       shell,
       stdin: finalStdin,
       input: finalInput,

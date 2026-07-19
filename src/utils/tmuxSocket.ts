@@ -30,6 +30,7 @@ import { toError } from './errors.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
+import { subprocessEnv } from './subprocessEnv.js'
 
 // Constants for tmux socket management
 const TMUX_COMMAND = 'tmux'
@@ -52,7 +53,7 @@ async function execTmux(
     // we silently fall back to the guessed path and never learn the real
     // server PID. Same root cause as TungstenTool/utils.ts:execTmuxCommand.
     const result = await execFileNoThrow('wsl', ['-e', TMUX_COMMAND, ...args], {
-      env: { ...process.env, WSL_UTF8: '1' },
+      env: { ...subprocessEnv(), WSL_UTF8: '1' },
       ...opts,
     })
     return {
@@ -153,7 +154,7 @@ export async function checkTmuxAvailable(): Promise<boolean> {
     const result =
       getPlatform() === 'windows'
         ? await execFileNoThrow('wsl', ['-e', TMUX_COMMAND, '-V'], {
-            env: { ...process.env, WSL_UTF8: '1' },
+            env: { ...subprocessEnv(), WSL_UTF8: '1' },
             useCwd: false,
           })
         : await execFileNoThrow('which', [TMUX_COMMAND], {
