@@ -16,6 +16,8 @@ import { BashTool } from '../BashTool/BashTool.js'
 import { FileReadTool } from '../FileReadTool/FileReadTool.js'
 import { GrepTool } from '../GrepTool/GrepTool.js'
 import { GlobTool } from '../GlobTool/GlobTool.js'
+import { WebSearchTool } from '../WebSearchTool/WebSearchTool.js'
+import { WebFetchTool } from '../WebFetchTool/WebFetchTool.js'
 import { ListMcpResourcesTool } from '../ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { ReadMcpResourceTool } from '../ReadMcpResourceTool/ReadMcpResourceTool.js'
 
@@ -54,6 +56,8 @@ function getReadOnlyBuiltinTools(): Set<Tool> {
     FileReadTool,
     GrepTool,
     GlobTool,
+    WebSearchTool,
+    WebFetchTool,
     ListMcpResourcesTool,
     ReadMcpResourceTool,
   ])
@@ -64,7 +68,7 @@ function getReadOnlyBuiltinTools(): Set<Tool> {
   return _readOnlyBuiltinTools
 }
 
-const ADVISOR_MAX_TURNS = 50
+const ADVISOR_MAX_TURNS = 200
 
 // ---------------------------------------------------------------------------
 // Context history helper

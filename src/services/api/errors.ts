@@ -151,8 +151,6 @@ export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =
   'Invalid API key · Fix external API key'
 export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
   'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
-export const CCR_AUTH_ERROR_MESSAGE =
-  'Authentication error · This may be a temporary network issue, please try again'
 export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
 export const CAPACITY_OFF_SWITCH_MESSAGE =
   'The service is temporarily unavailable due to capacity. Try again later.'
@@ -184,15 +182,6 @@ export function getRequestTooLargeErrorMessage(): string {
     ? `Request too large (${limits}). Try with a smaller file.`
     : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
 }
-/**
- * Check if we're in CCR (Claudium Remote) mode.
- * In CCR mode, auth is handled via JWTs provided by the infrastructure,
- * not via /login. Transient auth errors should suggest retrying, not logging in.
- */
-function isCCRMode(): boolean {
-  return isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)
-}
-
 // Temp helper to log tool_use/tool_result mismatch errors
 function logToolUseToolResultMismatch(
   toolUseId: string,
@@ -767,14 +756,6 @@ export function getAssistantMessageFromError(
     error instanceof Error &&
     error.message.toLowerCase().includes('x-api-key')
   ) {
-    // In CCR mode, auth is via JWTs - this is likely a transient network issue
-    if (isCCRMode()) {
-      return createAssistantAPIErrorMessage({
-        error: 'authentication_failed',
-        content: CCR_AUTH_ERROR_MESSAGE,
-      })
-    }
-
     // Check if the API key is from an external source
     const { source } = getAnthropicApiKeyWithSource()
     const isExternalSource =
@@ -795,14 +776,6 @@ export function getAssistantMessageFromError(
     error instanceof APIError &&
     (error.status === 401 || error.status === 403)
   ) {
-    // In CCR mode, auth is via JWTs - this is likely a transient network issue
-    if (isCCRMode()) {
-      return createAssistantAPIErrorMessage({
-        error: 'authentication_failed',
-        content: CCR_AUTH_ERROR_MESSAGE,
-      })
-    }
-
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
       content: getIsNonInteractiveSession()

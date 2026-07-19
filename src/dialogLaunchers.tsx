@@ -14,7 +14,6 @@ import { renderAndRun, showSetupDialog } from './interactiveHelpers.js';
 import { KeybindingSetup } from './keybindings/KeybindingProviderSetup.js';
 import type { AppState } from './state/AppStateStore.js';
 import type { AgentMemoryScope } from './tools/AgentTool/agentMemory.js';
-import type { TeleportRemoteResponse } from './utils/conversationRecovery.js';
 import type { FpsMetrics } from './utils/fpsTracker.js';
 import type { ValidationError } from './utils/settings/validation.js';
 
@@ -82,31 +81,6 @@ export async function launchAssistantInstallWizard(root: Root): Promise<string |
   });
   const resultPromise = showSetupDialog<string | null>(root, done => <NewInstallWizard defaultDir={defaultDir} onInstalled={dir => done(dir)} onCancel={() => done(null)} onError={message => rejectWithError(new Error(`Installation failed: ${message}`))} />);
   return Promise.race([resultPromise, errorPromise]);
-}
-
-/**
- * Site ~4549: TeleportResumeWrapper (interactive teleport session picker).
- * Original callback wiring: onComplete={done}, onCancel={() => done(null)}, source="cliArg".
- */
-export async function launchTeleportResumeWrapper(root: Root): Promise<TeleportRemoteResponse | null> {
-  const {
-    TeleportResumeWrapper
-  } = await import('./components/TeleportResumeWrapper.js');
-  return showSetupDialog<TeleportRemoteResponse | null>(root, done => <TeleportResumeWrapper onComplete={done} onCancel={() => done(null)} source="cliArg" />);
-}
-
-/**
- * Site ~4597: TeleportRepoMismatchDialog (pick a local checkout of the target repo).
- * Original callback wiring: onSelectPath={done}, onCancel={() => done(null)}.
- */
-export async function launchTeleportRepoMismatchDialog(root: Root, props: {
-  targetRepo: string;
-  initialPaths: string[];
-}): Promise<string | null> {
-  const {
-    TeleportRepoMismatchDialog
-  } = await import('./components/TeleportRepoMismatchDialog.js');
-  return showSetupDialog<string | null>(root, done => <TeleportRepoMismatchDialog targetRepo={props.targetRepo} initialPaths={props.initialPaths} onSelectPath={done} onCancel={() => done(null)} />);
 }
 
 /**

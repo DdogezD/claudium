@@ -15,6 +15,7 @@ import {
 } from './modelStrings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { getAPIProvider } from './providers.js'
+import { isLegacyModelAlias } from './aliases.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { resolveModelProfileModel } from './modelProfiles.js'
 
@@ -264,6 +265,12 @@ export function parseUserSpecifiedModel(
 ): ModelName {
   const modelInputTrimmed = modelInput.trim()
   const normalizedModel = modelInputTrimmed.toLowerCase()
+
+  if (isLegacyModelAlias(modelInputTrimmed)) {
+    throw new Error(
+      `Legacy model alias '${modelInputTrimmed}' is no longer supported. Configure an explicit provider model ID in modelProfiles.main.model.`,
+    )
+  }
 
   if (process.env.USER_TYPE === 'ant') {
     const antModel = resolveAntModel(

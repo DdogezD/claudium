@@ -13,6 +13,7 @@ import { useInput } from '../ink.js';
 import { useSearchInput } from '../hooks/useSearchInput.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { useSearchHighlight } from '../ink/hooks/use-search-highlight.js';
+import { subprocessEnv } from '../utils/subprocessEnv.js';
 import type { JumpHandle } from '../components/VirtualMessageList.js';
 import { renderMessagesToPlainText } from '../utils/exportRenderer.js';
 import { openFileInExternalEditor } from '../utils/editor.js';
@@ -46,7 +47,6 @@ import { isLocalAgentTask, queuePendingMessage, appendMessageToLocalAgent, type 
 import { registerLeaderToolUseConfirmQueue, unregisterLeaderToolUseConfirmQueue, registerLeaderSetToolPermissionContext, unregisterLeaderSetToolPermissionContext } from '../utils/swarm/leaderPermissionBridge.js';
 import { endInteractionSpan } from '../utils/telemetry-stub.js';
 import { useLogMessages } from '../hooks/useLogMessages.js';
-import { useReplBridge } from '../hooks/useReplBridge.js';
 import { type Command, type CommandResultDisplay, type ResumeEntrypoint, getCommandName, isCommandEnabled } from '../commands.js';
 import type { PromptInputMode, QueuedCommand, VimMode } from '../types/textInputTypes.js';
 import { MessageSelector, selectableUserMessagesFilter, messagesAfterAreOnlySynthetic } from '../components/MessageSelector.js';
@@ -57,12 +57,6 @@ import { PromptDialog } from '../components/hooks/PromptDialog.js';
 import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
-import { useRemoteSession } from '../hooks/useRemoteSession.js';
-import { useDirectConnect } from '../hooks/useDirectConnect.js';
-import type { DirectConnectConfig } from '../server/directConnectManager.js';
-import { useSSHSession } from '../hooks/useSSHSession.js';
-import { useAssistantHistory } from '../hooks/useAssistantHistory.js';
-import type { SSHSession } from '../ssh/createSSHSession.js';
 import { SkillImprovementSurvey } from '../components/SkillImprovementSurvey.js';
 import { useSkillImprovementSurvey } from '../hooks/useSkillImprovementSurvey.js';
 import { useMoreRight } from '../moreright/useMoreRight.js';
@@ -75,7 +69,6 @@ import { startBackgroundHousekeeping } from '../utils/backgroundHousekeeping.js'
 import { getTotalCost, saveCurrentSessionCosts, resetCostState, getStoredSessionCosts } from '../cost-tracker.js';
 import { useCostSummary } from '../costHook.js';
 import { useFpsMetrics } from '../context/fpsMetrics.js';
-import { useAfterFirstRender } from '../hooks/useAfterFirstRender.js';
 import { useDeferredHookMessages } from '../hooks/useDeferredHookMessages.js';
 import { addToHistory, removeLastFromHistory, expandPastedTextRefs, parseReferences } from '../history.js';
 import { prependModeCharacterToInput } from '../components/PromptInput/inputModes.js';
@@ -187,7 +180,6 @@ import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { isBgSession, updateSessionName, updateSessionActivity } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
-import { restoreRemoteAgentTasks } from '../tasks/RemoteAgentTask/RemoteAgentTask.js';
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 // Dead code elimination: conditional import for loop mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -216,7 +208,6 @@ import { handleSpeculationAccept, type ActiveSpeculationState } from '../service
 // import { IdeOnboardingDialog } from '../components/IdeOnboardingDialog.js'; // stripped
 import { EffortCallout, shouldShowEffortCallout } from '../components/EffortCallout.js';
 import type { EffortValue } from '../utils/effort.js';
-import { RemoteCallout } from '../components/RemoteCallout.js';
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const AntModelSwitchCallout = "external" === 'ant' ? require('../components/AntModelSwitchCallout.js').AntModelSwitchCallout : null;
 const shouldShowAntModelSwitch = "external" === 'ant' ? require('../components/AntModelSwitchCallout.js').shouldShowModelSwitchCallout : (): boolean => false;
@@ -238,7 +229,6 @@ import { getTipToShowOnSpinner, recordShownTip } from 'src/services/tips/tipSche
 import type { Theme } from 'src/utils/theme.js';
 import { checkAndDisableBypassPermissionsIfNeeded, checkAndDisableAutoModeIfNeeded, useKickOffCheckAndDisableBypassPermissionsIfNeeded, useKickOffCheckAndDisableAutoModeIfNeeded } from 'src/utils/permissions/bypassPermissionsKillswitch.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
-import { SANDBOX_NETWORK_ACCESS_TOOL_NAME } from 'src/cli/structuredIO.js';
 import { useFileHistorySnapshotInit } from 'src/hooks/useFileHistorySnapshotInit.js';
 import { SandboxPermissionRequest } from 'src/components/permissions/SandboxPermissionRequest.js';
 import { SandboxViolationExpandedView } from 'src/components/SandboxViolationExpandedView.js';
@@ -269,18 +259,12 @@ import type { HookProgress } from '../types/hooks.js';
 import { TungstenLiveMonitor } from '../tools/TungstenTool/TungstenLiveMonitor.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const WebBrowserPanelModule = feature('WEB_BROWSER_TOOL') ? require('../tools/WebBrowserTool/WebBrowserPanel.js') as typeof import('../tools/WebBrowserTool/WebBrowserPanel.js') : null;
-const UltraplanLaunchDialog: typeof import('../components/UltraplanLaunchDialog.js').UltraplanLaunchDialog = feature('ULTRAPLAN') ? require('../components/UltraplanLaunchDialog.js').UltraplanLaunchDialog : () => null;
-const UltraplanChoiceDialog: typeof import('../components/UltraplanChoiceDialog.js').UltraplanChoiceDialog = feature('ULTRAPLAN') ? require('../components/UltraplanChoiceDialog.js').UltraplanChoiceDialog : () => null;
-const launchUltraplan: typeof import('../commands/ultraplan.js').launchUltraplan = feature('ULTRAPLAN') ? require('../commands/ultraplan.js').launchUltraplan : () => Promise.resolve('');
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js';
 import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
 import { CompanionSprite, CompanionFloatingBubble, MIN_COLS_FOR_FULL_SPRITE } from '../buddy/CompanionSprite.js';
 import { DevBar } from '../components/DevBar.js';
 // Session manager removed - using AppState now
-import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
-import { REMOTE_SAFE_COMMANDS } from '../commands.js';
-import type { RemoteMessageContent } from '../utils/teleport/api.js';
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
 import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/fullscreen.js';
 import { AlternateScreen } from '../ink/components/AlternateScreen.js';
@@ -561,12 +545,6 @@ export type Props = {
   disableSlashCommands?: boolean;
   // Task list id: when set, enables tasks mode that watches a task list and auto-processes tasks.
   taskListId?: string;
-  // Remote session config for --remote mode (uses CCR as execution engine)
-  remoteSessionConfig?: RemoteSessionConfig;
-  // Direct connect config for `claude connect` mode (connects to a claude server)
-  directConnectConfig?: DirectConnectConfig;
-  // SSH session for `claude ssh` mode (local REPL, remote tools over ssh)
-  sshSession?: SSHSession;
   // Thinking configuration to use when thinking is enabled
   thinkingConfig: ThinkingConfig;
 };
@@ -593,12 +571,9 @@ export function REPL({
   mainThreadAgentDefinition: initialMainThreadAgentDefinition,
   disableSlashCommands = false,
   taskListId,
-  remoteSessionConfig,
-  directConnectConfig,
-  sshSession,
   thinkingConfig
 }: Props): React.ReactNode {
-  const isRemoteSession = !!remoteSessionConfig;
+  const isRemoteSession = false;
 
   // Env-var gates hoisted to mount-time — isEnvTruthy does toLowerCase+trim+
   // includes, and these were on the render path (hot during PageUp spam).
@@ -636,8 +611,6 @@ export function REPL({
   const tasks = useAppState(s => s.tasks);
   const workerSandboxPermissions = useAppState(s => s.workerSandboxPermissions);
   const elicitation = useAppState(s => s.elicitation);
-  const ultraplanPendingChoice = useAppState(s => s.ultraplanPendingChoice);
-  const ultraplanLaunchPending = useAppState(s => s.ultraplanLaunchPending);
   const viewingAgentTaskId = useAppState(s => s.viewingAgentTaskId);
   const setAppState = useSetAppState();
 
@@ -746,7 +719,6 @@ export function REPL({
     return false;
   });
   const [showEffortCallout, setShowEffortCallout] = useState(() => shouldShowEffortCallout(mainLoopModel));
-  const showRemoteCallout = useAppState(s => s.showRemoteCallout);
   // Desktop upsell removed (Claude Desktop app stripped)
   // notifications
   useModelMigrationNotifications();
@@ -886,10 +858,6 @@ export function REPL({
   const abortControllerRef = useRef<AbortController | null>(null);
   abortControllerRef.current = abortController;
 
-  // Ref for the bridge result callback — set after useReplBridge initializes,
-  // read in the onQuery finally block to notify mobile clients that a turn ended.
-  const sendBridgeResultRef = useRef<() => void>(() => {});
-
   // Ref for the synchronous restore callback — set after restoreMessageSync is
   // defined, read in the onQuery finally block for auto-restore on interrupt.
   const restoreMessageSyncRef = useRef<(m: UserMessage) => void>(() => {});
@@ -926,7 +894,7 @@ export function REPL({
   // background tasks (useSessionBackgrounding). These don't route through
   // onQuery / queryGuard, so they need their own spinner-visibility state.
   // Initialize true if remote mode with initial prompt (CCR processing it).
-  const [isExternalLoading, setIsExternalLoadingRaw] = React.useState(remoteSessionConfig?.hasInitialPrompt ?? false);
+  const [isExternalLoading, setIsExternalLoadingRaw] = React.useState(false);
 
   // Derived: any loading source active. Read-only — no setter. Local query
   // loading is driven by queryGuard (reserve/tryStart/end/cancelReservation),
@@ -1143,11 +1111,6 @@ export function REPL({
     reject: (error: Error) => void;
   }>>([]);
 
-  // Track bridge cleanup functions for sandbox permission requests so the
-  // local dialog handler can cancel the remote prompt when the local user
-  // responds first. Keyed by host to support concurrent same-host requests.
-  const sandboxBridgeCleanupRef = useRef<Map<string, Array<() => void>>>(new Map());
-
   // -- Terminal title management
   // Session title (set via /rename or restored on resume) wins over
   // the agent name, which wins over the Haiku-extracted topic;
@@ -1302,20 +1265,7 @@ export function REPL({
       repinScroll();
     }
   }, [lastMsgIsHuman, lastMsg, repinScroll]);
-  // Assistant-chat: lazy-load remote history on scroll-up. No-op unless
-  // KAIROS build + config.viewerOnly. feature() is build-time constant so
-  // the branch is dead-code-eliminated in non-KAIROS builds (same pattern
-  // as useUnseenDivider above).
-  const {
-    maybeLoadOlder
-  } = feature('KAIROS') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useAssistantHistory({
-    config: remoteSessionConfig,
-    setMessages,
-    scrollRef,
-    onPrepend: shiftDivider
-  }) : HISTORY_STUB;
+  const { maybeLoadOlder } = HISTORY_STUB;
   // Compose useUnseenDivider's callbacks with the lazy-load trigger.
   const composedOnScroll = useCallback((sticky: boolean, handle: ScrollBoxHandle) => {
     lastUserScrollTsRef.current = Date.now();
@@ -1404,50 +1354,16 @@ export function REPL({
     pastedContents: Record<number, PastedContent>;
   } | undefined>();
 
-  // Callback to filter commands based on CCR's available slash commands
-  const handleRemoteInit = useCallback((remoteSlashCommands: string[]) => {
-    const remoteCommandSet = new Set(remoteSlashCommands);
-    // Keep commands that CCR lists OR that are in the local-safe set
-    setLocalCommands(prev => prev.filter(cmd => remoteCommandSet.has(cmd.name) || REMOTE_SAFE_COMMANDS.has(cmd)));
-  }, [setLocalCommands]);
   const [inProgressToolUseIDs, setInProgressToolUseIDs] = useState<Set<string>>(new Set());
   const hasInterruptibleToolInProgressRef = useRef(false);
 
-  // Remote session hook - manages WebSocket connection and message handling for --remote mode
-  const remoteSession = useRemoteSession({
-    config: remoteSessionConfig,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    onInit: handleRemoteInit,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools,
-    setStreamingToolUses,
-    setStreamMode,
-    setInProgressToolUseIDs
-  });
-
-  // Direct connect hook - manages WebSocket to a claude server for `claude connect` mode
-  const directConnect = useDirectConnect({
-    config: directConnectConfig,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools
-  });
-
-  // SSH session hook - manages ssh child process for `claude ssh` mode.
-  // Same callback shape as useDirectConnect; only the transport under the
-  // hood differs (ChildProcess stdin/stdout vs WebSocket).
-  const sshRemote = useSSHSession({
-    session: sshSession,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools
-  });
-
-  // Use whichever remote mode is active
-  const activeRemote = sshRemote.isRemoteMode ? sshRemote : directConnect.isRemoteMode ? directConnect : remoteSession;
+  const activeRemote = {
+    isRemoteMode: false,
+    cancelRequest() {},
+    async sendMessage(_content: unknown, _options?: unknown) {
+      return false;
+    }
+  };
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
   const [submitCount, setSubmitCount] = useState(0);
   // Ref instead of state to avoid triggering React re-renders on every
@@ -1537,16 +1453,6 @@ export function REPL({
   const [isSearchingHistory, setIsSearchingHistory] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
-  // showBashesDialog is REPL-level so it survives PromptInput unmounting.
-  // When ultraplan approval fires while the pill dialog is open, PromptInput
-  // unmounts (focusedInputDialog → 'ultraplan-choice') but this stays true;
-  // after accepting, PromptInput remounts into an empty "No tasks" dialog
-  // (the completed ultraplan task has been filtered out). Close it here.
-  useEffect(() => {
-    if (ultraplanPendingChoice && showBashesDialog) {
-      setShowBashesDialog(false);
-    }
-  }, [ultraplanPendingChoice, showBashesDialog]);
   const isTerminalFocused = useTerminalFocus();
   const terminalFocusRef = useRef(isTerminalFocused);
   terminalFocusRef.current = isTerminalFocused;
@@ -1906,11 +1812,6 @@ export function REPL({
         exitRestoredWorktree();
         restoreWorktreeForResume(log.worktreeSession);
         adoptResumedSessionFile();
-        void restoreRemoteAgentTasks({
-          abortController: new AbortController(),
-          getAppState: () => store.getState(),
-          setAppState
-        });
       } else {
         // Fork: same re-persist as /clear (conversation.ts). The clear
         // above wiped currentSessionWorktree, forkLog doesn't carry it,
@@ -2010,11 +1911,6 @@ export function REPL({
   useEffect(() => {
     if (initialMessages && initialMessages.length > 0) {
       restoreReadFileState(initialMessages, getOriginalCwd());
-      void restoreRemoteAgentTasks({
-        abortController: new AbortController(),
-        getAppState: () => store.getState(),
-        setAppState
-      });
     }
     // Only run on mount - initialMessages shouldn't change during component lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2042,7 +1938,7 @@ export function REPL({
   // Permission and interactive dialogs can show even when toolJSX is set,
   // as long as shouldContinueAnimation is true. This prevents deadlocks when
   // agents set background hints while waiting for user interaction.
-  function getFocusedInputDialog(): 'message-selector' | 'sandbox-permission' | 'tool-permission' | 'prompt' | 'worker-sandbox-permission' | 'elicitation' | 'cost' | 'idle-return' | 'init-onboarding' | 'ide-onboarding' | 'model-switch' | 'undercover-callout' | 'effort-callout' | 'remote-callout' | 'lsp-recommendation' | 'plugin-hint' | 'ultraplan-choice' | 'ultraplan-launch' | undefined {
+  function getFocusedInputDialog(): 'message-selector' | 'sandbox-permission' | 'tool-permission' | 'prompt' | 'worker-sandbox-permission' | 'elicitation' | 'cost' | 'idle-return' | 'init-onboarding' | 'ide-onboarding' | 'model-switch' | 'undercover-callout' | 'effort-callout' | 'lsp-recommendation' | 'plugin-hint' | undefined {
     // Exit states always take precedence
     if (isExiting || exitFlow) return undefined;
 
@@ -2062,8 +1958,6 @@ export function REPL({
     if (allowDialogsWithAnimation && elicitation.queue[0]) return 'elicitation';
     if (allowDialogsWithAnimation && showingCostDialog) return 'cost';
     if (allowDialogsWithAnimation && idleReturnPending) return 'idle-return';
-    if (feature('ULTRAPLAN') && allowDialogsWithAnimation && !isLoading && ultraplanPendingChoice) return 'ultraplan-choice';
-    if (feature('ULTRAPLAN') && allowDialogsWithAnimation && !isLoading && ultraplanLaunchPending) return 'ultraplan-launch';
 
     // Onboarding dialogs (special conditions)
     if (allowDialogsWithAnimation && showIdeOnboarding) return 'ide-onboarding';
@@ -2076,9 +1970,6 @@ export function REPL({
 
     // Effort callout (shown once for Opus 4.6 users when effort is enabled)
     if (allowDialogsWithAnimation && showEffortCallout) return 'effort-callout';
-
-    // Remote callout (shown once before first bridge enable)
-    if (allowDialogsWithAnimation && showRemoteCallout) return 'remote-callout';
 
     // LSP plugin recommendation (lowest priority - non-blocking suggestion)
     if (allowDialogsWithAnimation && lspRecommendation) return 'lsp-recommendation';
@@ -2266,8 +2157,7 @@ export function REPL({
       });
     }
 
-    // Normal flow for non-workers: show local UI and optionally race
-    // against the REPL bridge (Remote Control) if connected.
+    // Normal flow for non-workers: show the local permission UI.
     return new Promise(resolveShouldAllowHost => {
       let resolved = false;
       function resolveOnce(allow: boolean): void {
@@ -2282,48 +2172,6 @@ export function REPL({
         resolvePromise: resolveOnce
       }]);
 
-      // When the REPL bridge is connected, also forward the sandbox
-      // permission request as a can_use_tool control_request so the
-      // remote user (e.g. on claude.ai) can approve it too.
-      if (feature('BRIDGE_MODE')) {
-        const bridgeCallbacks = store.getState().replBridgePermissionCallbacks;
-        if (bridgeCallbacks) {
-          const bridgeRequestId = randomUUID();
-          bridgeCallbacks.sendRequest(bridgeRequestId, SANDBOX_NETWORK_ACCESS_TOOL_NAME, {
-            host: hostPattern.host
-          }, randomUUID(), `Allow network connection to ${hostPattern.host}?`);
-          const unsubscribe = bridgeCallbacks.onResponse(bridgeRequestId, response => {
-            unsubscribe();
-            const allow = response.behavior === 'allow';
-            // Resolve ALL pending requests for the same host, not just
-            // this one — mirrors the local dialog handler pattern.
-            setSandboxPermissionRequestQueue(queue => {
-              queue.filter(item => item.hostPattern.host === hostPattern.host).forEach(item => item.resolvePromise(allow));
-              return queue.filter(item => item.hostPattern.host !== hostPattern.host);
-            });
-            // Clean up all sibling bridge subscriptions for this host
-            // (other concurrent same-host requests) before deleting.
-            const siblingCleanups = sandboxBridgeCleanupRef.current.get(hostPattern.host);
-            if (siblingCleanups) {
-              for (const fn of siblingCleanups) {
-                fn();
-              }
-              sandboxBridgeCleanupRef.current.delete(hostPattern.host);
-            }
-          });
-
-          // Register cleanup so the local dialog handler can cancel
-          // the remote prompt and unsubscribe when the local user
-          // responds first.
-          const cleanup = () => {
-            unsubscribe();
-            bridgeCallbacks.cancelRequest(bridgeRequestId);
-          };
-          const existing = sandboxBridgeCleanupRef.current.get(hostPattern.host) ?? [];
-          existing.push(cleanup);
-          sandboxBridgeCleanupRef.current.set(hostPattern.host, existing);
-        }
-      }
     });
   }, [setAppState, store]);
 
@@ -2947,10 +2795,6 @@ export function REPL({
         resetLoadingState();
         await mrOnTurnComplete(messagesRef.current, abortController.signal.aborted);
 
-        // Notify bridge clients that the turn is complete so mobile apps
-        // can stop the spark animation and show post-turn UI.
-        sendBridgeResultRef.current();
-
         // Auto-hide tungsten panel content at turn end (ant-only), but keep
         // tungstenActiveSession set so the pill stays in the footer and the user
         // can reopen the panel. Background tmux tasks (e.g. /hunter) run for
@@ -3440,7 +3284,7 @@ export function REPL({
       const imageContents = pastedValues.filter(c => c.type === 'image');
       const imagePasteIds = imageContents.length > 0 ? imageContents.map(c => c.id) : undefined;
       let messageContent: string | ContentBlockParam[] = input.trim();
-      let remoteContent: RemoteMessageContent = input.trim();
+      let remoteContent: any = input.trim();
       if (pastedValues.length > 0) {
         const contentBlocks: ContentBlockParam[] = [];
         const remoteBlocks: Array<{
@@ -3560,7 +3404,7 @@ export function REPL({
   // messages array in downstream closures (PromptInput, handleAutoRunIssue).
   // Heap analysis showed ~9 REPL scopes and ~15 messages array versions
   // accumulating after #20174/#20175, all traced to this dep.
-  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, remoteSession, setMessages, awaitPendingHooks, repinScroll]);
+  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, setMessages, awaitPendingHooks, repinScroll]);
 
   // Callback for when user submits input while viewing a teammate's transcript
   const onAgentSubmit = useCallback(async (input: string, task: InProcessTeammateTaskState | LocalAgentTaskState, helpers: PromptInputHelpers) => {
@@ -3644,7 +3488,8 @@ export function REPL({
     // ExitFlow (which calls gracefulShutdown) before exit.tsx is ever loaded.
     if (feature('BG_SESSIONS') && isBgSession()) {
       spawnSync('tmux', ['detach-client'], {
-        stdio: 'ignore'
+        stdio: 'ignore',
+        env: subprocessEnv(),
       });
       setIsExiting(false);
       return;
@@ -3845,14 +3690,6 @@ export function REPL({
   // the case where user resumes a conversation then quites before doing
   // anything else
   useLogMessages(messages, messages.length === initialMessages?.length);
-
-  // REPL Bridge: replicate user/assistant messages to the bridge session
-  // for remote access via claude.ai. No-op in external builds or when not enabled.
-  const {
-    sendBridgeResult
-  } = useReplBridge(messages, setMessages, abortControllerRef, commands, mainLoopModel);
-  sendBridgeResultRef.current = sendBridgeResult;
-  useAfterFirstRender();
 
   // Track prompt queue usage for analytics. Fire once per transition from
   // empty to non-empty, not on every length change -- otherwise a render loop
@@ -4432,9 +4269,7 @@ export function REPL({
       // Its raw useInput handler only stops propagation when a selection
       // exists — without one, ctrl+c falls through to CancelRequestHandler.
       <ScrollKeybindingHandler scrollRef={scrollRef}
-      // Yield wheel/ctrl+u/d to UltraplanChoiceDialog's own scroll
-      // handler while the modal is showing.
-      isActive={focusedInputDialog !== 'ultraplan-choice'}
+      isActive
       // g/G/j/k/ctrl+u/ctrl+d would eat keystrokes the search bar
       // wants. Off while searching.
       isModal={!searchOpen}
@@ -4663,15 +4498,6 @@ export function REPL({
               return queue.filter(item => item.hostPattern.host !== approvedHost);
             });
 
-            // Clean up bridge subscriptions and cancel remote prompts
-            // for this host since the local user already responded.
-            const cleanups = sandboxBridgeCleanupRef.current.get(approvedHost);
-            if (cleanups) {
-              for (const fn of cleanups) {
-                fn();
-              }
-              sandboxBridgeCleanupRef.current.delete(approvedHost);
-            }
           }} />}
                 {focusedInputDialog === 'prompt' && <PromptDialog key={promptQueue[0]!.request.prompt} title={promptQueue[0]!.title} toolInputSummary={promptQueue[0]!.toolInputSummary} request={promptQueue[0]!.request} onRespond={selectedKey => {
             const item = promptQueue[0];
@@ -4834,21 +4660,6 @@ export function REPL({
               }));
             }
           }} />}
-                {focusedInputDialog === 'remote-callout' && <RemoteCallout onDone={selection => {
-            setAppState(prev => {
-              if (!prev.showRemoteCallout) return prev;
-              return {
-                ...prev,
-                showRemoteCallout: false,
-                ...(selection === 'enable' && {
-                  replBridgeEnabled: true,
-                  replBridgeExplicit: true,
-                  replBridgeOutboundOnly: false
-                })
-              };
-            });
-          }} />}
-
                 {exitFlow}
 
                 {focusedInputDialog === 'plugin-hint' && hintRecommendation && <PluginHintMenu pluginName={hintRecommendation.pluginName} pluginDescription={hintRecommendation.pluginDescription} marketplaceName={hintRecommendation.marketplaceName} sourceCommand={hintRecommendation.sourceCommand} onResponse={handleHintResponse} />}
@@ -4857,47 +4668,6 @@ export function REPL({
 
                 {/* Desktop upsell removed (Claude Desktop app stripped) */}
 
-                {feature('ULTRAPLAN') ? focusedInputDialog === 'ultraplan-choice' && ultraplanPendingChoice && <UltraplanChoiceDialog plan={ultraplanPendingChoice.plan} sessionId={ultraplanPendingChoice.sessionId} taskId={ultraplanPendingChoice.taskId} setMessages={setMessages} readFileState={readFileState.current} getAppState={() => store.getState()} setConversationId={setConversationId} /> : null}
-
-                {feature('ULTRAPLAN') ? focusedInputDialog === 'ultraplan-launch' && ultraplanLaunchPending && <UltraplanLaunchDialog onChoice={(choice, opts) => {
-            const blurb = ultraplanLaunchPending.blurb;
-            setAppState(prev => prev.ultraplanLaunchPending ? {
-              ...prev,
-              ultraplanLaunchPending: undefined
-            } : prev);
-            if (choice === 'cancel') return;
-            // Command's onDone used display:'skip', so add the
-            // echo here — gives immediate feedback before the
-            // ~5s teleportToRemote resolves.
-            setMessages(prev => [...prev, createCommandInputMessage(formatCommandInputTags('ultraplan', blurb))]);
-            const appendStdout = (msg: string) => setMessages(prev => [...prev, createCommandInputMessage(`<${LOCAL_COMMAND_STDOUT_TAG}>${escapeXml(msg)}</${LOCAL_COMMAND_STDOUT_TAG}>`)]);
-            // Defer the second message if a query is mid-turn
-            // so it lands after the assistant reply, not
-            // between the user's prompt and the reply.
-            const appendWhenIdle = (msg: string) => {
-              if (!queryGuard.isActive) {
-                appendStdout(msg);
-                return;
-              }
-              const unsub = queryGuard.subscribe(() => {
-                if (queryGuard.isActive) return;
-                unsub();
-                // Skip if the user stopped ultraplan while we
-                // were waiting — avoids a stale "Monitoring
-                // <url>" message for a session that's gone.
-                if (!store.getState().ultraplanSessionUrl) return;
-                appendStdout(msg);
-              });
-            };
-            void launchUltraplan({
-              blurb,
-              getAppState: () => store.getState(),
-              setAppState,
-              signal: createAbortController().signal,
-              disconnectedBridge: opts?.disconnectedBridge,
-              onSessionReady: appendWhenIdle
-            }).then(appendStdout).catch(logError);
-          }} /> : null}
 
                 {mrRender()}
 

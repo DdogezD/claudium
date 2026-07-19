@@ -1,4 +1,4 @@
-import type { EnvironmentKind } from './teleport/environments.js'
+type EnvironmentKind = 'byoc' | 'anthropic_cloud'
 
 /**
  * Get the environment kind from CLAUDE_CODE_ENVIRONMENT_KIND.

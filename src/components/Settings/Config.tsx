@@ -9,13 +9,12 @@ import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.j
 import figures from 'figures';
 import { type GlobalConfig, saveGlobalConfig, getCurrentProjectConfig, type OutputStyle } from '../../utils/config.js';
 import { normalizeApiKeyForConfig } from '../../utils/authPortable.js';
-import { getGlobalConfig, getRemoteControlAtStartup } from '../../utils/config.js';
+import { getGlobalConfig } from '../../utils/config.js';
 import chalk from 'chalk';
 import { permissionModeTitle, permissionModeFromString, toExternalPermissionMode, isExternalPermissionMode, EXTERNAL_PERMISSION_MODES, PERMISSION_MODES, type ExternalPermissionMode, type PermissionMode } from '../../utils/permissions/PermissionMode.js';
 import { getAutoModeEnabledState, hasAutoModeOptInAnySource, transitionPlanAutoMode } from '../../utils/permissions/permissionSetup.js';
 import { logError } from '../../utils/log.js';
 import { logEvent, type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics-stub.js';
-import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { ThemePicker } from '../ThemePicker.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../../state/AppState.js';
 import { ModelPicker } from '../ModelPicker.js';
@@ -26,6 +25,7 @@ import { Select } from '../CustomSelect/index.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
 import { ModelProfileDialog } from './ModelProfileDialog.js';
+import { getAdvisorModel } from '../../utils/advisor.js';
 import { formatProfileSummary, getModelProfile, type ModelScope } from '../../utils/model/modelProfiles.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
@@ -181,8 +181,6 @@ export function Config({
       thinkingEnabled: s_4.thinkingEnabled,
       promptSuggestionEnabled: s_4.promptSuggestionEnabled,
       isBriefOnly: s_4.isBriefOnly,
-      replBridgeEnabled: s_4.replBridgeEnabled,
-      replBridgeOutboundOnly: s_4.replBridgeOutboundOnly,
       settings: s_4.settings
     };
   });
@@ -841,54 +839,7 @@ export function Config({
       onChange() {}
     }];
   })() : []),
-  // Remote at startup toggle — gated on build flag + GrowthBook + policy
-  ...(feature('BRIDGE_MODE') && isBridgeEnabled() ? [{
-    id: 'remoteControlAtStartup',
-    label: 'Enable Remote Control for all sessions',
-    value: globalConfig.remoteControlAtStartup === undefined ? 'default' : String(globalConfig.remoteControlAtStartup),
-    options: ['true', 'false', 'default'],
-    type: 'enum' as const,
-    onChange(selected_0: string) {
-      if (selected_0 === 'default') {
-        // Unset the config key so it falls back to the platform default
-        saveGlobalConfig(current_20 => {
-          if (current_20.remoteControlAtStartup === undefined) return current_20;
-          const next_0 = {
-            ...current_20
-          };
-          delete next_0.remoteControlAtStartup;
-          return next_0;
-        });
-        setGlobalConfig({
-          ...getGlobalConfig(),
-          remoteControlAtStartup: undefined
-        });
-      } else {
-        const enabled_6 = selected_0 === 'true';
-        saveGlobalConfig(current_21 => {
-          if (current_21.remoteControlAtStartup === enabled_6) return current_21;
-          return {
-            ...current_21,
-            remoteControlAtStartup: enabled_6
-          };
-        });
-        setGlobalConfig({
-          ...getGlobalConfig(),
-          remoteControlAtStartup: enabled_6
-        });
-      }
-      // Sync to AppState so useReplBridge reacts immediately
-      const resolved = getRemoteControlAtStartup();
-      setAppState(prev_20 => {
-        if (prev_20.replBridgeEnabled === resolved && !prev_20.replBridgeOutboundOnly) return prev_20;
-        return {
-          ...prev_20,
-          replBridgeEnabled: resolved,
-          replBridgeOutboundOnly: false
-        };
-      });
-    }
-  }] : []), ...(shouldShowExternalIncludesToggle ? [{
+...(shouldShowExternalIncludesToggle ? [{
     id: 'showExternalIncludesDialog',
     label: 'External CLAUDE.md includes',
     value: (() => {
@@ -1070,10 +1021,6 @@ export function Config({
     if (globalConfig.showTurnDuration !== initialConfig.current.showTurnDuration) {
       formattedChanges.push(`${globalConfig.showTurnDuration ? 'Enabled' : 'Disabled'} turn duration`);
     }
-    if (globalConfig.remoteControlAtStartup !== initialConfig.current.remoteControlAtStartup) {
-      const remoteLabel = globalConfig.remoteControlAtStartup === undefined ? 'Reset Remote Control to default' : `${globalConfig.remoteControlAtStartup ? 'Enabled' : 'Disabled'} Remote Control for all sessions`;
-      formattedChanges.push(remoteLabel);
-    }
     // If anything was written to settings (modelProfiles, etc.),
     // push the latest state into AppState so the Logo and other
     // subscribers see the changes immediately.
@@ -1179,8 +1126,6 @@ export function Config({
       thinkingEnabled: ia.thinkingEnabled,
       promptSuggestionEnabled: ia.promptSuggestionEnabled,
       isBriefOnly: ia.isBriefOnly,
-      replBridgeEnabled: ia.replBridgeEnabled,
-      replBridgeOutboundOnly: ia.replBridgeOutboundOnly,
       settings: ia.settings,
       // Reconcile auto-mode state after useAutoModeDuringPlan revert above —
       // the onChange handler may have activated/deactivated auto mid-plan.
@@ -1409,33 +1354,41 @@ export function Config({
         const scope = currentModelProfileScope;
         const profile = getModelProfile(scope);
         const titles: Record<ModelScope, string> = { main: 'Model', subagent: 'Subagent Model', advisor: 'Advisor Model' };
+        const rawAdvisorEnabled = (profile as { enabled?: boolean }).enabled
+        const effectiveAdvisorEnabled =
+          scope === 'advisor'
+            ? rawAdvisorEnabled === true ||
+              (rawAdvisorEnabled !== false && Boolean(getAdvisorModel()))
+            : undefined
         return (
           <>
           <ModelProfileDialog
             title={titles[scope]}
             showEnabled={scope === 'advisor'}
-            initialEnabled={scope === 'advisor' ? (profile as { enabled?: boolean }).enabled : undefined}
+            initialEnabled={effectiveAdvisorEnabled}
+            initialEnabledValue={scope === 'advisor' ? rawAdvisorEnabled : undefined}
             initialModel={profile.model}
             initialContext={profile.contextWindowTokens}
             initialEffort={profile.reasoningEffort}
             thinkingDisabled={scope === 'main' && !thinkingEnabled}
             onComplete={(newProfile) => {
+              const normalizedProfile = Object.fromEntries(
+                Object.entries(newProfile).map(([key, value]) => [
+                  key,
+                  value === null ? undefined : value,
+                ]),
+              ) as typeof newProfile;
+              const mergedProfile = { ...profile, ...normalizedProfile };
               const prevSummary = formatProfileSummary(profile, scope);
-              const newSummary = formatProfileSummary(newProfile, scope);
+              const newSummary = formatProfileSummary(mergedProfile, scope);
               if (prevSummary !== newSummary) {
                 isDirty.current = true;
                 const userProfiles = getSettingsForSource('userSettings')?.modelProfiles ?? {};
-                // Explicitly delete fields the user cleared in the dialog.
-                // If newProfile omits a key that was in userProfiles[scope],
-                // the mergeWith customizer won't delete it — objects are
-                // deep-merged, not replaced.  Set missing keys to undefined
-                // so the customizer's `delete object[key]` path fires.
-                const prevScope = userProfiles[scope] as Record<string, unknown> | undefined;
-                const scopeUpdate: Record<string, any> = { ...newProfile };
-                for (const key of Object.keys(prevScope ?? {})) {
-                  if (!(key in newProfile)) scopeUpdate[key] = undefined;
-                }
-                const updated = { ...userProfiles, [scope]: scopeUpdate };
+                const previousScope = userProfiles[scope] ?? {};
+                const updated = {
+                  ...userProfiles,
+                  [scope]: { ...previousScope, ...normalizedProfile },
+                };
                 updateSettingsForSource('userSettings', { modelProfiles: updated });
                 // When main model profile changes, clear any /model
                 // session override so the new settings take effect.
@@ -1448,18 +1401,17 @@ export function Config({
                 }
                 // For advisor, detect if only the enabled toggle changed.
                 // In that case use boolean format; otherwise show full summary.
-                let displayValue = newSummary
+                let displayValue = newSummary;
                 if (scope === 'advisor' && newProfile.enabled !== undefined) {
-                  const prevEnabled = (profile as { enabled?: boolean }).enabled
-                  // Build a comparison profile with only non-enabled fields.
-                  const prevWithoutEnabled: Record<string, unknown> = { ...profile }
-                  delete prevWithoutEnabled.enabled
-                  const newWithoutEnabled: Record<string, unknown> = { ...newProfile }
-                  delete newWithoutEnabled.enabled
+                  const prevEnabled = (profile as { enabled?: boolean }).enabled;
+                  const prevWithoutEnabled: Record<string, unknown> = { ...profile };
+                  delete prevWithoutEnabled.enabled;
+                  const newWithoutEnabled: Record<string, unknown> = { ...mergedProfile };
+                  delete newWithoutEnabled.enabled;
                   const detailsUnchanged =
-                    JSON.stringify(prevWithoutEnabled) === JSON.stringify(newWithoutEnabled)
-                  if (detailsUnchanged && prevEnabled !== newProfile.enabled) {
-                    displayValue = newProfile.enabled ? 'Enabled' : 'Disabled'
+                    JSON.stringify(prevWithoutEnabled) === JSON.stringify(newWithoutEnabled);
+                  if (detailsUnchanged && prevEnabled !== mergedProfile.enabled) {
+                    displayValue = mergedProfile.enabled ? 'Enabled' : 'Disabled';
                   }
                 }
                 setChanges(prev => ({ ...prev, [titles[scope]]: displayValue }));

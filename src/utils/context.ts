@@ -46,6 +46,7 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
   scope: ModelScope = 'main',
+  contextWindowOverride?: number,
 ): number {
   // Allow override via environment variable
   // This takes precedence over all other context window resolution, including 1M detection,
@@ -58,20 +59,27 @@ export function getContextWindowForModel(
     }
   }
 
-  // User-configured context window from /config is the primary model profile
-  // setting. A global disable still caps extended windows for safety.
-  if (scope) {
-    const profileWindow = resolveModelProfileContext(scope)
-    if (profileWindow) {
-      return is1mContextDisabled() &&
-        profileWindow > MODEL_CONTEXT_WINDOW_DEFAULT
-        ? MODEL_CONTEXT_WINDOW_DEFAULT
-        : profileWindow
-    }
+  // An explicit agent override takes precedence over the scope profile.
+  // Otherwise use the configured profile value. A global disable still caps
+  // extended windows for safety.
+  const configuredWindow =
+    contextWindowOverride && contextWindowOverride > 0
+      ? contextWindowOverride
+      : scope
+        ? resolveModelProfileContext(scope)
+        : undefined
+  const cap = getModelCapability(model)
+  if (configuredWindow) {
+    const cappedWindow =
+      cap?.max_input_tokens && cap.max_input_tokens > 0
+        ? Math.min(configuredWindow, cap.max_input_tokens)
+        : configuredWindow
+    return is1mContextDisabled() && cappedWindow > MODEL_CONTEXT_WINDOW_DEFAULT
+      ? MODEL_CONTEXT_WINDOW_DEFAULT
+      : cappedWindow
   }
 
-  const cap = getModelCapability(model)
-  if (cap?.max_input_tokens && cap.max_input_tokens >= 100_000) {
+  if (cap?.max_input_tokens && cap.max_input_tokens > 0) {
     if (
       cap.max_input_tokens > MODEL_CONTEXT_WINDOW_DEFAULT &&
       is1mContextDisabled()

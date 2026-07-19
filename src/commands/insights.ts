@@ -24,6 +24,7 @@ import { getClaudeConfigHomeDir } from '../utils/envUtils.js'
 import { toError } from '../utils/errors.js'
 import { execFileNoThrow } from '../utils/execFileNoThrow.js'
 import { logError } from '../utils/log.js'
+import { subprocessEnv } from '../utils/subprocessEnv.js'
 import { extractTextContent } from '../utils/messages.js'
 import { getMainLoopModel } from '../utils/model/model.js'
 import {
@@ -3087,6 +3088,7 @@ const usageReport: Command = {
       reportUrl = s3Url
       try {
         execFileSync('ff', ['cp', htmlPath, s3Path], {
+          env: subprocessEnv(),
           timeout: 60000,
           stdio: 'pipe', // Suppress output
         })

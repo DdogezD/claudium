@@ -1,9 +1,5 @@
 import type { UUID } from 'crypto'
 import { getSessionId } from '../../bootstrap/state.js'
-import {
-  getBridgeBaseUrlOverride,
-  getBridgeTokenOverride,
-} from '../../bridge/bridgeConfig.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type {
   LocalJSXCommandContext,
@@ -55,22 +51,6 @@ export async function call(
 
   // Always save the custom title (session name)
   await saveCustomTitle(sessionId, newName, fullPath)
-
-  // Sync title to bridge session on claude.ai/code (best-effort, non-blocking).
-  // v2 env-less bridge stores cse_* in replBridgeSessionId —
-  // updateBridgeSessionTitle retags internally for the compat endpoint.
-  const appState = context.getAppState()
-  const bridgeSessionId = appState.replBridgeSessionId
-  if (bridgeSessionId) {
-    const tokenOverride = getBridgeTokenOverride()
-    void import('../../bridge/createSession.js').then(
-      ({ updateBridgeSessionTitle }) =>
-        updateBridgeSessionTitle(bridgeSessionId, newName, {
-          baseUrl: getBridgeBaseUrlOverride(),
-          getAccessToken: tokenOverride ? () => tokenOverride : undefined,
-        }).catch(() => {}),
-    )
-  }
 
   // Also persist as the session's agent name for prompt-bar display
   await saveAgentName(sessionId, newName, fullPath)

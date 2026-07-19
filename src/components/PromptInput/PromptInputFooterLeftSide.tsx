@@ -5,9 +5,8 @@ import { feature } from 'bun:bundle';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const coordinatorModule = feature('COORDINATOR_MODE') ? require('../../coordinator/coordinatorMode.js') as typeof import('../../coordinator/coordinatorMode.js') : undefined;
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { Box, Text, Link } from '../../ink.js';
+import { Box, Text } from '../../ink.js';
 import * as React from 'react';
-import figures from 'figures';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { VimMode, PromptInputMode } from '../../types/textInputTypes.js';
 import type { ToolPermissionContext } from '../../Tool.js';
@@ -23,8 +22,7 @@ import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { TeamStatus } from '../teams/TeamStatus.js';
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js';
-import { useAppState, useAppStateStore } from 'src/state/AppState.js';
-import { getIsRemoteMode } from '../../bootstrap/state.js';
+import { useAppState } from 'src/state/AppState.js';
 import HistorySearchInput from './HistorySearchInput.js';
 import { usePrStatus } from '../../hooks/usePrStatus.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
@@ -251,10 +249,6 @@ function ModeIndicator({
   const modeCycleShortcut = useShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab');
   const tasks = useAppState(s => s.tasks);
   const teamContext = useAppState(s_0 => s_0.teamContext);
-  // Set once in initialState (main.tsx --remote mode) and never mutated — lazy
-  // init captures the immutable value without a subscription.
-  const store = useAppStateStore();
-  const [remoteSessionUrl] = useState(() => store.getState().remoteSessionUrl);
   const viewSelectionMode = useAppState(s_1 => s_1.viewSelectionMode);
   const viewingAgentTaskId = useAppState(s_2 => s_2.viewingAgentTaskId);
   const expandedView = useAppState(s_3 => s_3.expandedView);
@@ -341,11 +335,7 @@ function ModeIndicator({
   const hasInProcessTeammates = !showSpinnerTree && hasBackgroundTasks && Object.values(tasks).some(t_1 => t_1.type === 'in_process_teammate');
   const hasTeammatePills = hasInProcessTeammates || !showSpinnerTree && isViewingTeammate;
 
-  // In remote mode (`claude assistant`, --teleport) the agent runs elsewhere;
-  // the local permission mode shown here doesn't reflect the agent's state.
-  // Rendered before the tasks pill so a long pill label (e.g. ultraplan URL)
-  // doesn't push the mode indicator off-screen.
-  const modePart = currentMode && hasActiveMode && !getIsRemoteMode() ? <Text color={getModeColor(currentMode)} key="mode">
+  const modePart = currentMode && hasActiveMode ? <Text color={getModeColor(currentMode)} key="mode">
         {permissionModeSymbol(currentMode)}{' '}
         {permissionModeTitle(currentMode).toLowerCase()} on
         {shouldShowModeHint && <Text dimColor>
@@ -357,10 +347,6 @@ function ModeIndicator({
   // Build parts array - exclude BackgroundTaskStatus when we have teammate pills
   // (teammate pills get their own row)
   const parts = [
-  // Remote session indicator
-  ...(remoteSessionUrl ? [<Link url={remoteSessionUrl} key="remote">
-            <Text color="ide">{figures.circleDouble} remote</Text>
-          </Link>] : []),
   // BackgroundTaskStatus is NOT in parts — it renders as a Box sibling so
   // its click-target Box isn't nested inside the <Text wrap="truncate">
   // wrapper (reconciler throws on Box-in-Text).

@@ -120,12 +120,10 @@ export const getSystemContext = memoize(
     const startTime = Date.now()
     logForDiagnosticsNoPII('info', 'system_context_started')
 
-    // Skip git status in CCR (unnecessary overhead on resume) or when git instructions are disabled
-    const gitStatus =
-      isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ||
-      !shouldIncludeGitInstructions()
-        ? null
-        : await getGitStatus()
+    // Skip git status when git instructions are disabled
+    const gitStatus = !shouldIncludeGitInstructions()
+      ? null
+      : await getGitStatus()
 
     // Include system prompt injection if set (for cache breaking, ant-only)
     const injection = feature('BREAK_CACHE_COMMAND')

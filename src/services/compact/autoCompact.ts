@@ -33,6 +33,7 @@ export const DEFAULT_MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 export function getEffectiveContextWindowSize(
   model: string,
   querySource?: string,
+  contextWindowOverride?: number,
 ): number {
   const ctxType = getContextType(querySource)
 
@@ -111,7 +112,12 @@ export function getEffectiveContextWindowSize(
         )
   }
 
-  let contextWindow = getContextWindowForModel(model, getSdkBetas(), ctxType)
+  let contextWindow = getContextWindowForModel(
+    model,
+    getSdkBetas(),
+    ctxType,
+    contextWindowOverride,
+  )
 
   // Apply context-type specific overrides (subagent / advisor)
   // These are applied BEFORE the CLAUDE_CODE_AUTO_COMPACT_WINDOW cap
@@ -298,10 +304,12 @@ const MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3
 export function getAutoCompactThreshold(
   model: string,
   querySource?: string,
+  contextWindowOverride?: number,
 ): number {
   const effectiveContextWindow = getEffectiveContextWindowSize(
     model,
     querySource,
+    contextWindowOverride,
   )
 
   const autocompactBufferTokens = getAutoCompactBufferTokens(querySource)
@@ -327,6 +335,7 @@ export function calculateTokenWarningState(
   tokenUsage: number,
   model: string,
   querySource?: string,
+  contextWindowOverride?: number,
 ): {
   percentLeft: number
   isAboveWarningThreshold: boolean
@@ -334,10 +343,14 @@ export function calculateTokenWarningState(
   isAboveAutoCompactThreshold: boolean
   isAtBlockingLimit: boolean
 } {
-  const autoCompactThreshold = getAutoCompactThreshold(model, querySource)
+  const autoCompactThreshold = getAutoCompactThreshold(
+    model,
+    querySource,
+    contextWindowOverride,
+  )
   const threshold = isAutoCompactEnabled()
     ? autoCompactThreshold
-    : getEffectiveContextWindowSize(model, querySource)
+    : getEffectiveContextWindowSize(model, querySource, contextWindowOverride)
 
   const percentLeft = Math.max(
     0,
@@ -353,7 +366,11 @@ export function calculateTokenWarningState(
   const isAboveAutoCompactThreshold =
     isAutoCompactEnabled() && tokenUsage >= autoCompactThreshold
 
-  const actualContextWindow = getEffectiveContextWindowSize(model, querySource)
+  const actualContextWindow = getEffectiveContextWindowSize(
+    model,
+    querySource,
+    contextWindowOverride,
+  )
   const defaultBlockingLimit =
     actualContextWindow - MANUAL_COMPACT_BUFFER_TOKENS
 
@@ -399,6 +416,7 @@ export async function shouldAutoCompact(
   // pre-snip context, so tokenCountWithEstimation can't see the savings.
   // Subtract the rough-delta that snip already computed.
   snipTokensFreed = 0,
+  contextWindowOverride?: number,
 ): Promise<boolean> {
   // Recursion guards. session_memory and compact are forked agents that
   // would deadlock.
@@ -457,8 +475,16 @@ export async function shouldAutoCompact(
   }
 
   const tokenCount = tokenCountWithEstimation(messages) - snipTokensFreed
-  const threshold = getAutoCompactThreshold(model, querySource)
-  const effectiveWindow = getEffectiveContextWindowSize(model, querySource)
+  const threshold = getAutoCompactThreshold(
+    model,
+    querySource,
+    contextWindowOverride,
+  )
+  const effectiveWindow = getEffectiveContextWindowSize(
+    model,
+    querySource,
+    contextWindowOverride,
+  )
 
   logForDebugging(
     `autocompact: tokens=${tokenCount} threshold=${threshold} effectiveWindow=${effectiveWindow}${snipTokensFreed > 0 ? ` snipFreed=${snipTokensFreed}` : ''}`,
@@ -468,6 +494,7 @@ export async function shouldAutoCompact(
     tokenCount,
     model,
     querySource,
+    contextWindowOverride,
   )
 
   return isAboveAutoCompactThreshold
@@ -505,6 +532,7 @@ export async function autoCompactIfNeeded(
     model,
     querySource,
     snipTokensFreed,
+    toolUseContext.options.contextWindowTokens,
   )
 
   if (!shouldCompact) {
@@ -515,7 +543,11 @@ export async function autoCompactIfNeeded(
     isRecompactionInChain: tracking?.compacted === true,
     turnsSincePreviousCompact: tracking?.turnCounter ?? -1,
     previousCompactTurnId: tracking?.turnId,
-    autoCompactThreshold: getAutoCompactThreshold(model, querySource),
+    autoCompactThreshold: getAutoCompactThreshold(
+      model,
+      querySource,
+      toolUseContext.options.contextWindowTokens,
+    ),
     querySource,
   }
 

@@ -1,7 +1,5 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { isReplBridgeActive } from '../../bootstrap/state.js'
-import { getReplBridgeHandle } from '../../bridge/replBridgeHandle.js'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { findTeammateTaskByAgentId } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
@@ -70,7 +68,7 @@ const inputSchema = lazySchema(() =>
       .string()
       .describe(
         feature('UDS_INBOX')
-          ? 'Recipient: teammate name, "*" for broadcast, "uds:<socket-path>" for a local peer, or "bridge:<session-id>" for a Remote Control peer (use ListPeers to discover)'
+          ? 'Recipient: teammate name, "*" for broadcast, or "uds:<socket-path>" for a local peer'
           : 'Recipient: teammate name, or "*" for broadcast to all teammates',
       ),
     summary: z
@@ -583,21 +581,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     async checkPermissions(input, _context) {
-      if (feature('UDS_INBOX') && parseAddress(input.to).scheme === 'bridge') {
-        return {
-          behavior: 'ask' as const,
-          message: `Send a message to Remote Control session ${input.to}? It arrives as a user prompt on the receiving Claude (possibly another machine) via Anthropic's servers.`,
-          // safetyCheck (not mode) — permissions.ts guards this before both
-          // bypassPermissions (step 1g) and auto-mode's allowlist/classifier.
-          // Cross-machine prompt injection must stay bypass-immune.
-          decisionReason: {
-            type: 'safetyCheck',
-            reason:
-              'Cross-machine bridge message requires explicit user consent',
-            classifierApprovable: false,
-          },
-        }
-      }
       return { behavior: 'allow' as const, updatedInput: input }
     },
 
@@ -611,7 +594,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
       }
       const addr = parseAddress(input.to)
       if (
-        (addr.scheme === 'bridge' || addr.scheme === 'uds') &&
+        addr.scheme === 'uds' &&
         addr.target.trim().length === 0
       ) {
         return {
@@ -627,32 +610,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             'to must be a bare teammate name or "*" — there is only one team per session',
           errorCode: 9,
         }
-      }
-      if (feature('UDS_INBOX') && parseAddress(input.to).scheme === 'bridge') {
-        // Structured-message rejection first — it's the permanent constraint.
-        // Showing "not connected" first would make the user reconnect only to
-        // hit this error on retry.
-        if (typeof input.message !== 'string') {
-          return {
-            result: false,
-            message:
-              'structured messages cannot be sent cross-session — only plain text',
-            errorCode: 9,
-          }
-        }
-        // postInterClaudeMessage derives from= via getReplBridgeHandle() —
-        // check handle directly for the init-timing window. Also check
-        // isReplBridgeActive() to reject outbound-only (CCR mirror) mode
-        // where the bridge is write-only and peer messaging is unsupported.
-        if (!getReplBridgeHandle() || !isReplBridgeActive()) {
-          return {
-            result: false,
-            message:
-              'Remote Control is not connected — cannot send to a bridge: target. Reconnect with /remote-control first.',
-            errorCode: 9,
-          }
-        }
-        return { result: true }
       }
       if (
         feature('UDS_INBOX') &&
@@ -741,37 +698,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     async call(input, context, canUseTool, assistantMessage) {
       if (feature('UDS_INBOX') && typeof input.message === 'string') {
         const addr = parseAddress(input.to)
-        if (addr.scheme === 'bridge') {
-          // Re-check handle — checkPermissions blocks on user approval (can be
-          // minutes). validateInput's check is stale if the bridge dropped
-          // during the prompt wait; without this, from="unknown" ships.
-          // Also re-check isReplBridgeActive for outbound-only mode.
-          if (!getReplBridgeHandle() || !isReplBridgeActive()) {
-            return {
-              data: {
-                success: false,
-                message: `Remote Control disconnected before send — cannot deliver to ${input.to}`,
-              },
-            }
-          }
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const { postInterClaudeMessage } =
-            require('../../bridge/peerSessions.js') as typeof import('../../bridge/peerSessions.js')
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          const result = await postInterClaudeMessage(
-            addr.target,
-            input.message,
-          )
-          const preview = input.summary || truncate(input.message, 50)
-          return {
-            data: {
-              success: result.ok,
-              message: result.ok
-                ? `“${preview}” → ${input.to}`
-                : `Failed to send to ${input.to}: ${result.error ?? 'unknown'}`,
-            },
-          }
-        }
         if (addr.scheme === 'uds') {
           /* eslint-disable @typescript-eslint/no-require-imports */
           const { sendToUdsSocket } =

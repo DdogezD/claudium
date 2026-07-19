@@ -6,6 +6,7 @@ import { ExitFlow } from '../../components/ExitFlow.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { isBgSession } from '../../utils/concurrentSessions.js';
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js';
+import { subprocessEnv } from '../../utils/subprocessEnv.js';
 import { getCurrentWorktreeSession } from '../../utils/worktree.js';
 const GOODBYE_MESSAGES = ['Goodbye!', 'See ya!', 'Bye!', 'Catch you later!'];
 function getRandomGoodbyeMessage(): string {
@@ -18,7 +19,8 @@ export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNo
   if (feature('BG_SESSIONS') && isBgSession()) {
     onDone();
     spawnSync('tmux', ['detach-client'], {
-      stdio: 'ignore'
+      stdio: 'ignore',
+      env: subprocessEnv(),
     });
     return null;
   }

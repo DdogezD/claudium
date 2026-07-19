@@ -6,8 +6,6 @@ import type { DeepImmutable } from 'src/types/utils.js';
 import { truncate } from 'src/utils/format.js';
 import { toInkColor } from 'src/utils/ink.js';
 import { plural } from 'src/utils/stringUtils.js';
-import { DIAMOND_FILLED, DIAMOND_OPEN } from '../../constants/figures.js';
-import { RemoteSessionProgress } from './RemoteSessionProgress.js';
 import { ShellProgress, TaskStatusText } from './ShellProgress.js';
 import { describeTeammateActivity } from './taskStatusUtils.js';
 type Props = {
@@ -52,65 +50,6 @@ export function BackgroundTask(t0) {
           t4 = $[7];
         }
         return t4;
-      }
-    case "remote_agent":
-      {
-        if (task.isRemoteReview) {
-          let t1;
-          if ($[8] !== task) {
-            t1 = <Text><RemoteSessionProgress session={task} /></Text>;
-            $[8] = task;
-            $[9] = t1;
-          } else {
-            t1 = $[9];
-          }
-          return t1;
-        }
-        const running = task.status === "running" || task.status === "pending";
-        const t1 = running ? DIAMOND_OPEN : DIAMOND_FILLED;
-        let t2;
-        if ($[10] !== t1) {
-          t2 = <Text dimColor={true}>{t1} </Text>;
-          $[10] = t1;
-          $[11] = t2;
-        } else {
-          t2 = $[11];
-        }
-        let t3;
-        if ($[12] !== activityLimit || $[13] !== task.title) {
-          t3 = truncate(task.title, activityLimit, true);
-          $[12] = activityLimit;
-          $[13] = task.title;
-          $[14] = t3;
-        } else {
-          t3 = $[14];
-        }
-        let t4;
-        if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-          t4 = <Text dimColor={true}> · </Text>;
-          $[15] = t4;
-        } else {
-          t4 = $[15];
-        }
-        let t5;
-        if ($[16] !== task) {
-          t5 = <RemoteSessionProgress session={task} />;
-          $[16] = task;
-          $[17] = t5;
-        } else {
-          t5 = $[17];
-        }
-        let t6;
-        if ($[18] !== t2 || $[19] !== t3 || $[20] !== t5) {
-          t6 = <Text>{t2}{t3}{t4}{t5}</Text>;
-          $[18] = t2;
-          $[19] = t3;
-          $[20] = t5;
-          $[21] = t6;
-        } else {
-          t6 = $[21];
-        }
-        return t6;
       }
     case "local_agent":
       {

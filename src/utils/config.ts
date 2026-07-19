@@ -35,9 +35,6 @@ import type { ThemeSetting } from './theme.js'
 const teamMemPaths = feature('TEAMMEM')
   ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
   : null
-const ccrAutoConnect = feature('CCR_AUTO_CONNECT')
-  ? (require('../bridge/bridgeEnabled.js') as typeof import('../bridge/bridgeEnabled.js'))
-  : null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { ImageDimensions } from './imageResizer.js'
@@ -130,8 +127,6 @@ export type ProjectConfig = {
     sessionId: string
     hookBased?: boolean
   }
-  /** Spawn mode for `claude remote-control` multi-session. Set by first-run dialog or `w` toggle. */
-  remoteControlSpawnMode?: 'same-dir' | 'worktree'
 }
 
 const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -223,7 +218,6 @@ export type GlobalConfig = {
   primaryApiKey?: string // Primary API key for the user when no environment variable is set, set via oauth (TODO: rename)
   hasAcknowledgedCostThreshold?: boolean
   hasSeenUndercoverAutoNotice?: boolean // ant-only: whether the one-time auto-undercover explainer has been shown
-  hasSeenUltraplanTerms?: boolean // ant-only: whether the one-time CCR terms notice has been shown in the ultraplan launch dialog
   hasResetAutoModeOptInForDefaultOffer?: boolean // ant-only: one-shot migration guard, re-prompts churned auto-mode users
   oauthAccount?: AccountInfo
   iterm2KeyBindingInstalled?: boolean // Legacy - keeping for backward compatibility
@@ -537,10 +531,6 @@ export type GlobalConfig = {
   // Used with tengu_cicada_nap_ms to throttle API calls
   startupPrefetchedAt?: number
 
-  // Run Remote Control at startup (requires BRIDGE_MODE)
-  // undefined = use default (see getRemoteControlAtStartup() for precedence)
-  remoteControlAtStartup?: boolean
-
   // Cached extra usage disabled reason from the last API response
   // undefined = no cache, null = extra usage enabled, string = disabled reason.
   cachedExtraUsageDisabledReason?: string | null
@@ -656,7 +646,6 @@ export const GLOBAL_CONFIG_KEYS = [
   'copyOnSelect',
   'permissionExplainerEnabled',
   'prStatusFooterEnabled',
-  'remoteControlAtStartup',
   'remoteDialogSeen',
 ] as const
 
@@ -1078,21 +1067,6 @@ export function getGlobalConfig(): GlobalConfig {
       getConfig(getGlobalClaudeFile(), createDefaultGlobalConfig),
     )
   }
-}
-
-/**
- * Returns the effective value of remoteControlAtStartup. Precedence:
- *   1. User's explicit config value (always wins — honors opt-out)
- *   2. CCR auto-connect default (ant-only build, GrowthBook-gated)
- *   3. false (Remote Control must be explicitly opted into)
- */
-export function getRemoteControlAtStartup(): boolean {
-  const explicit = getGlobalConfig().remoteControlAtStartup
-  if (explicit !== undefined) return explicit
-  if (feature('CCR_AUTO_CONNECT')) {
-    if (ccrAutoConnect?.getCcrAutoConnectDefault()) return true
-  }
-  return false
 }
 
 export function getCustomApiKeyStatus(
