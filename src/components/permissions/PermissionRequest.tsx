@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
+import { PRODUCT_NAME } from "../../constants/product.js";
 import * as React from 'react';
 import { EnterPlanModeTool } from 'src/tools/EnterPlanModeTool/EnterPlanModeTool.js';
 import { ExitPlanModeV2Tool } from 'src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.js';
@@ -128,18 +129,18 @@ export type ToolUseConfirm<Input extends AnyObject = AnyObject> = {
 function getNotificationMessage(toolUseConfirm: ToolUseConfirm): string {
   const toolName = toolUseConfirm.tool.userFacingName(toolUseConfirm.input as never);
   if (toolUseConfirm.tool === ExitPlanModeV2Tool) {
-    return 'Claudium needs your approval for the plan';
+    return `${PRODUCT_NAME} needs your approval for the plan`;
   }
   if (toolUseConfirm.tool === EnterPlanModeTool) {
-    return 'Claudium wants to enter plan mode';
+    return `${PRODUCT_NAME} wants to enter plan mode`;
   }
   if (feature('REVIEW_ARTIFACT') && toolUseConfirm.tool === ReviewArtifactTool) {
-    return 'Claude needs your approval for a review artifact';
+    return `${PRODUCT_NAME} needs your approval for a review artifact`;
   }
   if (!toolName || toolName.trim() === '') {
-    return 'Claudium needs your attention';
+    return `${PRODUCT_NAME} needs your attention`;
   }
-  return `Claude needs your permission to use ${toolName}`;
+  return `${PRODUCT_NAME} needs your permission to use ${toolName}`;
 }
 
 // TODO: Move this to Tool.renderPermissionRequest

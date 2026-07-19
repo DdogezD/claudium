@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import React from 'react';
+import { PRODUCT_NAME } from '../../constants/product.js';
 import { Markdown } from '../../components/Markdown.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { Box, Text } from '../../ink.js';
@@ -42,7 +43,7 @@ export function renderToolResultMessage(output: Output, _progressMessages: Progr
     const ts = output.sentAt ? formatBriefTimestamp(output.sentAt) : '';
     return <Box flexDirection="column" marginTop={1} paddingLeft={2}>
         <Box flexDirection="row">
-          <Text color="briefLabelClaude">Claude</Text>
+          <Text color="briefLabelClaude">{PRODUCT_NAME}</Text>
           {ts ? <Text dimColor> {ts}</Text> : null}
         </Box>
         <Box flexDirection="column">

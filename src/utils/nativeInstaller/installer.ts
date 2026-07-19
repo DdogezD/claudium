@@ -867,7 +867,7 @@ export async function checkInstall(
       const absoluteTarget = resolve(dirname(dirs.executable), target)
       if (!(await isPossibleClaudeBinary(absoluteTarget))) {
         messages.push({
-          message: `Claude symlink points to missing or invalid binary: ${target}`,
+          message: `${PRODUCT_NAME} symlink points to missing or invalid binary: ${target}`,
           userActionRequired: true,
           type: 'error',
         })
