@@ -1,4 +1,5 @@
 import type { ToolUseContext } from '../../Tool.js'
+import { PRODUCT_NAME } from '../../constants/product.js'
 
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
