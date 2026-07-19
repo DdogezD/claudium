@@ -1,9 +1,9 @@
 /**
  * Permission prompts over channels (Telegram, iMessage, Discord).
  *
- * Mirrors `BridgePermissionCallbacks` — when CC hits a permission dialog,
- * it ALSO sends the prompt via active channels and races the reply against
- * local UI / bridge / hooks / classifier. First resolver wins via claim().
+ * When CC hits a permission dialog, it also sends the prompt via active
+ * channels and races the reply against local UI / hooks / classifier. First
+ * resolver wins via claim().
  *
  * Inbound is a structured event: the server parses the user's "yes tbxkq"
  * reply and emits notifications/claude/channel/permission with
@@ -12,29 +12,21 @@
  * relay content. Servers opt in by declaring
  * capabilities.experimental['claude/channel/permission'].
  *
- * Kenneth's "would this let Claude self-approve?": the approving party is
- * the human via the channel, not Claude. But the trust boundary isn't the
- * terminal — it's the allowlist (tengu_harbor_ledger). A compromised
- * channel server CAN fabricate "yes <id>" without the human seeing the
- * prompt. Accepted risk: a compromised channel already has unlimited
- * conversation-injection turns (social-engineer over time, wait for
- * acceptEdits, etc.); inject-then-self-approve is faster, not more
- * capable. The dialog slows a compromised channel; it doesn't stop one.
- * See PR discussion 2956440848.
+ * The trust boundary is the explicit --channels selection, the declared
+ * channel capabilities, and exact plugin-source identity matching. A
+ * compromised selected channel server can still fabricate an approval, so
+ * permission relay remains an explicit opt-in capability rather than a
+ * general channel-message feature.
  */
 
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics-stub.js'
 
 /**
- * GrowthBook runtime gate — separate from the channels gate (tengu_harbor)
- * so channels can ship without permission-relay riding along (Kenneth: "no
- * bake time if it goes out tomorrow"). Default false; flip without a release.
- * Checked once at useManageMCPConnections mount — mid-session flag changes
- * don't apply until restart.
+ * Local runtime gate for the permission relay. The compile-time channel
+ * feature and explicit server/capability checks remain the outer gates.
  */
 export function isChannelPermissionRelayEnabled(): boolean {
-  return getFeatureValue_CACHED_MAY_BE_STALE('tengu_harbor_permissions', false)
+  return true
 }
 
 export type ChannelPermissionResponse = {
@@ -183,22 +175,25 @@ export function filterPermissionRelayClients<
 >(
   clients: readonly T[],
   isInAllowlist: (name: string) => boolean,
+  isGateApproved: (client: T) => boolean = () => true,
 ): (T & { type: 'connected' })[] {
   return clients.filter(
     (c): c is T & { type: 'connected' } =>
       c.type === 'connected' &&
       isInAllowlist(c.name) &&
-      c.capabilities?.experimental?.['claude/channel'] !== undefined &&
-      c.capabilities?.experimental?.['claude/channel/permission'] !== undefined,
+      isGateApproved(c) &&
+      Boolean(c.capabilities?.experimental?.['claude/channel']) &&
+      Boolean(
+        c.capabilities?.experimental?.['claude/channel/permission'],
+      ),
   )
 }
 
 /**
  * Factory for the callbacks object. The pending Map is closed over — NOT
  * module-level (per src/CLAUDE.md), NOT in AppState (functions-in-state
- * causes issues with equality/serialization). Same lifetime pattern as
- * `replBridgePermissionCallbacks`: constructed once per session inside
- * a React hook, stable reference stored in AppState.
+ * causes issues with equality/serialization). It is constructed once per
+ * session inside a React hook, with the stable reference stored in AppState.
  *
  * resolve() is called from the dedicated notification handler
  * (notifications/claude/channel/permission) with the structured payload.

@@ -21,6 +21,8 @@ export function ModelStep(): ReactNode {
     <WizardDialogLayout subtitle="Select model" footerText={null}>
       <AgentModelInput
         initialModel={wizardData.selectedModel}
+        initialContext={wizardData.selectedModelContext}
+        initialEffort={wizardData.selectedModelEffort}
         onComplete={handleComplete}
         onCancel={goBack}
       />

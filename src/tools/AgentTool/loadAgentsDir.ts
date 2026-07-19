@@ -92,10 +92,7 @@ const AgentJsonSchema = lazySchema(() =>
     initialPrompt: z.string().optional(),
     memory: z.enum(['user', 'project', 'local']).optional(),
     background: z.boolean().optional(),
-    isolation: (process.env.USER_TYPE === 'ant'
-      ? z.enum(['worktree', 'remote'])
-      : z.enum(['worktree'])
-    ).optional(),
+    isolation: z.enum(['worktree']).optional(),
   }),
 )
 
@@ -125,7 +122,7 @@ export type BaseAgentDefinition = {
   background?: boolean // Always run as background task when spawned
   initialPrompt?: string // Prepended to the first user turn (slash commands work)
   memory?: AgentMemoryScope // Persistent memory scope
-  isolation?: 'worktree' | 'remote' // Run in an isolated git worktree, or remotely in CCR (ant-only)
+  isolation?: 'worktree' // Run in an isolated git worktree
   pendingSnapshotUpdate?: { snapshotTimestamp: string }
   /** Omit CLAUDE.md hierarchy from the agent's userContext. Read-only agents
    * (Explore, Plan) don't need commit/PR/lint guidelines — the main agent has
@@ -609,18 +606,21 @@ export function parseAgentFromMarkdown(
       }
     }
 
-    // Parse isolation mode. 'remote' is ant-only; external builds reject it at parse time.
-    type IsolationMode = 'worktree' | 'remote'
-    const VALID_ISOLATION_MODES: readonly IsolationMode[] =
-      process.env.USER_TYPE === 'ant' ? ['worktree', 'remote'] : ['worktree']
+    // Parse the only supported isolation mode. Old remote definitions must be
+    // rejected instead of silently running in the current local directory.
     const isolationRaw = frontmatter['isolation'] as string | undefined
-    let isolation: IsolationMode | undefined
+    let isolation: 'worktree' | undefined
+    if (isolationRaw === 'remote') {
+      throw new Error(
+        `Agent file ${filePath} uses unsupported isolation 'remote'; use 'worktree' instead`,
+      )
+    }
     if (isolationRaw !== undefined) {
-      if (VALID_ISOLATION_MODES.includes(isolationRaw as IsolationMode)) {
-        isolation = isolationRaw as IsolationMode
+      if (isolationRaw === 'worktree') {
+        isolation = isolationRaw
       } else {
         logForDebugging(
-          `Agent file ${filePath} has invalid isolation value '${isolationRaw}'. Valid options: ${VALID_ISOLATION_MODES.join(', ')}`,
+          `Agent file ${filePath} has invalid isolation value '${isolationRaw}'. Valid option: worktree`,
         )
       }
     }

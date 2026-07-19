@@ -1,6 +1,6 @@
 # Claudium
 
-All Anthropic OAuth stripped. All telemetry stripped. All injected security-prompt guardrails removed. All experimental features unlocked. One binary, zero callbacks home.
+Anthropic OAuth and first-party remote control stripped. Telemetry stripped. Injected security-prompt guardrails removed. Supported experimental features are enabled in the Claudium preset. One binary, zero callbacks home.
 
 ### Stable (main branch)
 
@@ -8,7 +8,7 @@ All Anthropic OAuth stripped. All telemetry stripped. All injected security-prom
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-> Checks your system, installs Bun if needed, clones, builds with all features enabled, installs `claudium`, and creates a `claudium-bypass` launcher that starts in bypass permission mode. See [API Configuration](#api-configuration) for API setup.
+> Checks your system, installs Bun if needed, clones, builds the supported Claudium feature preset, installs `claudium`, and creates a `claudium-bypass` launcher that starts in bypass permission mode. See [API Configuration](#api-configuration) for API setup.
 
 ### Dev (bleeding edge)
 
@@ -41,15 +41,15 @@ Eliminates all tracking and remote-control mechanisms present in the original Cl
 
 ### 2. OAuth and Cloud Services Stripped
 
-Unlike the upstream Claude Code, Claudium has no OAuth login, no claude.ai remote sessions, and no cloud provider integration:
+Unlike the upstream Claude Code, Claudium has no first-party OAuth login or claude.ai remote sessions:
 
-- No `/login` command -- authenticating with claude.ai OAuth is removed
-- No remote CCR sessions -- all bridge/remote session code is stripped
+- No `/login` command -- first-party claude.ai OAuth is removed
+- No remote CCR sessions -- bridge, Session Ingress, and remote session code are removed
 - No GrowthBook server-side feature flag dependency
 - No auto-update infrastructure
 - No settings sync to/from cloud
 
-All authentication is done via API keys (see [API Configuration](#api-configuration)).
+Configure credentials for the provider and API endpoint you choose (see [API Configuration](#api-configuration)).
 
 ### 3. OpenAI-compatible API support
 
@@ -74,17 +74,14 @@ Anthropic injects system-level instructions into every conversation that constra
 
 This build strips those injections. The model's own safety training still applies -- this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
 
-### 6. Experimental features enabled
+### 6. Selected experimental features
 
-Claude Code ships with dozens of feature flags gated behind `bun:bundle` compile-time switches. Most are disabled in the public npm release. This build unlocks all 45+ flags that compile cleanly, including:
+Claude Code ships with dozens of feature flags gated behind `bun:bundle` compile-time switches. Claudium enables a selected set that compiles and runs in the supported build presets, including:
 
 | Feature | What it does |
 |---|---|
-| `ULTRAPLAN` | Remote multi-agent planning on Claude Code web (Opus-class) |
-| `ULTRATHINK` | Deep thinking mode -- type "ultrathink" to boost reasoning effort |
 | `VOICE_MODE` | Push-to-talk voice input and dictation |
 | `AGENT_TRIGGERS` | Local cron/trigger tools for background automation |
-| `BRIDGE_MODE` | IDE remote-control bridge (VS Code, JetBrains) |
 | `TOKEN_BUDGET` | Token budget tracking and usage warnings |
 | `BUILTIN_EXPLORE_PLAN_AGENTS` | Built-in explore/plan agent presets |
 | `VERIFICATION_AGENT` | Verification agent for task validation |
@@ -107,7 +104,7 @@ See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their stat
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-This will check your system, install Bun if needed, clone the repo, build the binary `claudium-cli-dev` (with all experimental features enabled), install it as `claudium`, and create a `claudium-bypass` launcher in `~/.local/bin`.
+This will check your system, install Bun if needed, clone the repo, build the supported development binary `claudium-cli-dev`, install it as `claudium`, and create a `claudium-bypass` launcher in `~/.local/bin`.
 
 ---
 
@@ -137,11 +134,11 @@ bun install
 # Standard build -- produces ./claudium-cli
 bun run build
 
-# Dev build -- dev version stamp, experimental GrowthBook key
+# Dev build -- dev version stamp
 bun run build:dev
 
-# Dev build with ALL experimental features enabled -- produces ./claudium-cli-dev
-bun run build:dev:full
+# Dev build with the supported Claudium feature preset -- produces ./claudium-cli-dev
+bun run build:dev:claudium
 
 # Compiled build (alternative output path) -- produces ./dist/claudium-cli
 bun run compile
@@ -153,7 +150,7 @@ bun run compile
 |---|---|---|---|
 | `bun run build` | `./claudium-cli` | `VOICE_MODE` only | Production-like binary |
 | `bun run build:dev` | `./claudium-cli-dev` | `VOICE_MODE` only | Dev version stamp |
-| `bun run build:dev:full` | `./claudium-cli-dev` | All 45+ experimental flags | The full unlock build |
+| `bun run build:dev:claudium` | `./claudium-cli-dev` | Supported Claudium preset | Installer preset; first-party remote and broken flags are excluded |
 | `bun run compile` | `./dist/claudium-cli` | `VOICE_MODE` only | Alternative output directory |
 
 ### Individual feature flags
@@ -161,11 +158,8 @@ bun run compile
 You can enable specific flags without the full bundle:
 
 ```bash
-# Enable just ultraplan and ultrathink
-bun run ./scripts/build.ts --feature=ULTRAPLAN --feature=ULTRATHINK
-
 # Enable a specific flag on top of the dev build
-bun run ./scripts/build.ts --dev --feature=BRIDGE_MODE
+bun run ./scripts/build.ts --dev --feature=VOICE_MODE
 ```
 
 ---
@@ -261,7 +255,6 @@ src/
   utils/                # Utilities
   skills/               # Skill system
   plugins/              # Plugin system
-  bridge/               # IDE bridge
   voice/                # Voice input
   tasks/                # Background task management
 ```
@@ -311,11 +304,8 @@ export CLAUDE_CODE_USE_OPENAI=1
 |---|---|
 | `OPENAI_API_KEY` | API key (required for cloud APIs, optional for local models) |
 | `OPENAI_BASE_URL` | API base URL (default: `https://api.openai.com/v1`) |
-| `OPENAI_MODEL` | Model ID (default: `gpt-4o`) |
+| `OPENAI_MODEL` | Explicit model ID (required) |
 | `OPENAI_API_MODE` | Force transport selection: `chat_completions` or `responses` |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Override which concrete model the `opus` alias resolves to |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Override which concrete model the `sonnet` alias resolves to |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Override which concrete model the `haiku` alias resolves to |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Override max context window size |
 | `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
 | `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |
@@ -378,11 +368,10 @@ compactThreshold = effectiveWindow - bufferTokens
 totalBuffer       = summaryOutputTokens + bufferTokens  (default: 20000 + 13000 = 33000)
 ```
 
-Use `OPENAI_MODEL` when you want to pin the whole session to one exact model. Use `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` when you want aliases such as `opus`, `sonnet`, and `haiku` to resolve to your own provider-specific model IDs.
+Set an explicit provider model ID in `OPENAI_MODEL` or the active model profile. Legacy family aliases such as `opus`, `sonnet`, and `haiku` are rejected; use the provider-specific model ID instead.
 
 #### Transport selection
 
-- Codex aliases such as `codexplan` and `codexspark` also use the unified Responses transport, but through the ChatGPT Codex auth/backend path.
 - Other OpenAI-compatible backends stay on Chat Completions by default for maximum compatibility unless you explicitly select Responses.
 - Official OpenAI requests that include reasoning still use the Responses API.
 - Set `OPENAI_API_MODE=responses` to force `/responses` on providers that support it, or `OPENAI_API_MODE=chat_completions` to force the legacy path.

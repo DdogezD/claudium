@@ -1171,7 +1171,7 @@ export const getClaudeMds = (
           : file.type === 'Local'
             ? " (user's private project instructions, not checked in)"
             : feature('TEAMMEM') && file.type === 'TeamMem'
-              ? ' (shared team memory, synced across the organization)'
+              ? ' (local team memory for this project directory)'
               : file.type === 'AutoMem'
                 ? " (user's auto-memory, persists across conversations)"
                 : " (user's private global instructions for all projects)"
@@ -1179,7 +1179,7 @@ export const getClaudeMds = (
       const content = file.content.trim()
       if (feature('TEAMMEM') && file.type === 'TeamMem') {
         memories.push(
-          `Contents of ${file.path}${description}:\n\n<team-memory-content source="shared">\n${content}\n</team-memory-content>`,
+          `Contents of ${file.path}${description}:\n\n<team-memory-content source="local-team">\n${content}\n</team-memory-content>`,
         )
       } else {
         memories.push(`Contents of ${file.path}${description}:\n\n${content}`)

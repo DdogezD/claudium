@@ -180,11 +180,7 @@ export function useManageMCPConnections(
     if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
       const callbacks = channelPermCallbacksRef.current
       if (!callbacks) return
-      // GrowthBook runtime gate — separate from channels so channels can
-      // ship without this. Checked at mount; mid-session flips need restart.
-      // If off, callbacks never go into AppState → interactiveHandler sees
-      // undefined → never sends → intercept has nothing pending → "yes tbxkq"
-      // flows to Claude as normal chat. One gate, full disable.
+      // Store callbacks only when the local channel feature is compiled in.
       if (!isChannelPermissionRelayEnabled()) return
       setAppState(prev => {
         if (prev.channelPermissionCallbacks === callbacks) return prev
@@ -539,7 +535,7 @@ export function useManageMCPConnections(
                 if (
                   client.capabilities?.experimental?.[
                     'claude/channel/permission'
-                  ] !== undefined
+                  ]
                 ) {
                   client.client.setNotificationHandler(
                     ChannelPermissionNotificationSchema(),
@@ -579,28 +575,14 @@ export function useManageMCPConnections(
                 // blocked. This is the only
                 // user-visible signal (logMCPDebug above requires --debug).
                 // Capability/session skips are expected noise and stay
-                // debug-only. marketplace/allowlist run after session — if
-                // we're here with those kinds, the user asked for it.
+                // debug-only. A source mismatch is actionable only when the
+                // user explicitly selected a channel entry.
                 if (
-                  gate.kind !== 'capability' &&
-                  gate.kind !== 'session' &&
-                  !channelWarnedKindsRef.current.has(gate.kind) &&
-                  (gate.kind === 'marketplace' ||
-                    gate.kind === 'allowlist' ||
-                    entry !== undefined)
+                  gate.kind === 'source' &&
+                  entry !== undefined &&
+                  !channelWarnedKindsRef.current.has(gate.kind)
                 ) {
                   channelWarnedKindsRef.current.add(gate.kind)
-                  // disabled/auth/policy get custom toast copy (shorter, actionable);
-                  // marketplace/allowlist reuse the gate's reason verbatim
-                  // since it already names the mismatch.
-                  const text =
-                    gate.kind === 'disabled'
-                      ? 'Channels are not currently available'
-                      : gate.kind === 'auth'
-                        ? 'Channels require claude.ai authentication · run /login'
-                        : gate.kind === 'policy'
-                          ? 'Channels are not enabled for your org · have an administrator set channelsEnabled: true in managed settings'
-                          : gate.reason
                   addNotification({
                     key: `channels-blocked-${gate.kind}`,
                     priority: 'high',
