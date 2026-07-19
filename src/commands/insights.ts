@@ -378,7 +378,7 @@ const LABEL_MAP: Record<string, string> = {
   wrong_approach: 'Wrong Approach',
   buggy_code: 'Buggy Code',
   user_rejected_action: 'User Rejected Action',
-  claude_got_blocked: 'Claude Got Blocked',
+  claude_got_blocked: `${PRODUCT_NAME} Got Blocked`,
   user_stopped_early: 'User Stopped Early',
   wrong_file_or_location: 'Wrong File/Location',
   excessive_changes: 'Excessive Changes',

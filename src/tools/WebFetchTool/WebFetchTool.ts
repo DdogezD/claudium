@@ -147,7 +147,7 @@ export const WebFetchTool = buildTool({
     if (askRule) {
       return {
         behavior: 'ask',
-        message: `Claude requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
+        message: `${PRODUCT_NAME} requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
         decisionReason: {
           type: 'rule',
           rule: askRule,
@@ -174,7 +174,7 @@ export const WebFetchTool = buildTool({
 
     return {
       behavior: 'ask',
-      message: `Claude requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
+      message: `${PRODUCT_NAME} requested permissions to use ${WebFetchTool.name}, but you haven't granted it yet.`,
       suggestions: buildSuggestions(ruleContent),
     }
   },

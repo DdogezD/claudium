@@ -654,7 +654,7 @@ export async function computeSimpleEnvInfo(
     modelDescription,
     knowledgeCutoffMessage,
     process.env.USER_TYPE === 'ant' && !isUndercover()
-      ? `Claude Code is available as a CLI in the terminal, desktop app (Mac/Windows), web app (claude.ai/code), and IDE extensions (VS Code, JetBrains).`
+      ? `${PRODUCT_NAME} is available as a CLI in the terminal.`
       : null,
   ].filter(item => item !== null)
 

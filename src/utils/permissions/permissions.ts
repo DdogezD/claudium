@@ -205,7 +205,7 @@ export function createPermissionRequestMessage(
   }
 
   // Default message without listing allowed commands
-  const message = `Claude requested permissions to use ${toolName}, but you haven't granted it yet.`
+  const message = `${PRODUCT_NAME} requested permissions to use ${toolName}, but you haven't granted it yet.`
 
   return message
 }
