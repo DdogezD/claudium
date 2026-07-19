@@ -78,7 +78,7 @@ import { isAnalyticsDisabled } from './services/analytics-stub.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './services/analytics-stub.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from './services/analytics-stub.js';
 import { findGitRoot, getIsGit, getWorktreeCount } from './utils/git.js';
-import { launchAssistantInstallWizard, launchAssistantSessionChooser, launchInvalidSettingsDialog, launchResumeChooser, launchSnapshotUpdateDialog } from './dialogLaunchers.js';
+import { launchInvalidSettingsDialog, launchResumeChooser, launchSnapshotUpdateDialog } from './dialogLaunchers.js';
 import { initializeAnalyticsGates } from './services/analytics-stub.js';
 import { getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';

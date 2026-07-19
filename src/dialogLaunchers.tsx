@@ -7,7 +7,6 @@
  * perf/extract-interactive-helpers and perf/launch-repl.
  */
 import React from 'react';
-import type { AssistantSession } from './assistant/sessionDiscovery.js';
 import type { StatsStore } from './context/stats.js';
 import type { Root } from './ink.js';
 import { renderAndRun, showSetupDialog } from './interactiveHelpers.js';
@@ -48,39 +47,6 @@ export async function launchInvalidSettingsDialog(root: Root, props: {
     InvalidSettingsDialog
   } = await import('./components/InvalidSettingsDialog.js');
   return showSetupDialog(root, done => <InvalidSettingsDialog settingsErrors={props.settingsErrors} onContinue={done} onExit={props.onExit} />);
-}
-
-/**
- * Site ~4229: AssistantSessionChooser (pick a bridge session to attach to).
- * Original callback wiring: onSelect={id => done(id)}, onCancel={() => done(null)}.
- */
-export async function launchAssistantSessionChooser(root: Root, props: {
-  sessions: AssistantSession[];
-}): Promise<string | null> {
-  const {
-    AssistantSessionChooser
-  } = await import('./assistant/AssistantSessionChooser.js');
-  return showSetupDialog<string | null>(root, done => <AssistantSessionChooser sessions={props.sessions} onSelect={id => done(id)} onCancel={() => done(null)} />);
-}
-
-/**
- * `claude assistant` found zero sessions — show the same install wizard
- * as `/assistant` when daemon.json is empty. Resolves to the installed dir on
- * success, null on cancel. Rejects on install failure so the caller can
- * distinguish errors from user cancellation.
- */
-export async function launchAssistantInstallWizard(root: Root): Promise<string | null> {
-  const {
-    NewInstallWizard,
-    computeDefaultInstallDir
-  } = await import('./commands/assistant/assistant.js');
-  const defaultDir = await computeDefaultInstallDir();
-  let rejectWithError: (reason: Error) => void;
-  const errorPromise = new Promise<never>((_, reject) => {
-    rejectWithError = reject;
-  });
-  const resultPromise = showSetupDialog<string | null>(root, done => <NewInstallWizard defaultDir={defaultDir} onInstalled={dir => done(dir)} onCancel={() => done(null)} onError={message => rejectWithError(new Error(`Installation failed: ${message}`))} />);
-  return Promise.race([resultPromise, errorPromise]);
 }
 
 /**
