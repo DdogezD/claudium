@@ -64,10 +64,28 @@ export class StreamingToolExecutor {
   /**
    * Discards all pending and in-progress tools. Called when streaming fallback
    * occurs and results from the failed attempt should be abandoned.
-   * Queued tools won't start, and in-progress tools will receive synthetic errors.
+   * Queued tools won't start, in-progress tools will receive synthetic errors.
+   * Idempotent — safe to call multiple times.
    */
   discard(): void {
+    if (this.discarded) return
     this.discarded = true
+    // Best-effort cancellation of running tools.  Set discarded BEFORE
+    // aborting so per-tool abort listeners (which check !this.discarded)
+    // do not propagate streaming_fallback up to the parent query controller.
+    this.siblingAbortController.abort('streaming_fallback')
+    // Remove in-progress IDs owned by this executor so the new executor
+    // doesn't inherit stale state from tools that will never yield.
+    for (const tool of this.tools) {
+      if (tool.status === 'executing') {
+        markToolUseAsComplete(this.toolUseContext, tool.id)
+      }
+    }
+    // Resolve and clear the progress waiter so getRemainingResults() exits.
+    if (this.progressAvailableResolve) {
+      this.progressAvailableResolve()
+      this.progressAvailableResolve = undefined
+    }
   }
 
   /**
@@ -138,7 +156,9 @@ export class StreamingToolExecutor {
    * Process the queue, starting tools when concurrency conditions allow
    */
   private async processQueue(): Promise<void> {
+    if (this.discarded) return
     for (const tool of this.tools) {
+      if (this.discarded) return
       if (tool.status !== 'queued') continue
 
       if (this.canExecuteTool(tool.isConcurrencySafe)) {
@@ -252,6 +272,7 @@ export class StreamingToolExecutor {
   }
 
   private updateInterruptibleState(): void {
+    if (this.discarded) return
     const executing = this.tools.filter(t => t.status === 'executing')
     this.toolUseContext.setHasInterruptibleToolInProgress?.(
       executing.length > 0 &&
@@ -274,6 +295,8 @@ export class StreamingToolExecutor {
       []
 
     const collectResults = async () => {
+      // Don't start executing if the executor was already discarded
+      if (this.discarded) return
       // If already aborted (by error or user), generate synthetic error block instead of running the tool
       const initialAbortReason = this.getAbortReason(tool)
       if (initialAbortReason) {
@@ -456,8 +479,10 @@ export class StreamingToolExecutor {
     }
 
     while (this.hasUnfinishedTools()) {
+      if (this.discarded) return
       await this.processQueue()
 
+      if (this.discarded) return
       for (const result of this.getCompletedResults()) {
         yield result
       }
@@ -481,9 +506,13 @@ export class StreamingToolExecutor {
         if (executingPromises.length > 0) {
           await Promise.race([...executingPromises, progressPromise])
         }
+
+        // Re-check after waking — discard() may have resolved progressPromise
+        if (this.discarded) return
       }
     }
 
+    if (this.discarded) return
     for (const result of this.getCompletedResults()) {
       yield result
     }
