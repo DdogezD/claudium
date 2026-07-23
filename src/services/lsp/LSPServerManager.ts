@@ -57,11 +57,17 @@ export type LSPServerManager = {
  * await manager.shutdown()
  */
 export function createLSPServerManager(): LSPServerManager {
+  // Maximum number of files that may be simultaneously tracked as "open" on
+  // language servers.  When exceeded the least-recently-used file is evicted
+  // (didClose sent to its server) before the new file is opened.
+  const MAX_OPEN_FILES = 50
+
   // Private state managed via closures
   const servers: Map<string, LSPServerInstance> = new Map()
   const extensionMap: Map<string, string[]> = new Map()
-  // Track which files have been opened on which servers (URI -> server name)
-  const openedFiles: Map<string, string> = new Map()
+  // Track which files have been opened on which servers (URI -> {serverName, generation})
+  // Insertion-order Map enables O(1) LRU eviction: the first key is the oldest.
+  const openedFiles: Map<string, { serverName: string; generation: number }> = new Map()
 
   /**
    * Initialize the manager by loading all configured LSP servers.
@@ -267,18 +273,107 @@ export function createLSPServerManager(): LSPServerManager {
     return servers
   }
 
+  /**
+   * Touch an entry in the openedFiles Map to mark it as recently used.
+   * The Map's insertion order drives LRU eviction.
+   */
+  function touch(fileUri: string): void {
+    const record = openedFiles.get(fileUri)
+    if (record) {
+      openedFiles.delete(fileUri)
+      openedFiles.set(fileUri, record)
+    }
+  }
+
+  /**
+   * Evict the least-recently-used opened file.
+   * Sends didClose to the recorded server, then removes the local record.
+   * Returns true on success, false if eviction failed (server healthy but
+   * notification failed).
+   */
+  async function evictLRUEntry(): Promise<boolean> {
+    const firstKey = openedFiles.keys().next().value
+    if (!firstKey) return true // nothing to evict
+    const record = openedFiles.get(firstKey)!
+    const server = servers.get(record.serverName)
+
+    // Server is gone or unhealthy — its state is already lost, safe to
+    // remove the local record.
+    if (!server || !server.isHealthy()) {
+      openedFiles.delete(firstKey)
+      logForDebugging(
+        `LSP: Evicted (server not healthy) ${firstKey}`,
+      )
+      return true
+    }
+
+    try {
+      await server.sendNotification('textDocument/didClose', {
+        textDocument: { uri: firstKey },
+      })
+      openedFiles.delete(firstKey)
+      logForDebugging(
+        `LSP: Evicted (didClose ok) ${firstKey}`,
+      )
+      return true
+    } catch (error) {
+      logError(
+        new Error(
+          `LSP: Eviction didClose failed for ${firstKey}: ${errorMessage(error)}`,
+        ),
+      )
+      // Keep the record — the server may still hold the document.
+      return false
+    }
+  }
+
   async function openFile(filePath: string, content: string): Promise<void> {
     const server = await ensureServerStarted(filePath)
     if (!server) return
 
     const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const existing = openedFiles.get(fileUri)
 
-    // Skip if already opened on this server
-    if (openedFiles.get(fileUri) === server.name) {
+    // Same server, same generation: already tracked, just touch.
+    if (
+      existing &&
+      existing.serverName === server.name &&
+      existing.generation === server.generation
+    ) {
+      touch(fileUri)
       logForDebugging(
-        `LSP: File already open, skipping didOpen for ${filePath}`,
+        `LSP: File already open on ${server.name} (gen ${server.generation}), skipping didOpen for ${filePath}`,
       )
       return
+    }
+
+    // Server restarted (generation changed) or routing changed: close on
+    // the old server before (re)opening.
+    if (existing) {
+      const oldServer = servers.get(existing.serverName)
+      if (oldServer && oldServer.isHealthy()) {
+        try {
+          await oldServer.sendNotification('textDocument/didClose', {
+            textDocument: { uri: fileUri },
+          })
+        } catch (error) {
+          // Best-effort; the old server might already be gone.
+          logForDebugging(
+            `LSP: didClose for server migration/restart failed on ${existing.serverName}: ${errorMessage(error)}`,
+          )
+        }
+      }
+      openedFiles.delete(fileUri)
+    }
+
+    // Evict LRU files until there is room for the new entry.
+    while (openedFiles.size >= MAX_OPEN_FILES) {
+      const ok = await evictLRUEntry()
+      if (!ok) {
+        throw new Error(
+          `LSP: Cannot open ${filePath}: document cap (${MAX_OPEN_FILES}) reached and eviction failed`,
+        )
+      }
     }
 
     // Get language ID from server's extensionToLanguage mapping
@@ -294,17 +389,18 @@ export function createLSPServerManager(): LSPServerManager {
           text: content,
         },
       })
-      // Track that this file is now open on this server
-      openedFiles.set(fileUri, server.name)
+      openedFiles.set(fileUri, {
+        serverName: server.name,
+        generation: server.generation,
+      })
       logForDebugging(
-        `LSP: Sent didOpen for ${filePath} (languageId: ${languageId})`,
+        `LSP: Sent didOpen for ${filePath} (languageId: ${languageId}, server: ${server.name} gen ${server.generation})`,
       )
     } catch (error) {
       const err = new Error(
         `Failed to sync file open ${filePath}: ${errorMessage(error)}`,
       )
       logError(err)
-      // Re-throw to propagate error to caller
       throw err
     }
   }
@@ -316,10 +412,15 @@ export function createLSPServerManager(): LSPServerManager {
     }
 
     const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const existing = openedFiles.get(fileUri)
 
-    // If file hasn't been opened on this server yet, open it first
-    // LSP servers require didOpen before didChange
-    if (openedFiles.get(fileUri) !== server.name) {
+    // If file hasn't been opened on this server yet (or server restarted),
+    // open it first. LSP servers require didOpen before didChange.
+    if (
+      !existing ||
+      existing.serverName !== server.name ||
+      existing.generation !== server.generation
+    ) {
       return openFile(filePath, content)
     }
 
@@ -331,13 +432,14 @@ export function createLSPServerManager(): LSPServerManager {
         },
         contentChanges: [{ text: content }],
       })
+      // Touch LRU order on successful change.
+      touch(fileUri)
       logForDebugging(`LSP: Sent didChange for ${filePath}`)
     } catch (error) {
       const err = new Error(
         `Failed to sync file change ${filePath}: ${errorMessage(error)}`,
       )
       logError(err)
-      // Re-throw to propagate error to caller
       throw err
     }
   }
@@ -362,31 +464,31 @@ export function createLSPServerManager(): LSPServerManager {
         `Failed to sync file save ${filePath}: ${errorMessage(error)}`,
       )
       logError(err)
-      // Re-throw to propagate error to caller
       throw err
     }
   }
 
   /**
-   * Close a file in LSP servers (sends didClose notification)
-   *
-   * NOTE: Currently available but not yet integrated with compact flow.
-   * TODO: Integrate with compact - call closeFile() when compact removes files from context
-   * This will notify LSP servers that files are no longer in active use.
+   * Close a file in LSP servers (sends didClose notification).
+   * Uses the recorded server name (not extension-based routing) so the
+   * notification goes to the same server that received didOpen.
    */
   async function closeFile(filePath: string): Promise<void> {
-    const server = getServerForFile(filePath)
-    if (!server || server.state !== 'running') return
-
     const fileUri = pathToFileURL(path.resolve(filePath)).href
+    const existing = openedFiles.get(fileUri)
+    if (!existing) return
+
+    const server = servers.get(existing.serverName)
+    if (!server || !server.isHealthy()) {
+      // Server is gone — its state is lost, just clean up locally.
+      openedFiles.delete(fileUri)
+      return
+    }
 
     try {
       await server.sendNotification('textDocument/didClose', {
-        textDocument: {
-          uri: fileUri,
-        },
+        textDocument: { uri: fileUri },
       })
-      // Remove from tracking so file can be reopened later
       openedFiles.delete(fileUri)
       logForDebugging(`LSP: Sent didClose for ${filePath}`)
     } catch (error) {
@@ -394,14 +496,22 @@ export function createLSPServerManager(): LSPServerManager {
         `Failed to sync file close ${filePath}: ${errorMessage(error)}`,
       )
       logError(err)
-      // Re-throw to propagate error to caller
       throw err
     }
   }
 
   function isFileOpen(filePath: string): boolean {
     const fileUri = pathToFileURL(path.resolve(filePath)).href
-    return openedFiles.has(fileUri)
+    const existing = openedFiles.get(fileUri)
+    if (!existing) return false
+    const server = servers.get(existing.serverName)
+    // Consider the file "open" only if the server is still running with
+    // the same generation — a restarted server has lost its document state.
+    return (
+      server !== undefined &&
+      server.isHealthy() &&
+      server.generation === existing.generation
+    )
   }
 
   return {

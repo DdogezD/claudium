@@ -43,6 +43,9 @@ export type LSPServerInstance = {
   readonly lastError: Error | undefined
   /** Number of times restart() has been called */
   readonly restartCount: number
+  /** Monotonic counter incremented on every successful start. Used by
+   *  LSPServerManager to detect restarts and invalidate stale didOpen records. */
+  readonly generation: number
   /** Start the server and initialize it */
   start(): Promise<void>
   /** Stop the server gracefully */
@@ -115,6 +118,9 @@ export function createLSPServerInstance(
   let lastError: Error | undefined
   let restartCount = 0
   let crashRecoveryCount = 0
+  // Monotonic counter; incremented on every successful start so the manager
+  // can detect restarts and re-send didOpen.
+  let generation = 0
   // Propagate crash state so ensureServerStarted can restart on next use.
   // Without this, state stays 'running' after crash and the server is never
   // restarted (zombie state).
@@ -250,7 +256,8 @@ export function createLSPServerInstance(
       state = 'running'
       startTime = new Date()
       crashRecoveryCount = 0
-      logForDebugging(`LSP server instance started: ${name}`)
+      generation++
+      logForDebugging(`LSP server instance started: ${name} (gen ${generation})`)
     } catch (error) {
       // Clean up the spawned child process on timeout/error
       client.stop().catch(() => {})
@@ -480,6 +487,9 @@ export function createLSPServerInstance(
     },
     get restartCount() {
       return restartCount
+    },
+    get generation() {
+      return generation
     },
     start,
     stop,
