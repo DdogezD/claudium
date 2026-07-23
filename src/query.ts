@@ -526,6 +526,16 @@ async function* queryLoop(
         consecutiveFailures: 0,
       }
 
+      if (
+        querySource === 'sdk' ||
+        querySource.startsWith('repl_main_thread')
+      ) {
+        const { saveCacheSafeParams } = await import(
+          './utils/forkedAgent.js'
+        )
+        saveCacheSafeParams(null)
+      }
+
       const postCompactMessages = buildPostCompactMessages(compactionResult)
 
       for (const message of postCompactMessages) {
@@ -1142,6 +1152,16 @@ async function* queryLoop(
               (taskBudgetRemaining ?? params.taskBudget.total) -
                 preCompactContext,
             )
+          }
+
+          if (
+            querySource === 'sdk' ||
+            querySource.startsWith('repl_main_thread')
+          ) {
+            const { saveCacheSafeParams } = await import(
+              './utils/forkedAgent.js'
+            )
+            saveCacheSafeParams(null)
           }
 
           const postCompactMessages = buildPostCompactMessages(compacted)

@@ -218,6 +218,8 @@ export function ResumeConversation({
         }
       }
       if (result_3.sessionId && !forkSession) {
+        const { saveCacheSafeParams } = await import('../utils/forkedAgent.js');
+        saveCacheSafeParams(null);
         switchSession(asSessionId(result_3.sessionId), log_0.fullPath ? dirname(log_0.fullPath) : null);
         await renameRecordingForSession();
         await resetSessionFilePointer();

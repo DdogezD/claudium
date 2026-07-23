@@ -73,6 +73,9 @@ export async function clearConversation({
     timeoutMs: sessionEndTimeoutMs,
   })
 
+  const { saveCacheSafeParams } = await import('../../utils/forkedAgent.js')
+  saveCacheSafeParams(null)
+
   // Signal to inference that this conversation's cache can be evicted.
   const lastRequestId = getLastMainRequestId()
   if (lastRequestId) {
