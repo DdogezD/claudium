@@ -24,7 +24,7 @@ import { logForDebugging } from '../debug.js';
 import { isEnvTruthy } from '../envUtils.js';
 import { AbortError, MalformedCommandError } from '../errors.js';
 import { getDisplayPath } from '../file.js';
-import { extractResultText, prepareForkedCommandContext } from '../forkedAgent.js';
+import { extractResultText, prepareForkedCommandContext, saveCacheSafeParams } from '../forkedAgent.js';
 import { getFsImplementation } from '../fsOperations.js';
 import { isFullscreenEnvEnabled } from '../fullscreen.js';
 import { toArray } from '../generators.js';
@@ -697,6 +697,10 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
               // (on toolUseContext) needs no reset: stale entries are inert
               // (UUIDs never repeat, so they're never looked up).
               resetMicrocompactState();
+              const querySource = context.options.querySource;
+              if (!querySource || querySource === 'sdk' || querySource.startsWith('repl_main_thread')) {
+                saveCacheSafeParams(null);
+              }
               return {
                 messages: buildPostCompactMessages(compactionResultWithSlashMessages),
                 shouldQuery: false,
