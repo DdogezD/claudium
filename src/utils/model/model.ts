@@ -24,10 +24,7 @@ export type ModelName = string
 export type ModelSetting = ModelName | null
 
 function getProviderModelEnvironmentVariable(): string | undefined {
-  const value =
-    getAPIProvider() === 'openai'
-      ? process.env.OPENAI_MODEL
-      : process.env.ANTHROPIC_MODEL
+  const value = process.env.ANTHROPIC_MODEL
   const trimmed = value?.trim()
   return trimmed || undefined
 }
@@ -49,11 +46,7 @@ export function getMainLoopModelSetting(): ModelSetting | undefined {
 }
 
 export function getSmallFastModel(): ModelName {
-  const configuredOverride =
-    getAPIProvider() === 'openai'
-      ? process.env.OPENAI_MODEL
-      : process.env.ANTHROPIC_SMALL_FAST_MODEL
-  const providerOverride = configuredOverride?.trim() || undefined
+  const providerOverride = process.env.ANTHROPIC_SMALL_FAST_MODEL?.trim() || undefined
   return applyModelOverride(
     providerOverride ??
       resolveModelProfileModel('subagent') ??
