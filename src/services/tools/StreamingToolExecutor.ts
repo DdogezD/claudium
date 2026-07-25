@@ -75,9 +75,11 @@ export class StreamingToolExecutor {
     // do not propagate streaming_fallback up to the parent query controller.
     this.siblingAbortController.abort('streaming_fallback')
     // Remove in-progress IDs owned by this executor so the new executor
-    // doesn't inherit stale state from tools that will never yield.
+    // doesn't inherit stale state.  Both 'executing' and 'completed' tools
+    // have their IDs registered — and neither will be yielded after discard,
+    // so clean up both.
     for (const tool of this.tools) {
-      if (tool.status === 'executing') {
+      if (tool.status === 'executing' || tool.status === 'completed') {
         markToolUseAsComplete(this.toolUseContext, tool.id)
       }
     }
