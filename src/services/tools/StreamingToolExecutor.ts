@@ -83,6 +83,9 @@ export class StreamingToolExecutor {
         markToolUseAsComplete(this.toolUseContext, tool.id)
       }
     }
+    // Reset interruptible flag — no tools from this executor will run, and
+    // updateInterruptibleState() is a no-op after discarded is set.
+    this.toolUseContext.setHasInterruptibleToolInProgress?.(false)
     // Resolve and clear the progress waiter so getRemainingResults() exits.
     if (this.progressAvailableResolve) {
       this.progressAvailableResolve()

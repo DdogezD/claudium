@@ -55,20 +55,26 @@ function makeAssistantMessage(): AssistantMessage {
   } as any
 }
 
-function makeContext(): ToolUseContext {
+function makeContext(): ToolUseContext & { _ids: Set<string>; _interruptible: boolean } {
   const ids = new Set<string>()
+  let interruptible = false
   return {
     abortController: createAbortController(),
     options: { tools: [], mainLoopModel: 'test' as any },
     messages: [],
     readFileState: new Map() as any,
+    _ids: ids,
+    _interruptible: false,
     setInProgressToolUseIDs: (fn: any) => {
       const next = fn(ids)
       ids.clear()
       for (const id of next) ids.add(id)
       return next
     },
-    setHasInterruptibleToolInProgress: () => {},
+    setHasInterruptibleToolInProgress: (v: boolean) => {
+      interruptible = v
+    },
+    get _interruptible() { return interruptible },
     canUseTool: (() => true) as any,
     getAppState: () => ({} as any),
     setAppState: () => {},
@@ -122,10 +128,14 @@ test('discard does not abort parent query controller', () => {
   expect(ctx.abortController.signal.aborted).toBe(false)
 })
 
-test('discard removes in-progress tool IDs from shared set', () => {
+test('discard removes in-progress tool IDs and clears interruptible flag', () => {
   const ctx = makeContext()
   const block = makeBlock()
+  // Pre-populate the shared ID set as if a tool was running
   ctx.setInProgressToolUseIDs(prev => new Set(prev).add(block.id))
+  ctx.setHasInterruptibleToolInProgress(true)
+  expect(ctx._ids.has(block.id)).toBe(true)
+  expect(ctx._interruptible).toBe(true)
 
   const executor = new StreamingToolExecutor(
     [fakeTool()],
@@ -133,10 +143,12 @@ test('discard removes in-progress tool IDs from shared set', () => {
     ctx,
   )
   executor.addTool(block, makeAssistantMessage())
-
   executor.discard()
 
-  // After discard, getCompletedResults yields nothing
+  // After discard: IDs cleared, interruptible reset
+  expect(ctx._ids.has(block.id)).toBe(false)
+  expect(ctx._interruptible).toBe(false)
+  // getCompletedResults yields nothing
   let count = 0
   for (const _result of executor.getCompletedResults()) {
     count++
