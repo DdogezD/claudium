@@ -66,7 +66,10 @@ function parseModelArgs(raw: string): {
   // Split on whitespace; tolerate multiple spaces
   const parts = raw.split(/\s+/).filter(Boolean)
   if (parts.length === 0 || parts[0] === 'default') {
-    return { model: null }
+    // "default" clears any user override — return undefined so the field
+    // is deleted rather than written as null (null is rejected by
+    // ModelProfileSchema which only accepts string | undefined).
+    return { model: undefined }
   }
 
   const model = parts[0]!
