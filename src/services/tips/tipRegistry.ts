@@ -83,7 +83,7 @@ const externalTips: Tip[] = [
   {
     id: 'new-user-warmup',
     content: async () =>
-      `Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits`,
+      `Start with small features or bug fixes, tell Claudium to propose a plan, and verify its suggested edits`,
     cooldownSessions: 3,
     async isRelevant() {
       const config = getGlobalConfig()
