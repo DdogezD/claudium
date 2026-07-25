@@ -32,6 +32,10 @@ export type LSPClient = {
   initialize: (params: InitializeParams) => Promise<InitializeResult>
   sendRequest: <TResult>(method: string, params: unknown) => Promise<TResult>
   sendNotification: (method: string, params: unknown) => Promise<void>
+  /** Like sendNotification but re-throws on transport failure so the
+   *  caller can react (e.g. refuse to remove a local record when
+   *  didClose was never delivered to the server). */
+  sendNotificationStrict: (method: string, params: unknown) => Promise<void>
   onNotification: (method: string, handler: (params: unknown) => void) => void
   onRequest: <TParams, TResult>(
     method: string,
@@ -333,6 +337,17 @@ export function createLSPClient(
         // Don't re-throw for notifications - they're fire-and-forget
         logForDebugging(`Notification ${method} failed but continuing`)
       }
+    },
+
+    /** Strict variant that re-throws on failure.  Used by the document
+     *  lifecycle manager so it can react when didClose/didOpen cannot
+     *  be delivered. */
+    async sendNotificationStrict(method: string, params: unknown): Promise<void> {
+      if (!connection) {
+        throw new Error('LSP client not started')
+      }
+      checkStartFailed()
+      await connection.sendNotification(method, params)
     },
 
     onNotification(method: string, handler: (params: unknown) => void): void {

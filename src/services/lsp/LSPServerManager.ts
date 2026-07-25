@@ -308,7 +308,7 @@ export function createLSPServerManager(): LSPServerManager {
     }
 
     try {
-      await server.sendNotification('textDocument/didClose', {
+      await server.sendNotificationStrict('textDocument/didClose', {
         textDocument: { uri: firstKey },
       })
       openedFiles.delete(firstKey)
@@ -353,7 +353,7 @@ export function createLSPServerManager(): LSPServerManager {
       const oldServer = servers.get(existing.serverName)
       if (oldServer && oldServer.isHealthy()) {
         try {
-          await oldServer.sendNotification('textDocument/didClose', {
+          await oldServer.sendNotificationStrict('textDocument/didClose', {
             textDocument: { uri: fileUri },
           })
         } catch (error) {
@@ -381,7 +381,7 @@ export function createLSPServerManager(): LSPServerManager {
     const languageId = server.config.extensionToLanguage[ext] || 'plaintext'
 
     try {
-      await server.sendNotification('textDocument/didOpen', {
+      await server.sendNotificationStrict('textDocument/didOpen', {
         textDocument: {
           uri: fileUri,
           languageId,
@@ -425,7 +425,7 @@ export function createLSPServerManager(): LSPServerManager {
     }
 
     try {
-      await server.sendNotification('textDocument/didChange', {
+      await server.sendNotificationStrict('textDocument/didChange', {
         textDocument: {
           uri: fileUri,
           version: 1,
@@ -453,7 +453,7 @@ export function createLSPServerManager(): LSPServerManager {
     if (!server || server.state !== 'running') return
 
     try {
-      await server.sendNotification('textDocument/didSave', {
+      await server.sendNotificationStrict('textDocument/didSave', {
         textDocument: {
           uri: pathToFileURL(path.resolve(filePath)).href,
         },
@@ -486,7 +486,7 @@ export function createLSPServerManager(): LSPServerManager {
     }
 
     try {
-      await server.sendNotification('textDocument/didClose', {
+      await server.sendNotificationStrict('textDocument/didClose', {
         textDocument: { uri: fileUri },
       })
       openedFiles.delete(fileUri)

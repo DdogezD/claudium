@@ -58,6 +58,8 @@ export type LSPServerInstance = {
   sendRequest<T>(method: string, params: unknown): Promise<T>
   /** Send an LSP notification to the server (fire-and-forget) */
   sendNotification(method: string, params: unknown): Promise<void>
+  /** Send an LSP notification that re-throws on transport failure */
+  sendNotificationStrict(method: string, params: unknown): Promise<void>
   /** Register a handler for LSP notifications */
   onNotification(method: string, handler: (params: unknown) => void): void
   /** Register a handler for LSP requests from the server */
@@ -497,6 +499,21 @@ export function createLSPServerInstance(
     isHealthy,
     sendRequest,
     sendNotification,
+    /** Strict variant: checks server health, sends via the client's
+     *  non-swallowing path, and re-throws transport failures so the
+     *  manager can react (e.g. refuse to delete a local record when
+     *  didClose was never delivered to the server). */
+    async sendNotificationStrict(
+      method: string,
+      params: unknown,
+    ): Promise<void> {
+      if (!isHealthy()) {
+        throw new Error(
+          `Cannot send notification to LSP server '${name}': server is ${state}`,
+        )
+      }
+      await client.sendNotificationStrict(method, params)
+    },
     onNotification,
     onRequest,
   }
