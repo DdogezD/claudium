@@ -66,10 +66,8 @@ function parseModelArgs(raw: string): {
   // Split on whitespace; tolerate multiple spaces
   const parts = raw.split(/\s+/).filter(Boolean)
   if (parts.length === 0 || parts[0] === 'default') {
-    // "default" clears any user override — return undefined so the field
-    // is deleted rather than written as null (null is rejected by
-    // ModelProfileSchema which only accepts string | undefined).
-    return { model: undefined }
+    // null signals "delete the model field from the profile"
+    return { model: null }
   }
 
   const model = parts[0]!
@@ -140,20 +138,32 @@ function SetModelAndClose({
         }
       }
 
-      // Build the persisted profile update
+      // Build the persisted profile update.
+      // When the user passes no model arg (empty string) or 'default', we
+      // delete just the model field from the profile while preserving any
+      // context/effort settings that were already there.
       const main: Record<string, unknown> = {}
-      if (model !== undefined) main.model = model
-      if (parsed.contextWindowTokens !== undefined) {
-        main.contextWindowTokens = parsed.contextWindowTokens
+      if (model !== null) {
+        // Explicit model: write it.
+        if (model !== undefined) main.model = model
+        if (parsed.contextWindowTokens !== undefined) {
+          main.contextWindowTokens = parsed.contextWindowTokens
+        }
+        if (parsed.reasoningEffort !== undefined) {
+          main.reasoningEffort = parsed.reasoningEffort
+        }
       }
-      if (parsed.reasoningEffort !== undefined) {
-        main.reasoningEffort = parsed.reasoningEffort
+      // 'default' / empty args: model === null → delete only the model field
+      // from the profile.  mergeWith treats undefined as "delete this key".
+
+      const profiles: Record<string, unknown> = {}
+      if (Object.keys(main).length > 0 || model === null) {
+        profiles.main = model === null ? { model: undefined } : main
       }
 
-      // Persist to user settings
       const result = updateSettingsForSource('userSettings', {
         model: undefined,
-        modelProfiles: { main: Object.keys(main).length > 0 ? main : undefined },
+        modelProfiles: profiles,
       })
       if (result.error) {
         onDone(`Failed to save settings: ${result.error.message}`, { display: 'system' })
