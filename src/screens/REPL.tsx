@@ -1774,6 +1774,11 @@ export function REPL({
       // Reset cost state for clean slate before restoring target session
       resetCostState();
 
+      // Clear the stale cache-safe snapshot before switching sessions
+      // so the old full Message[] history is released.
+      const { saveCacheSafeParams } = await import('../utils/forkedAgent.js');
+      saveCacheSafeParams(null);
+
       // Switch session (id + project dir atomically). fullPath may point to
       // a different project (cross-worktree, /branch); null derives from
       // current originalCwd.
