@@ -480,28 +480,22 @@ export const FileEditTool = buildTool({
     // 5. Write to disk
     writeTextContent(absoluteFilePath, updatedFile, encoding, endings)
 
-    // Notify LSP servers about file modification (didChange) and save (didSave)
+    // Notify LSP servers about file modification (didChange) and save (didSave).
+    // Fire the LSP chain early so it overlaps with local bookkeeping below,
+    // then await before returning so the tool doesn't complete before LSP.
     const lspManager = getLspServerManager()
-    if (lspManager) {
-      // Clear previously delivered diagnostics so new ones will be shown
-      clearDeliveredDiagnosticsForFile(`file://${absoluteFilePath}`)
-      // didChange: Content has been modified
-      lspManager
-        .changeFile(absoluteFilePath, updatedFile)
-        .catch((err: Error) => {
-          logForDebugging(
-            `LSP: Failed to notify server of file change for ${absoluteFilePath}: ${err.message}`,
-          )
-          logError(err)
-        })
-      // didSave: File has been saved to disk (triggers diagnostics in TypeScript server)
-      lspManager.saveFile(absoluteFilePath).catch((err: Error) => {
-        logForDebugging(
-          `LSP: Failed to notify server of file save for ${absoluteFilePath}: ${err.message}`,
-        )
-        logError(err)
-      })
-    }
+    const lspDone = lspManager
+      ? (clearDeliveredDiagnosticsForFile(`file://${absoluteFilePath}`),
+         lspManager
+           .changeFile(absoluteFilePath, updatedFile)
+           .then(() => lspManager.saveFile(absoluteFilePath))
+           .catch((err: Error) => {
+             logForDebugging(
+               `LSP: Failed to sync file for ${absoluteFilePath}: ${err.message}`,
+             )
+             logError(err)
+           }))
+      : undefined
 
     // Notify VSCode about the file change for diff view
     // notifyVscodeFileUpdated removed (VSCode SDK MCP integration stripped)
@@ -531,6 +525,8 @@ export const FileEditTool = buildTool({
       newStringBytes: Buffer.byteLength(new_string, 'utf8'),
       replaceAll: replace_all,
     })
+
+    await lspDone
 
     // 8. Yield result
     const data = {

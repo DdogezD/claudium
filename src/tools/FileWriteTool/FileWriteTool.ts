@@ -290,26 +290,21 @@ export const FileWriteTool = buildTool({
     // overwriting a CRLF file or when binaries in cwd poisoned the repo sample.
     writeTextContent(fullFilePath, content, enc, 'LF')
 
-    // Notify LSP servers about file modification (didChange) and save (didSave)
+    // Fire the LSP chain early so it overlaps with local bookkeeping,
+    // then await before either return path.
     const lspManager = getLspServerManager()
-    if (lspManager) {
-      // Clear previously delivered diagnostics so new ones will be shown
-      clearDeliveredDiagnosticsForFile(`file://${fullFilePath}`)
-      // didChange: Content has been modified
-      lspManager.changeFile(fullFilePath, content).catch((err: Error) => {
-        logForDebugging(
-          `LSP: Failed to notify server of file change for ${fullFilePath}: ${err.message}`,
-        )
-        logError(err)
-      })
-      // didSave: File has been saved to disk (triggers diagnostics in TypeScript server)
-      lspManager.saveFile(fullFilePath).catch((err: Error) => {
-        logForDebugging(
-          `LSP: Failed to notify server of file save for ${fullFilePath}: ${err.message}`,
-        )
-        logError(err)
-      })
-    }
+    const lspDone = lspManager
+      ? (clearDeliveredDiagnosticsForFile(`file://${fullFilePath}`),
+         lspManager
+           .changeFile(fullFilePath, content)
+           .then(() => lspManager.saveFile(fullFilePath))
+           .catch((err: Error) => {
+             logForDebugging(
+               `LSP: Failed to sync file for ${fullFilePath}: ${err.message}`,
+             )
+             logError(err)
+           }))
+      : undefined
 
     // Notify VSCode about the file change for diff view
     // notifyVscodeFileUpdated removed (VSCode SDK MCP integration stripped)
@@ -326,6 +321,8 @@ export const FileWriteTool = buildTool({
     if (fullFilePath.endsWith(`${sep}CLAUDE.md`)) {
       logEvent('tengu_write_claudemd', {})
     }
+
+    await lspDone
 
     if (oldContent) {
       const patch = getPatchForDisplay({
