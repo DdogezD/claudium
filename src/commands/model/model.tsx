@@ -160,10 +160,11 @@ function SetModelAndClose({
         return
       }
 
-      // Apply to current session
+      // Apply to current session.  Use null (not undefined) — AppState
+      // model fields have type ModelSetting = string | null.
       setAppState(prev => ({
         ...prev,
-        mainLoopModel: model,
+        mainLoopModel: model ?? null,
       }))
 
       // Build success message
