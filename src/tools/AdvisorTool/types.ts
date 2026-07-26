@@ -50,12 +50,6 @@ export interface SearchResponse {
 
 export type AppendResult = 'full' | 'partial' | 'none'
 
-export type CachedSnapshot = {
-  fingerprint: string
-  entries: ConversationEntry[]
-  index: SearchIndex
-}
-
 export interface AdvisorRunResult {
   advice: string
   filesRead: number

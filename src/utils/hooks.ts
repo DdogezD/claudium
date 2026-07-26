@@ -990,10 +990,8 @@ async function execCommandHook(
   // Track whether shellCommand ownership was transferred (e.g., to async hook registry)
   let shellCommandTransferred = false
   // When true, stdout/stderr capture appends to local strings.  Set to false
-  // after async transfer to stop capturing while keeping prompt protocol alive.
+  // after async transfer — background registry owns output via TaskOutput.
   let captureEnabled = true
-  // Named reference for the stdout listener so we can selectively remove it.
-  let onStdoutData: (data: any) => void
   // Track whether stdin has already been written (to avoid "write after end" errors)
   let stdinWritten = false
 
@@ -1070,85 +1068,14 @@ async function execCommandHook(
   // Line buffer for detecting prompt requests in streaming output
   let lineBuffer = ''
 
-  child.stdout.on('data', onStdoutData = data => {
-    // If capture was disabled (async transfer), don't touch local strings
-    // but still handle prompt protocol if active.
-    if (!captureEnabled) {
-      if (!requestPrompt) return
-      lineBuffer += data
-      const lines = lineBuffer.split('\n')
-      lineBuffer = lines.pop() ?? ''
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        try {
-          const parsed = jsonParse(trimmed)
-          const validation = promptRequestSchema().safeParse(parsed)
-          if (validation.success) {
-            const reqPrompt = requestPrompt
-            promptChain = promptChain.then(async () => {
-              try {
-                const response = await reqPrompt(validation.data)
-                child.stdin.write(jsonStringify(response) + '\n', 'utf8')
-              } catch (err) {
-                logForDebugging(`Hooks: Prompt request handling failed: ${err}`)
-                child.stdin.destroy()
-              }
-            })
-          }
-        } catch { /* not JSON */ }
-      }
-      return
-    }
-
+  child.stdout.on('data', data => {
+    if (!captureEnabled) return
     stdout += data
     output += data
 
-    // When requestPrompt is provided, parse stdout line-by-line for prompt requests
-    if (requestPrompt) {
-      lineBuffer += data
-      const lines = lineBuffer.split('\n')
-      lineBuffer = lines.pop() ?? '' // last element is an incomplete line
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-
-        try {
-          const parsed = jsonParse(trimmed)
-          const validation = promptRequestSchema().safeParse(parsed)
-          if (validation.success) {
-            processedPromptLines.add(trimmed)
-            logForDebugging(
-              `Hooks: Detected prompt request from hook: ${trimmed}`,
-            )
-            // Chain the async handling to serialize prompt responses
-            const promptReq = validation.data
-            const reqPrompt = requestPrompt
-            promptChain = promptChain.then(async () => {
-              try {
-                const response = await reqPrompt(promptReq)
-                child.stdin.write(jsonStringify(response) + '\n', 'utf8')
-              } catch (err) {
-                logForDebugging(`Hooks: Prompt request handling failed: ${err}`)
-                // User cancelled or prompt failed — close stdin so the hook
-                // process doesn't hang waiting for input
-                child.stdin.destroy()
-              }
-            })
-            continue
-          }
-        } catch {
-          // Not JSON, just a normal line
-        }
-      }
-    }
-
-    // Check for async response on first line of output. The async protocol is:
-    // hook emits {"async":true,...} as its FIRST line, then its normal output.
-    // We must parse ONLY the first line — if the process is fast and writes more
-    // before this 'data' event fires, parsing the full accumulated stdout fails
-    // and an async hook blocks for its full duration instead of backgrounding.
+    // Check for async response on first line BEFORE processing prompts.
+    // If the async marker and a prompt frame land in the same chunk,
+    // detecting async first ensures we transfer and skip the prompt.
     if (!initialResponseChecked) {
       const firstLine = firstLineOf(stdout).trim()
       if (!firstLine.includes('}')) return
@@ -1188,6 +1115,7 @@ async function execCommandHook(
             stdout = ''
             stderr = ''
             output = ''
+            lineBuffer = ''
             processedPromptLines.clear()
             // Close stdin: async hooks don't support prompt elicitation
             // after the initial handshake.
@@ -1204,6 +1132,38 @@ async function execCommandHook(
         }
       } catch (e) {
         logForDebugging(`Hooks: Failed to parse initial response as JSON: ${e}`)
+      }
+    }
+
+    // Process prompt frames (only after async detection, so async transfer
+    // skips prompts in the same chunk).
+    if (requestPrompt && captureEnabled) {
+      lineBuffer += data
+      const lines = lineBuffer.split('\n')
+      lineBuffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        try {
+          const parsed = jsonParse(trimmed)
+          const validation = promptRequestSchema().safeParse(parsed)
+          if (validation.success) {
+            processedPromptLines.add(trimmed)
+            logForDebugging(`Hooks: Detected prompt request from hook: ${trimmed}`)
+            const promptReq = validation.data
+            const reqPrompt = requestPrompt
+            promptChain = promptChain.then(async () => {
+              try {
+                const response = await reqPrompt(promptReq)
+                child.stdin.write(jsonStringify(response) + '\n', 'utf8')
+              } catch (err) {
+                logForDebugging(`Hooks: Prompt request handling failed: ${err}`)
+                child.stdin.destroy()
+              }
+            })
+          }
+        } catch { /* not JSON */ }
       }
     }
   })

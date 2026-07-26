@@ -1303,8 +1303,8 @@ export function REPL({
   // State updates return new arrays, so the captured refs remain a stable snapshot
   // of the messages visible when the user entered transcript.
   const [frozenTranscriptState, setFrozenTranscriptState] = useState<{
-    messages: readonly Message[];
-    streamingToolUses: readonly StreamingToolUse[];
+    messages: MessageType[];
+    streamingToolUses: StreamingToolUse[];
   } | null>(null);
   // Initialize input with any early input that was captured before REPL was ready.
   // Using lazy initialization ensures cursor offset is set correctly in PromptInput.

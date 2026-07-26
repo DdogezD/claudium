@@ -196,7 +196,9 @@ export async function checkForAsyncHookResponses(): Promise<
           )
           try {
             const parsed = jsonParse(line.trim())
-            if (!('async' in parsed)) {
+            // Skip async heartbeats and prompt-request frames — neither
+            // is the final sync response.
+            if (!('async' in parsed) && !('prompt' in parsed)) {
               logForDebugging(
                 `Hooks: Found sync response from ${hook.processId}: ${jsonStringify(parsed)}`,
               )
