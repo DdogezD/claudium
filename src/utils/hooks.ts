@@ -1084,9 +1084,10 @@ async function execCommandHook(
     // prompt frame land in the same chunk, detecting async first ensures
     // we transfer and skip the prompt.
     if (!initialResponseChecked) {
-      const firstLine = firstLineOf(stdout).trim()
-      if (!firstLine.includes('}')) return
+      // Wait for the first complete line (a newline in accumulated stdout).
+      if (!stdout.includes('\n')) return
       initialResponseChecked = true
+      const firstLine = firstLineOf(stdout).trim()
       logForDebugging(`Hooks: Checking first line for async: ${firstLine}`)
       try {
         const parsed = jsonParse(firstLine)

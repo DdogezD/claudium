@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useAppState } from '../state/AppState.js'
 import type { Message } from '../types/message.js'
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js'
+import { isCompactBoundaryMessage } from '../utils/messages.js'
 import {
   cleanMessagesForLogging,
   isChainParticipant,
@@ -27,6 +28,10 @@ export function useLogMessages(messages: Message[], ignore: boolean = false) {
   // First-uuid change = compaction or /clear rebuilt the array; length alone
   // can't detect this since post-compact [CB,summary,...keep,new] may be longer.
   const firstMessageUuidRef = useRef<UUID | undefined>(undefined)
+  // Track seen compact boundary UUIDs.  When a new boundary appears anywhere
+  // in the array (not just at position 0), force a full-array write so the
+  // boundary + summary are not lost.
+  const seenBoundaryUuidsRef = useRef<Set<UUID>>(new Set())
   // Guard against stale async .then() overwriting a fresher sync update when
   // an incremental render fires before the compaction .then() resolves.
   const callSeqRef = useRef(0)
@@ -56,8 +61,29 @@ export function useLogMessages(messages: Message[], ignore: boolean = false) {
       currentFirstUuid === firstMessageUuidRef.current &&
       prevLength > messages.length
 
-    const startIndex = isIncremental ? prevLength : 0
-    if (startIndex === messages.length) return
+    // Detect any new compact-boundary UUID in the array.  Partial compacts
+    // and same-length replacements can introduce boundaries that the first-uuid
+    // + length heuristic misses.
+    let hasNewBoundary = false
+    if (!wasFirstRender) {
+      for (const m of messages) {
+        if (isCompactBoundaryMessage(m) && !seenBoundaryUuidsRef.current.has(m.uuid as UUID)) {
+          hasNewBoundary = true
+          seenBoundaryUuidsRef.current.add(m.uuid as UUID)
+        }
+      }
+    }
+    // First render: seed boundary tracking so incremental path works later.
+    if (wasFirstRender) {
+      for (const m of messages) {
+        if (isCompactBoundaryMessage(m)) {
+          seenBoundaryUuidsRef.current.add(m.uuid as UUID)
+        }
+      }
+    }
+
+    const startIndex = (isIncremental && !hasNewBoundary) ? prevLength : 0
+    if (startIndex === messages.length && !hasNewBoundary) return
 
     // Full array on first call + after compaction: recordTranscript's own
     // O(n) dedup loop handles messagesToKeep interleaving correctly there.
