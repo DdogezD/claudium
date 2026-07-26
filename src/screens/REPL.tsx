@@ -2464,16 +2464,11 @@ export function REPL({
         // compact-interval of scrollback — normalizeMessages/applyGrouping
         // are O(n) per render, so drop everything before the previous
         // boundary to keep n bounded across multi-day sessions.
-        if (isFullscreenEnvEnabled()) {
-          setMessages(old => [...getMessagesAfterCompactBoundary(old, {
-            includeSnipped: true
-          }), newMessage]);
-        } else {
-          setMessages(() => [newMessage]);
-        }
-        // Bump conversationId so Messages.tsx row keys change and
-        // stale memoized rows remount with post-compact content.
-        setConversationId(randomUUID());
+        // Keep pre-compact messages for UI scrollback. query.ts
+        // independently slices at the boundary for API calls.
+        setMessages(old => [...getMessagesAfterCompactBoundary(old, {
+          includeSnipped: isFullscreenEnvEnabled(),
+        }), newMessage]);
         // Compaction succeeded — clear the context-blocked flag so ticks resume
         if (feature('PROACTIVE') || feature('KAIROS')) {
           proactiveModule?.setContextBlocked(false);
@@ -2605,9 +2600,6 @@ export function REPL({
       // handleMessageFromStream. Clear context-blocked if a compact boundary
       // is present so proactive ticks resume after compaction.
       if (newMessages.some(isCompactBoundaryMessage)) {
-        // Bump conversationId so Messages.tsx row keys change and
-        // stale memoized rows remount with post-compact content.
-        setConversationId(randomUUID());
         if (feature('PROACTIVE') || feature('KAIROS')) {
           proactiveModule?.setContextBlocked(false);
         }
@@ -4756,7 +4748,6 @@ export function REPL({
             if (feature('PROACTIVE') || feature('KAIROS')) {
               proactiveModule?.setContextBlocked(false);
             }
-            setConversationId(randomUUID());
             runPostCompactCleanup(context.options.querySource);
             if (direction === 'from') {
               const r = textForResubmit(message);
