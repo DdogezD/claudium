@@ -1,7 +1,7 @@
 import type { Message } from '../../../types/message.js'
 import { extractTextContent } from '../../../utils/messages.js'
 import { buildSearchIndex } from './search.js'
-import type { ConversationEntry, CachedSnapshot, SearchIndex } from '../types.js'
+import type { ConversationEntry, SearchIndex } from '../types.js'
 import {
   CONVERSATION_LOG_RESULT_CHARS,
   CONVERSATION_LOG_SEARCH_SNIPPET_CHARS,
@@ -9,74 +9,6 @@ import {
 } from './constants.js'
 
 const ENTRY_DISPLAY_CAP = 16000
-
-// ---------------------------------------------------------------------------
-// Serialization cache (atomic snapshot: entries + search index)
-// ---------------------------------------------------------------------------
-
-let _cachedSnapshot: CachedSnapshot | null = null
-
-/**
- * Build a fingerprint from the subset of message fields that affect
- * serialization output (entry text, searchBody, tools, toolResults, searchText,
- * truncated, hasThinking, charLength) and entry-id assignment.
- *
- * Uses a structured tuple projection + JSON.stringify.  For normal JSON messages
- * the same fingerprint guarantees the same observable snapshot.  The projection
- * may conservatively produce different fingerprints for snapshots that are
- * actually identical (e.g. UUID changes, unused trailing content), trading some
- * cache misses for safety.
- *
- * Coupling: if doSerializeConversationLog starts reading a new block field,
- * the corresponding case below MUST be updated in the same commit.
- */
-function buildSnapshotFingerprint(messages: readonly Message[]): string {
-  const projection = messages.map(m => {
-    const msg = m as any
-    const content = msg.message?.content
-
-    let projectedContent: unknown
-
-    if (typeof content === 'string') {
-      projectedContent = ['s', content]
-    } else if (Array.isArray(content)) {
-      projectedContent = [
-        'a',
-        content.map((block: any) => {
-          switch (block?.type) {
-            case 'text':
-              return ['t', block.text]
-
-            case 'tool_use':
-              return ['u', block.id, block.name, block.input]
-
-            case 'tool_result':
-              return ['r', block.tool_use_id, !!block.is_error, block.content]
-
-            case 'thinking':
-            case 'redacted_thinking':
-              return ['h', typeof block.thinking === 'string' ? block.thinking.length : 0]
-
-            case 'image':
-            case 'image_url':
-              // Serializer emits only the block-type marker; content is opaque.
-              return [block.type]
-
-            default:
-              // Serializer currently ignores unknown block contents.
-              return [block?.type ?? null]
-          }
-        }),
-      ]
-    } else {
-      projectedContent = null
-    }
-
-    return [msg.type ?? null, msg.uuid ?? null, projectedContent]
-  })
-
-  return JSON.stringify(projection)
-}
 
 /**
  * Return the portion of `bodyText` that falls within the first `cap` chars
@@ -100,11 +32,6 @@ function clampVisible(
 function getConversationSnapshot(
   messages: readonly Message[],
 ): { entries: ConversationEntry[]; index: SearchIndex } {
-  const fp = buildSnapshotFingerprint(messages)
-  if (_cachedSnapshot && _cachedSnapshot.fingerprint === fp) {
-    return { entries: _cachedSnapshot.entries, index: _cachedSnapshot.index }
-  }
-
   // Map tool_use_id → tool name for per-result metadata
   const toolNameMap = new Map<string, string>()
   for (const msg of messages) {
@@ -120,7 +47,6 @@ function getConversationSnapshot(
 
   const entries = doSerializeConversationLog(messages, toolNameMap)
   const index = buildSearchIndex(entries)
-  _cachedSnapshot = { fingerprint: fp, entries, index }
   return { entries, index }
 }
 

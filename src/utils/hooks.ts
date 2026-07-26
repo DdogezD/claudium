@@ -989,6 +989,11 @@ async function execCommandHook(
   const shellCommand = wrapSpawn(child, signal, hookTimeoutMs, hookTaskOutput)
   // Track whether shellCommand ownership was transferred (e.g., to async hook registry)
   let shellCommandTransferred = false
+  // When true, stdout/stderr capture appends to local strings.  Set to false
+  // after async transfer to stop capturing while keeping prompt protocol alive.
+  let captureEnabled = true
+  // Named reference for the stdout listener so we can selectively remove it.
+  let onStdoutData: (data: any) => void
   // Track whether stdin has already been written (to avoid "write after end" errors)
   let stdinWritten = false
 
@@ -1065,7 +1070,37 @@ async function execCommandHook(
   // Line buffer for detecting prompt requests in streaming output
   let lineBuffer = ''
 
-  child.stdout.on('data', data => {
+  child.stdout.on('data', onStdoutData = data => {
+    // If capture was disabled (async transfer), don't touch local strings
+    // but still handle prompt protocol if active.
+    if (!captureEnabled) {
+      if (!requestPrompt) return
+      lineBuffer += data
+      const lines = lineBuffer.split('\n')
+      lineBuffer = lines.pop() ?? ''
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        try {
+          const parsed = jsonParse(trimmed)
+          const validation = promptRequestSchema().safeParse(parsed)
+          if (validation.success) {
+            const reqPrompt = requestPrompt
+            promptChain = promptChain.then(async () => {
+              try {
+                const response = await reqPrompt(validation.data)
+                child.stdin.write(jsonStringify(response) + '\n', 'utf8')
+              } catch (err) {
+                logForDebugging(`Hooks: Prompt request handling failed: ${err}`)
+                child.stdin.destroy()
+              }
+            })
+          }
+        } catch { /* not JSON */ }
+      }
+      return
+    }
+
     stdout += data
     output += data
 
@@ -1148,6 +1183,15 @@ async function execCommandHook(
               output,
               status: 0,
             })
+            // Disable capture — background registry owns output via TaskOutput.
+            captureEnabled = false
+            stdout = ''
+            stderr = ''
+            output = ''
+            processedPromptLines.clear()
+            // Close stdin: async hooks don't support prompt elicitation
+            // after the initial handshake.
+            try { child.stdin.end() } catch { /* already closed */ }
           }
         } else if (isAsyncHookJSONOutput(parsed) && forceSyncExecution) {
           logForDebugging(
@@ -1165,6 +1209,7 @@ async function execCommandHook(
   })
 
   child.stderr.on('data', data => {
+    if (!captureEnabled) return
     stderr += data
     output += data
   })

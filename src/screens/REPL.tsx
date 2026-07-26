@@ -1299,10 +1299,12 @@ export function REPL({
     logForDebugging(`[useDeferredValue] Messages deferred by ${deferredBehind} (${deferredMessages.length}→${messages.length})`);
   }
 
-  // Frozen state for transcript mode - stores lengths instead of cloning arrays for memory efficiency
+  // Frozen state for transcript mode — captures array references (not clones).
+  // State updates return new arrays, so the captured refs remain a stable snapshot
+  // of the messages visible when the user entered transcript.
   const [frozenTranscriptState, setFrozenTranscriptState] = useState<{
-    messagesLength: number;
-    streamingToolUsesLength: number;
+    messages: readonly Message[];
+    streamingToolUses: readonly StreamingToolUse[];
   } | null>(null);
   // Initialize input with any early input that was captured before REPL was ready.
   // Using lazy initialization ensures cursor offset is set correctly in PromptInput.
@@ -4040,13 +4042,14 @@ export function REPL({
     return total === 1 ? `running ${hookType} hook` : `running stop hooks… ${completedCount}/${total}`;
   }, [messages, isLoading]);
 
-  // Callback to capture frozen state when entering transcript mode
+  // Callback to capture frozen state when entering transcript mode.
+  // State updates return new arrays, so the captured refs remain stable.
   const handleEnterTranscript = useCallback(() => {
     setFrozenTranscriptState({
-      messagesLength: messages.length,
-      streamingToolUsesLength: streamingToolUses.length
+      messages: deferredMessages,
+      streamingToolUses,
     });
-  }, [messages.length, streamingToolUses.length]);
+  }, [deferredMessages, streamingToolUses]);
 
   // Callback to clear frozen state when exiting transcript mode
   const handleExitTranscript = useCallback(() => {
@@ -4237,9 +4240,9 @@ export function REPL({
     searchBarOpen: searchOpen
   };
 
-  // Use frozen lengths to slice arrays, avoiding memory overhead of cloning
-  const transcriptMessages = frozenTranscriptState ? deferredMessages.slice(0, frozenTranscriptState.messagesLength) : deferredMessages;
-  const transcriptStreamingToolUses = frozenTranscriptState ? streamingToolUses.slice(0, frozenTranscriptState.streamingToolUsesLength) : streamingToolUses;
+  // Use frozen array references — no slice needed, captured refs are stable.
+  const transcriptMessages = frozenTranscriptState ? frozenTranscriptState.messages : deferredMessages;
+  const transcriptStreamingToolUses = frozenTranscriptState ? frozenTranscriptState.streamingToolUses : streamingToolUses;
 
   // Handle shift+down for teammate navigation and background task management.
   // Guard onOpenBackgroundTasks when a local-jsx dialog (e.g. /mcp) is open —
