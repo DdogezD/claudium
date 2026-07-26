@@ -4736,9 +4736,11 @@ export function REPL({
             // Find by uuid since old is raw REPL history and snipped
             // entries can shift the projected messageIndex.
             if (isFullscreenEnvEnabled() && direction === 'from') {
+              // Dedup: messagesToKeep share UUIDs with the pre-compact prefix.
+              const postUuids = new Set(postCompact.map(m => m.uuid));
               setMessages(old => {
                 const rawIdx = old.findIndex(m => m.uuid === message.uuid);
-                return [...old.slice(0, rawIdx === -1 ? 0 : rawIdx), ...postCompact];
+                return [...old.slice(0, rawIdx === -1 ? 0 : rawIdx).filter(m => !postUuids.has(m.uuid)), ...postCompact];
               });
             } else {
               setMessages(postCompact);

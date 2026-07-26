@@ -1073,9 +1073,16 @@ async function execCommandHook(
     stdout += data
     output += data
 
-    // Check for async response on first line BEFORE processing prompts.
-    // If the async marker and a prompt frame land in the same chunk,
-    // detecting async first ensures we transfer and skip the prompt.
+    // Feed the prompt line buffer BEFORE async detection — otherwise
+    // a prompt frame that spans chunks is lost (async detection returns
+    // early when the first line doesn't yet contain '}').
+    if (requestPrompt) {
+      lineBuffer += data
+    }
+
+    // Check for async response on first line.  If the async marker and a
+    // prompt frame land in the same chunk, detecting async first ensures
+    // we transfer and skip the prompt.
     if (!initialResponseChecked) {
       const firstLine = firstLineOf(stdout).trim()
       if (!firstLine.includes('}')) return
@@ -1136,9 +1143,8 @@ async function execCommandHook(
     }
 
     // Process prompt frames (only after async detection, so async transfer
-    // skips prompts in the same chunk).
+    // skips prompts in the same chunk).  lineBuffer was already fed above.
     if (requestPrompt && captureEnabled) {
-      lineBuffer += data
       const lines = lineBuffer.split('\n')
       lineBuffer = lines.pop() ?? ''
 
