@@ -544,10 +544,14 @@ export function isClaudeAISubscriber(): boolean {
 }
 
 /**
- * Stub: OAuth has been stripped.
+ * OAuth has been stripped.  Auth is "enabled" whenever the user has
+ * provided credentials via ANTHROPIC_API_KEY or ANTHROPIC_BASE_URL.
  */
 export function isAnthropicAuthEnabled(): boolean {
-  return false
+  return !!(
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.ANTHROPIC_BASE_URL
+  )
 }
 
 export function hasProfileScope(): boolean {
