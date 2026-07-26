@@ -1084,13 +1084,13 @@ async function execCommandHook(
     // prompt frame land in the same chunk, detecting async first ensures
     // we transfer and skip the prompt.
     if (!initialResponseChecked) {
-      // Wait for the first complete line (a newline in accumulated stdout).
-      if (!stdout.includes('\n')) return
-      initialResponseChecked = true
+      // Try to parse the first line — an async marker without trailing
+      // newline must be recognised immediately.  Incomplete JSON (SyntaxError)
+      // with no newline yet means more data is needed.
       const firstLine = firstLineOf(stdout).trim()
-      logForDebugging(`Hooks: Checking first line for async: ${firstLine}`)
       try {
         const parsed = jsonParse(firstLine)
+        initialResponseChecked = true
         logForDebugging(
           `Hooks: Parsed initial response: ${jsonStringify(parsed)}`,
         )
@@ -1138,8 +1138,15 @@ async function execCommandHook(
             `Hooks: Initial response is not async, continuing normal processing`,
           )
         }
-      } catch (e) {
-        logForDebugging(`Hooks: Failed to parse initial response as JSON: ${e}`)
+      } catch {
+        // JSON parse failed.  If we have a newline, the first line is plain
+        // text — stop waiting for async and fall through to prompt processing.
+        // Otherwise, wait for more data (JSON may span multiple chunks).
+        if (stdout.includes('\n')) {
+          initialResponseChecked = true
+        } else {
+          return
+        }
       }
     }
 
