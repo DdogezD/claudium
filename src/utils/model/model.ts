@@ -37,7 +37,7 @@ function requireConfiguredMainLoopModel(): ModelName {
   const model = getConfiguredMainLoopModel()
   if (model) return model
   throw new Error(
-    'No model is configured. Set the provider-specific model environment variable or configure modelProfiles.main.model.',
+    'No model is configured. Run /model to set one, or set the ANTHROPIC_MODEL environment variable.',
   )
 }
 
@@ -220,7 +220,7 @@ export function isOpus1mMergeEnabled(): boolean {
 }
 
 export function renderModelSetting(setting: ModelName): string {
-  return renderModelName(setting)
+  return setting ? renderModelName(setting) : 'Not configured'
 }
 
 function maskModelCodename(baseName: string): string {
