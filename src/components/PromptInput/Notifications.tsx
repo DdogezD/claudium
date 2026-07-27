@@ -341,7 +341,7 @@ function NotificationContent({
         </Box>}
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && <Box>
           <Text color="error" wrap="truncate">
-            {'Not logged in · Run /login'}
+            {'No API key · Set ANTHROPIC_API_KEY'}
           </Text>
         </Box>}
       {debug && <Box>
