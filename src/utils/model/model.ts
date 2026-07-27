@@ -56,7 +56,7 @@ export function getSmallFastModel(): ModelName {
   return applyModelOverride(
     providerOverride ??
       resolveModelProfileModel('subagent') ??
-      requireConfiguredMainLoopModel(),
+      (() => { const m = getConfiguredMainLoopModel(); return m ? applyModelOverride(m) : '' as unknown as ModelName; })()
   )
 }
 
@@ -108,7 +108,8 @@ export function getRuntimeMainLoopModel(params: {
  * must be selected through an environment variable or model profile.
  */
 export function getDefaultMainLoopModelSetting(): ModelName {
-  const model = requireConfiguredMainLoopModel()
+  const model = getConfiguredMainLoopModel()
+  if (!model) return undefined
   if (!isModelAllowed(model)) {
     throw new Error(`Model '${model}' is not available.`)
   }
@@ -119,8 +120,9 @@ export function getDefaultMainLoopModelSetting(): ModelName {
  * Synchronous operation to get the default main loop model to use
  * (bypassing any user-specified values).
  */
-export function getDefaultMainLoopModel(): ModelName {
-  return parseUserSpecifiedModel(getDefaultMainLoopModelSetting())
+export function getDefaultMainLoopModel(): ModelName | undefined {
+  const setting = getDefaultMainLoopModelSetting()
+  return setting ? parseUserSpecifiedModel(setting) : undefined
 }
 
 // @[MODEL LAUNCH]: Add a canonical name mapping for the new model below.

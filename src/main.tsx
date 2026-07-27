@@ -258,7 +258,7 @@ if ("external" !== 'ant' && isBeingDebugged()) {
  * call sites here rather than one here + one in QueryEngine.
  */
 function logSessionTelemetry(): void {
-  const model = parseUserSpecifiedModel(getInitialMainLoopModel() ?? getDefaultMainLoopModel());
+  const model = parseUserSpecifiedModel(getInitialMainLoopModel() ?? getDefaultMainLoopModel() ?? '');
   void logSkillsLoaded(getCwd(), getContextWindowForModel(model, getSdkBetas()));
   void loadAllPluginsCacheOnly().then(({
     enabled,
@@ -1721,7 +1721,12 @@ async function run(): Promise<CommanderCommand> {
     // (which returns isProactiveActive()) passes and Sleep is included.
     // The later REPL-path maybeActivateProactive() calls are idempotent.
     maybeActivateProactive(options);
-    let tools = getTools(toolPermissionContext);
+    let tools: any[] = [];
+    try {
+      tools = getTools(toolPermissionContext);
+    } catch (e) {
+      // Tool construction may fail if model is not configured
+    }
 
     // Apply coordinator mode tool filtering for headless path
     // (mirrors useMergedTools.ts filtering for REPL/interactive path)
@@ -1969,7 +1974,7 @@ async function run(): Promise<CommanderCommand> {
     // Compute resolved model for hooks (use user-specified model at launch)
     setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
     const initialMainLoopModel = getInitialMainLoopModel();
-    const resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
+    const resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel() ?? '');
     // Advisor: configured via CLAUDE_CODE_ADVISOR_MODEL env var.
     // claude.ts reads it directly; AdvisorTool reads it at call time.
 

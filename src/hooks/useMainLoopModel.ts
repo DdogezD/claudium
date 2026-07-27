@@ -38,7 +38,7 @@ export function useMainLoopModel(): ModelName {
   const model = parseUserSpecifiedModel(
     specified && isModelAllowed(specified)
       ? specified
-      : getDefaultMainLoopModelSetting(),
+      : getDefaultMainLoopModelSetting() ?? '',
   )
   return model
 }
