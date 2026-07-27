@@ -68,11 +68,33 @@ export function hasAnthropicApiKeyAuth(): boolean {
 }
 
 export function getAnthropicApiKeyWithSource(
-  opts: { skipRetrievingKeyFromApiKeyHelper?: boolean } = {},
+  _opts: { skipRetrievingKeyFromApiKeyHelper?: boolean } = {},
 ): {
   key: null | string
   source: ApiKeySource
 } {
+  const key = process.env.ANTHROPIC_API_KEY ?? null
+  return { key, source: key ? 'ANTHROPIC_API_KEY' : 'none' }
+}
+
+export function getAnthropicApiKey(): null | string {
+  return process.env.ANTHROPIC_API_KEY ?? null
+}
+export function hasAnthropicApiKeyAuth(): boolean {
+  const { key, source } = getAnthropicApiKeyWithSource({
+    skipRetrievingKeyFromApiKeyHelper: true,
+  })
+  return key !== null && source !== 'none'
+}
+
+export function getAnthropicApiKeyWithSource(
+  _opts: { skipRetrievingKeyFromApiKeyHelper?: boolean } = {},
+): {
+  key: null | string
+  source: ApiKeySource
+} {
+  const key = process.env.ANTHROPIC_API_KEY ?? null
+  return { key, source: key ? 'ANTHROPIC_API_KEY' : 'none' }
   // --bare: hermetic auth. Only ANTHROPIC_API_KEY env or apiKeyHelper from
   // the --settings flag. Never touches keychain, config file, or approval
   // lists. 3P (Bedrock/Vertex/Foundry) uses provider creds, not this path.
