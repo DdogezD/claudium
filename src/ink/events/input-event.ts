@@ -36,7 +36,7 @@ function parseKey(keypress: ParsedKey): [Key, string] {
     wheelDown: keypress.name === 'wheeldown',
     home: keypress.name === 'home',
     end: keypress.name === 'end',
-    return: keypress.name === 'return',
+    return: keypress.name === 'return' || keypress.name === 'enter',
     escape: keypress.name === 'escape',
     fn: keypress.fn,
     ctrl: keypress.ctrl,
