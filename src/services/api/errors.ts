@@ -145,6 +145,10 @@ export function isMediaSizeErrorMessage(msg: AssistantMessage): boolean {
     isMediaSizeError(msg.errorDetails)
   )
 }
+export const NO_MODEL_CONFIGURED_MESSAGE =
+  'No model is configured. Run /model or /config to set one.'
+export const NO_API_KEY_CONFIGURED_MESSAGE =
+  'No base URL and API key is configured. Set ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY.'
 export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
 export const INVALID_API_KEY_ERROR_MESSAGE = 'No API key configured · Set ANTHROPIC_API_KEY'
 export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =

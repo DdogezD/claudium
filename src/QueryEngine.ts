@@ -58,6 +58,7 @@ import {
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import { registerStructuredOutputEnforcement } from './utils/hooks/hookHelpers.js'
 import { getInMemoryErrors } from './utils/log.js'
+import { NO_MODEL_CONFIGURED_MESSAGE } from './services/api/errors.js'
 import { countToolCalls, SYNTHETIC_MESSAGES } from './utils/messages.js'
 import {
   getMainLoopModel,
@@ -273,6 +274,12 @@ export class QueryEngine {
     const initialMainLoopModel = userSpecifiedModel
       ? parseUserSpecifiedModel(userSpecifiedModel)
       : getMainLoopModel()
+
+    if (!initialMainLoopModel) {
+      throw new Error(
+        NO_MODEL_CONFIGURED_MESSAGE,
+      )
+    }
 
     const initialThinkingConfig: ThinkingConfig = thinkingConfig
       ? thinkingConfig

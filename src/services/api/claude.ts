@@ -20,6 +20,7 @@ import type {
 import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
+import { NO_MODEL_CONFIGURED_MESSAGE } from './errors.js'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
@@ -851,6 +852,11 @@ export async function* executeNonStreamingRequest(
       )
 
       try {
+        if (!retryParams.model) {
+          throw new Error(
+            NO_MODEL_CONFIGURED_MESSAGE,
+          )
+        }
         // biome-ignore lint/plugin: non-streaming API call
         return await anthropic.beta.messages.create(
           {
@@ -1035,6 +1041,12 @@ async function* queryModel(
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
+  if (!options.model) {
+    throw new Error(
+      NO_MODEL_CONFIGURED_MESSAGE,
+    )
+  }
+
   if (shouldUseSearxngWebSearch(options)) {
     try {
       const content = await performSearxngWebSearch({

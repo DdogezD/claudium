@@ -126,6 +126,7 @@ import { hasConsoleBillingAccess } from '../utils/billing.js';
 import { logEvent, type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics-stub.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js';
 import { textForResubmit, handleMessageFromStream, type StreamingToolUse, type StreamingThinking, isCompactBoundaryMessage, getMessagesAfterCompactBoundary, getContentText, createUserMessage, createAssistantMessage, createTurnDurationMessage, createAgentsKilledMessage, createApiMetricsMessage, createSystemMessage, createCommandInputMessage, formatCommandInputTags } from '../utils/messages.js';
+import { NO_MODEL_CONFIGURED_MESSAGE, NO_API_KEY_CONFIGURED_MESSAGE } from '../services/api/errors.js';
 import { generateSessionTitle } from '../utils/sessionTitle.js';
 import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
 import { escapeXml } from '../utils/xml.js';
@@ -3010,6 +3011,25 @@ export function REPL({
     // Re-pin scroll to bottom on submit so the user always sees the new
     // exchange (matches OpenCode's auto-scroll behavior).
     repinScroll();
+
+    const isSlashCommand = input.trim().startsWith('/')
+    const isExitShortcut = ['exit', 'quit', ':q', ':q!', ':wq', ':wq!'].includes(input.trim())
+    const isEmpty = input.trim() === ''
+
+    if (!isSlashCommand && !isExitShortcut && !isEmpty) {
+      const missing: string[] = []
+      if (!mainLoopModel) missing.push(NO_MODEL_CONFIGURED_MESSAGE)
+      if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_BASE_URL) {
+        missing.push(NO_API_KEY_CONFIGURED_MESSAGE)
+      }
+      if (missing.length > 0) {
+        for (const msg of missing) {
+          setMessages(prev => [...prev, createSystemMessage(msg, 'warning')])
+        }
+        helpers.setInput(input)
+        return
+      }
+    }
 
     // Resume loop mode if paused
     if (feature('PROACTIVE') || feature('KAIROS')) {

@@ -5,6 +5,7 @@
  * literals with process.env.USER_TYPE === 'ant' for Bun to remove the codenames
  * during dead code elimination
  */
+import { NO_MODEL_CONFIGURED_MESSAGE } from '../../services/api/errors.js'
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { getSubscriptionType, isProSubscriber } from '../auth.js'
 import { is1mContextDisabled } from '../context.js'
@@ -37,7 +38,7 @@ function requireConfiguredMainLoopModel(): ModelName {
   const model = getConfiguredMainLoopModel()
   if (model) return model
   throw new Error(
-    'No model is configured. Run /model to set one, or set the ANTHROPIC_MODEL environment variable.',
+    NO_MODEL_CONFIGURED_MESSAGE,
   )
 }
 
@@ -73,9 +74,7 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
 export function getMainLoopModel(): ModelName {
   const specifiedModel = getMainLoopModelSetting()
   if (!specifiedModel) {
-    throw new Error(
-      'No model is configured. Set the provider-specific model environment variable or configure modelProfiles.main.model.',
-    )
+    return '' as ModelName
   }
   if (!isModelAllowed(specifiedModel)) {
     throw new Error(`Model '${specifiedModel}' is not available.`)
@@ -283,7 +282,8 @@ export function parseUserSpecifiedModel(
 export function modelDisplayString(model: ModelSetting): string {
   if (model === null) {
     // null = "re-resolve from env/profile/default".  Show the effective model.
-    return `Default (${getMainLoopModel()})`
+    const defaultModel = getMainLoopModel()
+    return defaultModel ? `Default (${defaultModel})` : 'Not configured'
   }
   const resolvedModel = parseUserSpecifiedModel(model)
   return model === resolvedModel ? resolvedModel : `${model} (${resolvedModel})`

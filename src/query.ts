@@ -4,6 +4,7 @@ import type {
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
+import { NO_MODEL_CONFIGURED_MESSAGE } from './services/api/errors.js'
 import { FallbackTriggeredError } from './services/api/withRetry.js'
 import {
   calculateTokenWarningState,
@@ -587,6 +588,12 @@ async function* queryLoop(
         permissionMode === 'plan' &&
         doesMostRecentAssistantMessageExceed200k(messagesForQuery),
     })
+
+    if (!currentModel) {
+      throw new Error(
+        NO_MODEL_CONFIGURED_MESSAGE,
+      )
+    }
 
     queryCheckpoint('query_setup_end')
 
