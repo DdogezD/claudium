@@ -52,9 +52,12 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
       if (effortVal) main.reasoningEffort = effortVal
 
       if (Object.keys(main).length > 0) {
-        updateSettingsForSource('userSettings', {
+        const result = updateSettingsForSource('userSettings', {
           modelProfiles: { main },
         })
+        if (result.error) {
+          return // stay on model step if save failed
+        }
       }
     }
 
