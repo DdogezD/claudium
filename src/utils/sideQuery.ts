@@ -12,6 +12,7 @@ import {
 } from '../constants/system.js'
 import { logEvent } from '../services/analytics-stub.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics-stub.js'
+import { NO_MODEL_CONFIGURED_MESSAGE } from '../services/api/errors.js'
 import { getAPIMetadata } from '../services/api/claude.js'
 import { getAnthropicClient } from '../services/api/client.js'
 import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
@@ -121,7 +122,7 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     stop_sequences,
   } = opts
   if (!model) {
-    throw new Error('No model configured')
+    throw new Error(NO_MODEL_CONFIGURED_MESSAGE)
   }
   const resolvedModel = applyModelOverride(model)
 

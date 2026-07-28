@@ -127,6 +127,7 @@ import { logEvent, type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPAT
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js';
 import { textForResubmit, handleMessageFromStream, type StreamingToolUse, type StreamingThinking, isCompactBoundaryMessage, getMessagesAfterCompactBoundary, getContentText, createUserMessage, createAssistantMessage, createTurnDurationMessage, createAgentsKilledMessage, createApiMetricsMessage, createSystemMessage, createCommandInputMessage, formatCommandInputTags } from '../utils/messages.js';
 import { NO_MODEL_CONFIGURED_MESSAGE, NO_API_KEY_CONFIGURED_MESSAGE } from '../services/api/errors.js';
+import { getAPIProvider } from '../utils/model/providers.js';
 import { generateSessionTitle } from '../utils/sessionTitle.js';
 import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
 import { escapeXml } from '../utils/xml.js';
@@ -3012,13 +3013,17 @@ export function REPL({
     // exchange (matches OpenCode's auto-scroll behavior).
     repinScroll();
 
+    const isSlashCommand = input.trim().startsWith('/')
     const isExitShortcut = ['exit', 'quit', ':q', ':q!', ':wq', ':wq!'].includes(input.trim())
     const isEmpty = input.trim() === ''
 
-    if (!isExitShortcut && !isEmpty) {
+    // Only gate plain-text prompts — slash commands, exit shortcuts, and
+    // empty input all pass through.  Slash commands that need a model will
+    // still be caught by the API-layer guards in query.ts / claude.ts.
+    if (!isSlashCommand && !isExitShortcut && !isEmpty) {
       const missing: string[] = []
       if (!mainLoopModel) missing.push(NO_MODEL_CONFIGURED_MESSAGE)
-      const isFirstParty = !process.env.CLAUDE_CODE_USE_BEDROCK && !process.env.CLAUDE_CODE_USE_VERTEX && !process.env.CLAUDE_CODE_USE_FOUNDRY
+      const isFirstParty = getAPIProvider() === 'firstParty'
       if (isFirstParty && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_BASE_URL) {
         missing.push(NO_API_KEY_CONFIGURED_MESSAGE)
       }
