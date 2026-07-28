@@ -1,12 +1,12 @@
 import type { Command } from '../../commands.js'
 import { shouldInferenceConfigCommandBeImmediate } from '../../utils/immediateCommand.js'
-import { getMainLoopModel, renderModelName } from '../../utils/model/model.js'
+import { getMainLoopModel, renderModelSetting } from '../../utils/model/model.js'
 
 export default {
   type: 'local-jsx',
   name: 'model',
   get description() {
-    return `Set the AI model for Claudium (currently ${renderModelName(getMainLoopModel())})`
+    return `Set the AI model for Claudium (currently ${renderModelSetting(getMainLoopModel())})`
   },
   argumentHint: '[model] [context] [effort]',
   get immediate() {

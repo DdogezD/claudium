@@ -3026,7 +3026,6 @@ export function REPL({
         for (const msg of missing) {
           setMessages(prev => [...prev, createSystemMessage(msg, 'warning')])
         }
-        helpers.setInput(input)
         return
       }
     }

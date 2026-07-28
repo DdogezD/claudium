@@ -120,6 +120,9 @@ export async function sideQuery(opts: SideQueryOptions): Promise<BetaMessage> {
     thinking,
     stop_sequences,
   } = opts
+  if (!model) {
+    throw new Error('No model configured')
+  }
   const resolvedModel = applyModelOverride(model)
 
   const client = await getAnthropicClient({

@@ -142,6 +142,7 @@ export async function countMessagesTokensWithAPI(
   return withTokenCountVCR(messages, tools, async () => {
     try {
       const model = getMainLoopModel()
+      if (!model) return null
       const betas = getModelBetas(model)
       const containsThinking = hasThinkingBlocks(messages)
 
@@ -273,6 +274,7 @@ export async function countTokensViaHaikuFallback(
     isVertexGlobalEndpoint || isBedrockWithThinking || isVertexWithThinking
       ? getMainLoopModel()
       : getSmallFastModel()
+  if (!model) return null
   const anthropic = await getAnthropicClient({
     maxRetries: 1,
     model,

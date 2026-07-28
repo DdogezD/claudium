@@ -1137,7 +1137,7 @@ function runHeadlessStreaming(
     const modelId = option.value === null ? 'default' : option.value
     const resolvedModel =
       modelId === 'default'
-        ? getDefaultMainLoopModel()
+        ? getDefaultMainLoopModel() ?? ''
         : parseUserSpecifiedModel(modelId)
     const hasEffort = modelSupportsEffort(resolvedModel)
     const hasAdaptiveThinking = modelSupportsAdaptiveThinking(resolvedModel)
@@ -2772,7 +2772,7 @@ function runHeadlessStreaming(
           const requestedModel = message.request.model ?? 'default'
           const model =
             requestedModel === 'default'
-              ? getDefaultMainLoopModel()
+              ? getDefaultMainLoopModel() ?? ''
               : requestedModel
           activeUserSpecifiedModel = model
           setMainLoopModelOverride(model)

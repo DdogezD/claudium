@@ -5,7 +5,6 @@
  * literals with process.env.USER_TYPE === 'ant' for Bun to remove the codenames
  * during dead code elimination
  */
-import { NO_MODEL_CONFIGURED_MESSAGE } from '../../services/api/errors.js'
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { getSubscriptionType, isProSubscriber } from '../auth.js'
 import { is1mContextDisabled } from '../context.js'
@@ -32,14 +31,6 @@ function getProviderModelEnvironmentVariable(): string | undefined {
 
 function getConfiguredMainLoopModel(): ModelName | undefined {
   return getProviderModelEnvironmentVariable() ?? resolveModelProfileModel('main')
-}
-
-function requireConfiguredMainLoopModel(): ModelName {
-  const model = getConfiguredMainLoopModel()
-  if (model) return model
-  throw new Error(
-    NO_MODEL_CONFIGURED_MESSAGE,
-  )
 }
 
 export function getMainLoopModelSetting(): ModelSetting | undefined {
@@ -100,7 +91,7 @@ export function getRuntimeMainLoopModel(params: {
  * There is intentionally no built-in Anthropic model fallback. A provider/model
  * must be selected through an environment variable or model profile.
  */
-export function getDefaultMainLoopModelSetting(): ModelName {
+export function getDefaultMainLoopModelSetting(): ModelName | undefined {
   const model = getConfiguredMainLoopModel()
   if (!model) return undefined
   if (!isModelAllowed(model)) {

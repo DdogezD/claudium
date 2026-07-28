@@ -536,6 +536,7 @@ export async function verifyApiKey(
   try {
     // WARNING: if you change this to use a non-Haiku model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
     const model = getSmallFastModel()
+    if (!model) return true
     const betas = getModelBetas(model)
     return await returnValue(
       withRetry(
