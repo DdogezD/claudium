@@ -3012,14 +3012,14 @@ export function REPL({
     // exchange (matches OpenCode's auto-scroll behavior).
     repinScroll();
 
-    const isSlashCommand = input.trim().startsWith('/')
     const isExitShortcut = ['exit', 'quit', ':q', ':q!', ':wq', ':wq!'].includes(input.trim())
     const isEmpty = input.trim() === ''
 
-    if (!isSlashCommand && !isExitShortcut && !isEmpty) {
+    if (!isExitShortcut && !isEmpty) {
       const missing: string[] = []
       if (!mainLoopModel) missing.push(NO_MODEL_CONFIGURED_MESSAGE)
-      if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_BASE_URL) {
+      const isFirstParty = !process.env.CLAUDE_CODE_USE_BEDROCK && !process.env.CLAUDE_CODE_USE_VERTEX && !process.env.CLAUDE_CODE_USE_FOUNDRY
+      if (isFirstParty && !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_BASE_URL) {
         missing.push(NO_API_KEY_CONFIGURED_MESSAGE)
       }
       if (missing.length > 0) {
