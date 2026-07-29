@@ -181,6 +181,7 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
 export function getCanonicalName(fullModelName: ModelName): ModelShortName {
   // Resolve overridden model IDs (e.g. Bedrock ARNs) back to canonical names.
   // resolved is always a 1P-format ID, so firstPartyNameToCanonical can handle it.
+  if (!fullModelName) return '' as ModelShortName
   return firstPartyNameToCanonical(resolveOverriddenModel(fullModelName))
 }
 
