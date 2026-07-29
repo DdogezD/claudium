@@ -1374,6 +1374,9 @@ export function REPL({
   // Ref instead of state to avoid triggering React re-renders on every
   // streaming text_delta. The spinner reads this via its animation timer.
   const responseLengthRef = useRef(0);
+  // The final stop_reason arrives in message_delta after the assistant
+  // message was already emitted, so keep it separately from UI messages.
+  const modelStopReasonRef = useRef<string | null>(null);
   // API performance metrics ref for ant-only spinner display (TTFT/OTPS).
   // Accumulates metrics from all API requests in a turn for P50 aggregation.
   const apiMetricsRef = useRef<Array<{
@@ -2458,6 +2461,9 @@ export function REPL({
     onBackgroundQuery: handleBackgroundQuery
   });
   const onQueryEvent = useCallback((event: Parameters<typeof handleMessageFromStream>[0]) => {
+    if (event.type === 'stream_event' && event.event.type === 'message_delta' && event.event.delta.stop_reason) {
+      modelStopReasonRef.current = event.event.delta.stop_reason;
+    }
     handleMessageFromStream(event, newMessage => {
       if (isCompactBoundaryMessage(newMessage)) {
         // Fullscreen: keep pre-compact messages for scrollback. query.ts
@@ -2657,6 +2663,8 @@ export function REPL({
     resetTurnHookDuration();
     resetTurnToolDuration();
     resetTurnClassifierDuration();
+    modelStopReasonRef.current = null;
+    const queryStartMessageUUIDs = new Set(messagesIncludingNewMessages.map(message => message.uuid));
     for await (const event of query({
       messages: messagesIncludingNewMessages,
       systemPrompt,
@@ -2711,6 +2719,18 @@ export function REPL({
         configWriteCount: getGlobalConfigWriteCount()
       })]);
     }
+
+    // Surface why the model ended this turn. A missing stop_reason is useful
+    // diagnostics for proxy/network paths that terminate the stream early.
+    if (!abortController.signal.aborted) {
+      const lastAssistant = messagesRef.current.findLast(message => message.type === 'assistant' && !queryStartMessageUUIDs.has(message.uuid));
+      if (lastAssistant?.type === 'assistant') {
+        const stopReason = modelStopReasonRef.current ?? lastAssistant.message.stop_reason;
+        const reason = stopReason || 'unknown (no stop reason returned)';
+        setMessages(prev => [...prev, createSystemMessage(`Model stop reason: ${reason}`, stopReason === 'end_turn' ? 'info' : 'warning')]);
+      }
+    }
+
     resetLoadingState();
 
     // Deferred title generation — runs AFTER the main query completes, not
