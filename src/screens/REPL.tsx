@@ -3013,14 +3013,14 @@ export function REPL({
     // exchange (matches OpenCode's auto-scroll behavior).
     repinScroll();
 
-    const isSlashCommand = input.trim().startsWith('/')
+    const _isSlash = input.trim().startsWith('/')
     const isExitShortcut = ['exit', 'quit', ':q', ':q!', ':wq', ':wq!'].includes(input.trim())
     const isEmpty = input.trim() === ''
 
     // Only gate plain-text prompts — slash commands, exit shortcuts, and
     // empty input all pass through.  Slash commands that need a model will
     // still be caught by the API-layer guards in query.ts / claude.ts.
-    if (!isSlashCommand && !isExitShortcut && !isEmpty) {
+    if (!_isSlash && !isExitShortcut && !isEmpty) {
       const missing: string[] = []
       if (!mainLoopModel) missing.push(NO_MODEL_CONFIGURED_MESSAGE)
       const isFirstParty = getAPIProvider() === 'firstParty'
