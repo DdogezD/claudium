@@ -1124,6 +1124,7 @@ export function REPL({
   // on resume (initialMessages present) so we don't re-title a resumed
   // session from mid-conversation context.
   const haikuTitleAttemptedRef = useRef((initialMessages?.length ?? 0) > 0);
+  const haikuTitleTextRef = useRef<string | null>(null);
   const agentTitle = mainThreadAgentDefinition?.agentType;
   const terminalTitle = sessionTitle ?? agentTitle ?? haikuTitle ?? 'Claudium';
   const isWaitingForApproval = toolUseConfirmQueue.length > 0 || promptQueue.length > 0 || pendingWorkerRequest || pendingSandboxRequest;
@@ -2559,12 +2560,11 @@ export function REPL({
       // (/help → <command-name>), and bash-mode (!cmd → <bash-input>).
       // None of these are the user's topic; wait for real prose.
       if (text && !text.startsWith(`<${LOCAL_COMMAND_STDOUT_TAG}>`) && !text.startsWith(`<${COMMAND_MESSAGE_TAG}>`) && !text.startsWith(`<${COMMAND_NAME_TAG}>`) && !text.startsWith(`<${BASH_INPUT_TAG}>`)) {
+        // Defer title generation — fire-and-forget concurrent with the main
+        // query corrupts the response stream when both share the same model
+        // and session identity (CLIProxyAPI/Codex layer).
         haikuTitleAttemptedRef.current = true;
-        void generateSessionTitle(text, new AbortController().signal).then(title => {
-          if (title) setHaikuTitle(title);else haikuTitleAttemptedRef.current = false;
-        }, () => {
-          haikuTitleAttemptedRef.current = false;
-        });
+        haikuTitleTextRef.current = text;
       }
     }
 
@@ -2713,12 +2713,28 @@ export function REPL({
     }
     resetLoadingState();
 
+    // Deferred title generation — runs AFTER the main query completes, not
+    // concurrently.  The title query shares the same model as the main loop
+    // (getSmallFastModel falls through to the configured main model) and
+    // concurrent fire-and-forget with the same session identity corrupts the
+    // response stream at the CLIProxyAPI/Codex layer.
+    const deferredTitleText = haikuTitleTextRef.current
+    if (deferredTitleText) {
+      haikuTitleTextRef.current = null
+      const abort = new AbortController()
+      generateSessionTitle(deferredTitleText, abort.signal).then(title => {
+        if (title) setHaikuTitle(title); else haikuTitleAttemptedRef.current = false
+      }, () => {
+        haikuTitleAttemptedRef.current = false
+      })
+    }
+
     // Log query profiling report if enabled
     logQueryProfileReport();
 
     // Signal that a query turn has completed successfully
     await onTurnComplete?.(messagesRef.current);
-  }, [initialMcpClients, resetLoadingState, getToolUseContext, toolPermissionContext, setAppState, customSystemPrompt, onTurnComplete, appendSystemPrompt, canUseTool, mainThreadAgentDefinition, onQueryEvent, sessionTitle, titleDisabled]);
+  }, [initialMcpClients, resetLoadingState, getToolUseContext, toolPermissionContext, setAppState, customSystemPrompt, onTurnComplete, appendSystemPrompt, canUseTool, mainThreadAgentDefinition, onQueryEvent, sessionTitle, titleDisabled, haikuTitleTextRef, haikuTitleAttemptedRef, setHaikuTitle]);
   const onQuery = useCallback(async (newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>, input?: string, effort?: EffortValue): Promise<void> => {
     // If this is a teammate, mark them as active when starting a turn
     if (isAgentSwarmsEnabled()) {
