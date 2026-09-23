@@ -316,6 +316,7 @@ export CLAUDE_CODE_USE_OPENAI=1
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | Override which concrete model the `opus` alias resolves to |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | Override which concrete model the `sonnet` alias resolves to |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Override which concrete model the `haiku` alias resolves to |
+| `CLAUDE_CODE_PRESERVE_THINKING` | Replay assistant thinking as the `reasoning` message field, for templates that render it (opt-in; unset sends no reasoning) |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Override max context window size |
 | `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
 | `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |

@@ -15,6 +15,9 @@
  *   OPENAI_BASE_URL=http://...        — base URL (default: https://api.openai.com/v1)
  *   OPENAI_MODEL=gpt-4o               — default model override
  *   OPENAI_API_MODE=chat_completions|responses — force the transport mode
+ *   CLAUDE_CODE_PRESERVE_THINKING=true|false — replay assistant thinking as the
+ *     `reasoning` message field and forward the matching `preserve_thinking`
+ *     template kwarg (unset: drop thinking, as upstream does)
  *   CODEX_API_KEY / ~/.codex/auth.json — Codex auth for codexplan/codexspark
  */
 
@@ -33,6 +36,7 @@ import {
   resolveCodexApiCredentials,
   resolveProviderRequest,
 } from './providerConfig.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 
 // ---------------------------------------------------------------------------
 // Types — minimal subset of Anthropic SDK types we need to produce
@@ -53,6 +57,9 @@ interface OpenAIMessage {
   }>
   tool_call_id?: string
   name?: string
+  // Replayed thinking; reasoning-aware chat templates render it as a <think>
+  // block ahead of the assistant content.
+  reasoning?: string
 }
 
 interface OpenAITool {
@@ -139,6 +146,21 @@ function convertContentBlocks(
   return parts
 }
 
+/**
+ * Whether prior assistant thinking should be replayed to the model.
+ *
+ * Reasoning-aware chat templates (Qwen3.x) render an assistant message's
+ * `reasoning` as a <think> block and honour a `preserve_thinking` kwarg:
+ * `false` keeps thinking only for messages after the last user turn (the
+ * in-flight tool loop), `true` keeps it across the whole history. Unset
+ * disables replay entirely, matching upstream behaviour.
+ */
+function resolvePreserveThinking(): boolean | undefined {
+  const raw = process.env.CLAUDE_CODE_PRESERVE_THINKING
+  if (!raw) return undefined
+  return isEnvTruthy(raw)
+}
+
 function convertMessages(
   messages: Array<{ role: string; message?: { role?: string; content?: unknown }; content?: unknown }>,
   system: unknown,
@@ -194,6 +216,11 @@ function convertMessages(
       // Check for tool_use blocks
       if (Array.isArray(content)) {
         const toolUses = content.filter((b: { type?: string }) => b.type === 'tool_use')
+        const reasoning = content
+          .filter((b: { type?: string }) => b.type === 'thinking')
+          .map((b: { thinking?: string }) => b.thinking ?? '')
+          .filter(Boolean)
+          .join('\n\n')
         const textContent = content.filter(
           (b: { type?: string }) => b.type !== 'tool_use' && b.type !== 'thinking',
         )
@@ -201,6 +228,10 @@ function convertMessages(
         const assistantMsg: OpenAIMessage = {
           role: 'assistant',
           content: convertContentBlocks(textContent) as string,
+        }
+
+        if (reasoning && resolvePreserveThinking() !== undefined) {
+          assistantMsg.reasoning = reasoning
         }
 
         if (toolUses.length > 0) {
@@ -847,6 +878,12 @@ class OpenAIShimMessages {
 
     if (params.temperature !== undefined) body.temperature = params.temperature
     if (params.top_p !== undefined) body.top_p = params.top_p
+
+    // Reasoning-aware chat templates gate the replayed <think> blocks on this.
+    const preserveThinking = resolvePreserveThinking()
+    if (preserveThinking !== undefined) {
+      body.chat_template_kwargs = { preserve_thinking: preserveThinking }
+    }
 
     if (params.tools && params.tools.length > 0) {
       const converted = convertTools(
