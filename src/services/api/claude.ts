@@ -163,8 +163,10 @@ import { headlessProfilerCheckpoint } from 'src/utils/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcpInstructionsDelta.js'
 import { calculateUSDCost } from 'src/utils/modelCost.js'
 import {
+  buildSearxngWebSearchErrorBlocks,
   hasSearxngWebSearchOverride,
   performSearxngWebSearch,
+  SearxngRequestError,
   type SearxngWebSearchRequest,
 } from 'src/tools/WebSearchTool/searxng.js'
 import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
@@ -1049,20 +1051,52 @@ async function* queryModel(
   }
 
   if (shouldUseSearxngWebSearch(options)) {
+    let searchMessage: AssistantMessage
     try {
       const content = await performSearxngWebSearch({
         request: options.webSearchRequest,
         signal,
         fetchFn: options.fetchOverride,
       })
-      yield createAssistantMessage({ content })
+      searchMessage = createAssistantMessage({ content })
     } catch (error) {
       logError(error)
+      // Surface the failure as a standard web_search_tool_result_error block
+      // so downstream handling treats it like a provider-side search error
+      // instead of a text reply impersonating search results.
+      const errorCode =
+        error instanceof SearxngRequestError && error.status === 429
+          ? 'too_many_requests'
+          : 'unavailable'
       yield createAssistantMessage({
-        content: `Web search via SearXNG failed: ${errorMessage(error)}`,
+        content: buildSearxngWebSearchErrorBlocks(
+          options.webSearchRequest,
+          errorCode,
+        ),
       })
+      return
     }
-    return
+
+    yield searchMessage
+
+    // Emulate the provider-side flow: the search results are now part of the
+    // conversation exactly as a real server-side web_search would leave them
+    // (server_tool_use + web_search_tool_result, snippets in
+    // encrypted_content), and the model writes its cited summary text as the
+    // continuation of this same turn. Strip the web_search tool schema so it
+    // cannot trigger a second search, and clear webSearchRequest so retries
+    // or continuations don't re-enter this branch.
+    messages = [...messages, searchMessage]
+    options = {
+      ...options,
+      extraToolSchemas: (options.extraToolSchemas ?? []).filter(
+        tool =>
+          tool.type !== 'web_search_20250305' &&
+          tool.type !== 'web_search_20260209',
+      ),
+      toolChoice: undefined,
+      webSearchRequest: undefined,
+    }
   }
 
   // Check the provider capacity off-switch. Subscribers don't hit this path.

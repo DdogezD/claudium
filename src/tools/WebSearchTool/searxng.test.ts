@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
   buildSearxngSearchUrl,
+  buildSearxngWebSearchErrorBlocks,
   performSearxngWebSearch,
+  SearxngRequestError,
 } from './searxng.js'
 
 function toUrl(input: RequestInfo | URL): URL {
@@ -14,37 +16,46 @@ function toUrl(input: RequestInfo | URL): URL {
   return new URL(input.url)
 }
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+function makeResult(
+  url: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { title: url, url, content: 'snippet', ...overrides }
+}
+
 describe('performSearxngWebSearch', () => {
-  test('sends only q and format=json to SearXNG', async () => {
-    let requestedUrl: URL | undefined
+  test('sends q, format=json and pageno to SearXNG', async () => {
+    const requestedUrls: URL[] = []
 
     const blocks = await performSearxngWebSearch({
       request: { query: 'bun runtime' },
       signal: new AbortController().signal,
       baseUrl: 'http://localhost:8888/',
       fetchFn: async input => {
-        requestedUrl = toUrl(input)
-        return new Response(
-          JSON.stringify({
-            results: [
-              {
-                title: 'Bun',
-                url: 'https://bun.sh/',
-                content: 'Fast JavaScript runtime',
-              },
-            ],
-          }),
-          {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          },
-        )
+        requestedUrls.push(toUrl(input))
+        return jsonResponse({
+          results: [
+            {
+              title: 'Bun',
+              url: 'https://bun.sh/',
+              content: 'Fast JavaScript runtime',
+            },
+          ],
+        })
       },
     })
 
-    expect(requestedUrl?.pathname).toBe('/search')
-    expect([...requestedUrl!.searchParams.entries()].sort()).toEqual([
+    expect(requestedUrls[0]?.pathname).toBe('/search')
+    expect([...requestedUrls[0]!.searchParams.entries()].sort()).toEqual([
       ['format', 'json'],
+      ['pageno', '1'],
       ['q', 'bun runtime'],
     ])
     expect(blocks).toHaveLength(2)
@@ -68,31 +79,25 @@ describe('performSearxngWebSearch', () => {
       signal: new AbortController().signal,
       baseUrl: 'http://localhost:8888',
       fetchFn: async () =>
-        new Response(
-          JSON.stringify({
-            results: [
-              {
-                title: 'Allowed',
-                url: 'https://docs.example.com/guide',
-                content: 'Allowed result',
-              },
-              {
-                title: 'Blocked',
-                url: 'https://blocked.example.com/post',
-                content: 'Blocked result',
-              },
-              {
-                title: 'Different domain',
-                url: 'https://other.test/post',
-                content: 'Other result',
-              },
-            ],
-          }),
-          {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          },
-        ),
+        jsonResponse({
+          results: [
+            {
+              title: 'Allowed',
+              url: 'https://docs.example.com/guide',
+              content: 'Allowed result',
+            },
+            {
+              title: 'Blocked',
+              url: 'https://blocked.example.com/post',
+              content: 'Blocked result',
+            },
+            {
+              title: 'Different domain',
+              url: 'https://other.test/post',
+              content: 'Other result',
+            },
+          ],
+        }),
     })
 
     const resultBlock = blocks[1] as {
@@ -103,6 +108,164 @@ describe('performSearxngWebSearch', () => {
     expect(resultBlock.content[0]).toMatchObject({
       title: 'Allowed',
       url: 'https://docs.example.com/guide',
+    })
+  })
+
+  test('paginates to fill the result set after domain filtering', async () => {
+    const pages: number[] = []
+
+    const blocks = await performSearxngWebSearch({
+      request: {
+        query: 'docs',
+        allowedDomains: ['example.com'],
+      },
+      signal: new AbortController().signal,
+      baseUrl: 'http://localhost:8888',
+      fetchFn: async input => {
+        const url = toUrl(input)
+        const page = Number(url.searchParams.get('pageno'))
+        pages.push(page)
+        if (page === 1) {
+          // Page 1 only has results that get filtered out
+          return jsonResponse({
+            results: [makeResult('https://other.test/a')],
+          })
+        }
+        return jsonResponse({
+          results: [makeResult('https://example.com/from-page-2')],
+        })
+      },
+    })
+
+    // Page 3 returns the same URL as page 2, so pagination stops there
+    expect(pages).toEqual([1, 2, 3])
+    const resultBlock = blocks[1] as { content: Array<{ url: string }> }
+    expect(resultBlock.content.map(r => r.url)).toEqual([
+      'https://example.com/from-page-2',
+    ])
+  })
+
+  test('stops paginating when a page yields no new results', async () => {
+    const pages: number[] = []
+
+    await performSearxngWebSearch({
+      request: { query: 'docs' },
+      signal: new AbortController().signal,
+      baseUrl: 'http://localhost:8888',
+      fetchFn: async input => {
+        const url = toUrl(input)
+        const page = Number(url.searchParams.get('pageno'))
+        pages.push(page)
+        // Same URL repeated on every page
+        return jsonResponse({
+          results: [makeResult('https://example.com/dup')],
+        })
+      },
+    })
+
+    expect(pages).toEqual([1, 2])
+  })
+
+  test('caps results at the internal target', async () => {
+    const blocks = await performSearxngWebSearch({
+      request: { query: 'docs' },
+      signal: new AbortController().signal,
+      baseUrl: 'http://localhost:8888',
+      fetchFn: async () =>
+        jsonResponse({
+          results: Array.from({ length: 30 }, (_, i) =>
+            makeResult(`https://example.com/${i}`),
+          ),
+        }),
+    })
+
+    const resultBlock = blocks[1] as { content: unknown[] }
+    expect(resultBlock.content).toHaveLength(20)
+  })
+
+  test('throws SearxngRequestError with status on HTTP failure', async () => {
+    const promise = performSearxngWebSearch({
+      request: { query: 'docs' },
+      signal: new AbortController().signal,
+      baseUrl: 'http://localhost:8888',
+      fetchFn: async () => new Response('boom', { status: 429 }),
+    })
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'SearxngRequestError',
+      status: 429,
+    })
+  })
+
+  test('normalizes HTML snippets', async () => {
+    const blocks = await performSearxngWebSearch({
+      request: { query: 'docs' },
+      signal: new AbortController().signal,
+      baseUrl: 'http://localhost:8888',
+      fetchFn: async () =>
+        jsonResponse({
+          results: [
+            makeResult('https://example.com/a', {
+              content:
+                'The <b>&lt;b&gt;</b> tag   draws\nreaders&#39; attention &amp; more',
+            }),
+          ],
+        }),
+    })
+
+    const resultBlock = blocks[1] as {
+      content: Array<{ encrypted_content: string }>
+    }
+    expect(resultBlock.content[0]!.encrypted_content).toBe(
+      'The <b> tag draws readers\' attention & more',
+    )
+  })
+
+  test('truncates long snippets', async () => {
+    const blocks = await performSearxngWebSearch({
+      request: { query: 'docs' },
+      signal: new AbortController().signal,
+      baseUrl: 'http://localhost:8888',
+      fetchFn: async () =>
+        jsonResponse({
+          results: [
+            makeResult('https://example.com/a', {
+              content: 'x'.repeat(1000),
+            }),
+          ],
+        }),
+    })
+
+    const resultBlock = blocks[1] as {
+      content: Array<{ encrypted_content: string }>
+    }
+    expect(resultBlock.content[0]!.encrypted_content).toHaveLength(501)
+    expect(resultBlock.content[0]!.encrypted_content.endsWith('…')).toBe(true)
+  })
+})
+
+describe('buildSearxngWebSearchErrorBlocks', () => {
+  test('builds a server_tool_use paired with an error result', () => {
+    const blocks = buildSearxngWebSearchErrorBlocks(
+      { query: 'docs', allowedDomains: ['example.com'] },
+      'too_many_requests',
+      'tool-use-id',
+    )
+
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0]).toMatchObject({
+      type: 'server_tool_use',
+      id: 'tool-use-id',
+      name: 'web_search',
+      input: { query: 'docs', allowed_domains: ['example.com'] },
+    })
+    expect(blocks[1]).toEqual({
+      type: 'web_search_tool_result',
+      tool_use_id: 'tool-use-id',
+      content: {
+        type: 'web_search_tool_result_error',
+        error_code: 'too_many_requests',
+      },
     })
   })
 })
@@ -117,5 +280,6 @@ describe('buildSearxngSearchUrl', () => {
     expect(url.pathname).toBe('/searxng/search')
     expect(url.searchParams.get('q')).toBe('query text')
     expect(url.searchParams.get('format')).toBe('json')
+    expect(url.searchParams.get('pageno')).toBe('1')
   })
 })
