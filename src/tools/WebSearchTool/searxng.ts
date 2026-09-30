@@ -8,6 +8,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID } from 'crypto'
 import { getUserAgent } from '../../utils/http.js'
+import { matchesWebSearchRules } from './matchPattern.js'
 
 export const SEARXNG_BASE_URL_ENV_VAR = 'CLAUDE_CODE_SEARXNG_BASE_URL'
 
@@ -19,8 +20,15 @@ const SNIPPET_MAX_LENGTH = 500
 
 export type SearxngWebSearchRequest = {
   query: string
+  /** Allow entries (plain domains or match patterns) for display/filtering. */
   allowedDomains?: string[]
   blockedDomains?: string[]
+  /**
+   * Additional allow rule sets ANDed with allowedDomains — used when both
+   * settings and the model provide allowlists. Internal; never echoed into
+   * server_tool_use input.
+   */
+  extraAllowRuleSets?: string[][]
 }
 
 type FetchLike = NonNullable<ClientOptions['fetch']> | typeof fetch
@@ -137,6 +145,16 @@ export function buildSearxngWebSearchErrorBlocks(
   return [buildServerToolUseBlock(request, toolUseId), resultBlock]
 }
 
+export type SearxngWebSearchOutcome = {
+  /**
+   * Full server_tool_use + web_search_tool_result blocks for local
+   * consumption (tool output parsing, UI, transcript).
+   */
+  blocks: BetaContentBlock[]
+  /** Filtered, deduplicated results after pagination. */
+  results: SearxngSearchResult[]
+}
+
 export async function performSearxngWebSearch({
   request,
   signal,
@@ -147,7 +165,7 @@ export async function performSearxngWebSearch({
   signal: AbortSignal
   baseUrl?: string
   fetchFn?: FetchLike
-}): Promise<BetaContentBlock[]> {
+}): Promise<SearxngWebSearchOutcome> {
   if (!baseUrl) {
     throw new Error(`${SEARXNG_BASE_URL_ENV_VAR} is not set`)
   }
@@ -194,7 +212,55 @@ export async function performSearxngWebSearch({
     }
   }
 
-  return buildSearxngWebSearchBlocks(request, results)
+  return {
+    blocks: buildSearxngWebSearchBlocks(request, results),
+    results,
+  }
+}
+
+/**
+ * Sanitize fabricated blocks for an API-bound conversation. Providers
+ * validate encrypted_content as a real server-encrypted blob (base64 decode
+ * + MAC check), so result items can never be replayed client-side. An empty
+ * content array is accepted and keeps the server_tool_use /
+ * web_search_tool_result pairing intact.
+ */
+export function sanitizeSearxngBlocksForAPI(
+  blocks: BetaContentBlock[],
+): BetaContentBlock[] {
+  return blocks.map(block =>
+    block.type === 'web_search_tool_result'
+      ? { ...block, content: [] }
+      : block,
+  )
+}
+
+/**
+ * Plain-text rendering of search results for the model continuation. This is
+ * how snippets actually reach the model: providers reject client-fabricated
+ * encrypted_content, so result content travels as text in a user message.
+ */
+export function formatSearxngResultsText(
+  request: SearxngWebSearchRequest,
+  results: SearxngSearchResult[],
+): string {
+  const lines = [`Search results for "${request.query}" (via SearXNG):`]
+  results.forEach((result, index) => {
+    const url = (result.url ?? '').trim()
+    const title =
+      typeof result.title === 'string' && result.title.trim().length > 0
+        ? result.title.trim()
+        : url
+    lines.push(`${index + 1}. ${title} — ${url}`)
+    const snippet = normalizeSnippet(result.content)
+    if (snippet) {
+      lines.push(`   ${snippet}`)
+    }
+  })
+  if (results.length === 0) {
+    lines.push('(no results)')
+  }
+  return lines.join('\n')
 }
 
 async function fetchSearxngPage(
@@ -237,45 +303,26 @@ function filterSearxngResults(
   results: SearxngSearchResult[],
   request: SearxngWebSearchRequest,
 ): SearxngSearchResult[] {
+  const allowRuleSets = [
+    ...(request.allowedDomains?.length ? [request.allowedDomains] : []),
+    ...(request.extraAllowRuleSets ?? []),
+  ]
+  const blockRules = request.blockedDomains ?? []
+
   return results.filter(result => {
     const url = typeof result.url === 'string' ? result.url.trim() : ''
     if (!url) {
       return false
     }
 
-    let hostname: string
     try {
-      hostname = new URL(url).hostname.toLowerCase()
+      new URL(url)
     } catch {
       return false
     }
 
-    if (
-      request.allowedDomains?.length &&
-      !request.allowedDomains.some(domain => hostMatchesDomain(hostname, domain))
-    ) {
-      return false
-    }
-
-    if (
-      request.blockedDomains?.some(domain => hostMatchesDomain(hostname, domain))
-    ) {
-      return false
-    }
-
-    return true
+    return matchesWebSearchRules(url, { allowRuleSets, blockRules })
   })
-}
-
-function hostMatchesDomain(hostname: string, domain: string): boolean {
-  const normalizedDomain = domain.trim().toLowerCase().replace(/^\.+/, '')
-  if (!normalizedDomain) {
-    return false
-  }
-
-  return (
-    hostname === normalizedDomain || hostname.endsWith(`.${normalizedDomain}`)
-  )
 }
 
 function toBetaWebSearchResult(
@@ -292,7 +339,13 @@ function toBetaWebSearchResult(
       : url
 
   return {
-    encrypted_content: normalizeSnippet(result.content),
+    // The field contract is a base64-encoded opaque payload; providers
+    // base64-decode it before grounding the model, so plain UTF-8 text
+    // trips decode errors. Encode the normalized snippet accordingly.
+    encrypted_content: Buffer.from(
+      normalizeSnippet(result.content),
+      'utf8',
+    ).toString('base64'),
     page_age:
       typeof result.publishedDate === 'string' && result.publishedDate.trim()
         ? result.publishedDate.trim()

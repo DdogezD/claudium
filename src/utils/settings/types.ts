@@ -398,6 +398,33 @@ export const SettingsSchema = lazySchema(() =>
       permissions: PermissionsSchema()
         .optional()
         .describe('Tool usage permissions configuration'),
+      webSearch: z
+        .object({
+          allowedDomains: z
+            .array(z.string())
+            .optional()
+            .describe(
+              'Allowlist of domains the WebSearch tool may return results from. ' +
+                'When set, it overrides the per-call allowed_domains parameter: ' +
+                'the model can only narrow results within this list. ' +
+                'Subdomains match (e.g. "example.com" covers "docs.example.com"). ' +
+                'Arrays merge across settings sources (same semantics as allowedMcpServers).',
+            ),
+          blockedDomains: z
+            .array(z.string())
+            .optional()
+            .describe(
+              'Denylist of domains the WebSearch tool must never return results from. ' +
+                'Merged with the per-call blocked_domains parameter. ' +
+                'Subdomains match. Arrays merge across settings sources.',
+            ),
+        })
+        .optional()
+        .describe(
+          'Domain restrictions for the WebSearch tool. Applies to both ' +
+            'provider-side web search and the SearXNG override. ' +
+            'allowedDomains takes precedence over blockedDomains when both are set.',
+        ),
       modelProfiles: ModelProfilesSchema()
         .optional()
         .describe(

@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import {
   buildSearxngSearchUrl,
   buildSearxngWebSearchErrorBlocks,
+  formatSearxngResultsText,
   performSearxngWebSearch,
+  sanitizeSearxngBlocksForAPI,
   SearxngRequestError,
 } from './searxng.js'
 
@@ -34,7 +36,7 @@ describe('performSearxngWebSearch', () => {
   test('sends q, format=json and pageno to SearXNG', async () => {
     const requestedUrls: URL[] = []
 
-    const blocks = await performSearxngWebSearch({
+    const { blocks } = await performSearxngWebSearch({
       request: { query: 'bun runtime' },
       signal: new AbortController().signal,
       baseUrl: 'http://localhost:8888/',
@@ -70,7 +72,7 @@ describe('performSearxngWebSearch', () => {
   })
 
   test('filters domains locally using allowed and blocked lists', async () => {
-    const blocks = await performSearxngWebSearch({
+    const { blocks } = await performSearxngWebSearch({
       request: {
         query: 'runtime docs',
         allowedDomains: ['example.com'],
@@ -114,7 +116,7 @@ describe('performSearxngWebSearch', () => {
   test('paginates to fill the result set after domain filtering', async () => {
     const pages: number[] = []
 
-    const blocks = await performSearxngWebSearch({
+    const { blocks } = await performSearxngWebSearch({
       request: {
         query: 'docs',
         allowedDomains: ['example.com'],
@@ -167,7 +169,7 @@ describe('performSearxngWebSearch', () => {
   })
 
   test('caps results at the internal target', async () => {
-    const blocks = await performSearxngWebSearch({
+    const { blocks } = await performSearxngWebSearch({
       request: { query: 'docs' },
       signal: new AbortController().signal,
       baseUrl: 'http://localhost:8888',
@@ -198,7 +200,7 @@ describe('performSearxngWebSearch', () => {
   })
 
   test('normalizes HTML snippets', async () => {
-    const blocks = await performSearxngWebSearch({
+    const { blocks } = await performSearxngWebSearch({
       request: { query: 'docs' },
       signal: new AbortController().signal,
       baseUrl: 'http://localhost:8888',
@@ -216,13 +218,15 @@ describe('performSearxngWebSearch', () => {
     const resultBlock = blocks[1] as {
       content: Array<{ encrypted_content: string }>
     }
-    expect(resultBlock.content[0]!.encrypted_content).toBe(
-      'The <b> tag draws readers\' attention & more',
-    )
+    const snippet = Buffer.from(
+      resultBlock.content[0]!.encrypted_content,
+      'base64',
+    ).toString('utf8')
+    expect(snippet).toBe('The <b> tag draws readers\' attention & more')
   })
 
   test('truncates long snippets', async () => {
-    const blocks = await performSearxngWebSearch({
+    const { blocks } = await performSearxngWebSearch({
       request: { query: 'docs' },
       signal: new AbortController().signal,
       baseUrl: 'http://localhost:8888',
@@ -239,8 +243,12 @@ describe('performSearxngWebSearch', () => {
     const resultBlock = blocks[1] as {
       content: Array<{ encrypted_content: string }>
     }
-    expect(resultBlock.content[0]!.encrypted_content).toHaveLength(501)
-    expect(resultBlock.content[0]!.encrypted_content.endsWith('…')).toBe(true)
+    const snippet = Buffer.from(
+      resultBlock.content[0]!.encrypted_content,
+      'base64',
+    ).toString('utf8')
+    expect(snippet).toHaveLength(501)
+    expect(snippet.endsWith('…')).toBe(true)
   })
 })
 
@@ -281,5 +289,53 @@ describe('buildSearxngSearchUrl', () => {
     expect(url.searchParams.get('q')).toBe('query text')
     expect(url.searchParams.get('format')).toBe('json')
     expect(url.searchParams.get('pageno')).toBe('1')
+  })
+})
+describe('sanitizeSearxngBlocksForAPI', () => {
+  test('empties web_search_tool_result content, keeps server_tool_use', async () => {
+    const { blocks } = await performSearxngWebSearch({
+      request: { query: 'docs' },
+      signal: new AbortController().signal,
+      baseUrl: 'http://localhost:8888',
+      fetchFn: async () =>
+        jsonResponse({
+          results: [makeResult('https://example.com/a')],
+        }),
+    })
+
+    const sanitized = sanitizeSearxngBlocksForAPI(blocks)
+    expect(sanitized[0]).toEqual(blocks[0])
+    expect(sanitized[1]).toMatchObject({
+      type: 'web_search_tool_result',
+      content: [],
+    })
+    // Original blocks untouched
+    expect((blocks[1] as { content: unknown[] }).content).toHaveLength(1)
+  })
+})
+
+describe('formatSearxngResultsText', () => {
+  test('lists title, url and normalized snippet', () => {
+    const text = formatSearxngResultsText({ query: 'bun' }, [
+      {
+        title: 'Bun',
+        url: 'https://bun.sh/',
+        content: 'Fast <b>runtime</b> &amp; toolkit',
+      },
+      { title: '', url: 'https://example.com/', content: '' },
+    ])
+
+    expect(text).toBe(
+      'Search results for "bun" (via SearXNG):\n' +
+        '1. Bun — https://bun.sh/\n' +
+        '   Fast runtime & toolkit\n' +
+        '2. https://example.com/ — https://example.com/',
+    )
+  })
+
+  test('marks empty result sets', () => {
+    expect(formatSearxngResultsText({ query: 'bun' }, [])).toContain(
+      '(no results)',
+    )
   })
 })

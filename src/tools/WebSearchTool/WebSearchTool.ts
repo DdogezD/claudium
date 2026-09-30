@@ -3,7 +3,17 @@ import type {
   BetaWebSearchTool20250305,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
 import { hasSearxngWebSearchOverride } from 'src/tools/WebSearchTool/searxng.js'
+import {
+  resolveWebSearchDomains,
+  type ResolvedWebSearchDomains,
+} from 'src/tools/WebSearchTool/domainRestrictions.js'
+import {
+  matchesWebSearchRules,
+  toProviderDomains,
+  type WebSearchRuleConstraint,
+} from 'src/tools/WebSearchTool/matchPattern.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js'
@@ -74,20 +84,48 @@ export type { WebSearchProgress } from '../../types/tools.js'
 
 import type { WebSearchProgress } from '../../types/tools.js'
 
-function makeToolSchema(input: Input): BetaWebSearchTool20250305 {
+function makeToolSchema(
+  domains: ResolvedWebSearchDomains,
+): BetaWebSearchTool20250305 {
+  // Provider APIs only understand plain domains — match patterns and
+  // host/path rules are enforced client-side in makeOutputFromSearchResponse.
+  // The API also rejects requests that carry both lists, so the allowlist
+  // takes precedence (it already subsumes blocking outside its domains).
+  const allowed = toProviderDomains(domains.allowedDomains)
+  const blocked = toProviderDomains(domains.blockedDomains)
+  const domainParams = allowed.length
+    ? { allowed_domains: allowed }
+    : blocked.length
+      ? { blocked_domains: blocked }
+      : {}
   return {
     type: 'web_search_20250305',
     name: 'web_search',
-    allowed_domains: input.allowed_domains,
-    blocked_domains: input.blocked_domains,
+    ...domainParams,
     max_uses: 8, // Hardcoded to 8 searches maximum
   }
+}
+
+/** Build the effective client-side constraint, or undefined when unrestricted. */
+function makeRuleConstraint(
+  domains: ResolvedWebSearchDomains,
+): WebSearchRuleConstraint | undefined {
+  const allowRuleSets = [
+    ...(domains.allowedDomains?.length ? [domains.allowedDomains] : []),
+    ...(domains.extraAllowRuleSets ?? []),
+  ]
+  const blockRules = domains.blockedDomains ?? []
+  if (allowRuleSets.length === 0 && blockRules.length === 0) {
+    return undefined
+  }
+  return { allowRuleSets, blockRules }
 }
 
 function makeOutputFromSearchResponse(
   result: BetaContentBlock[],
   query: string,
   durationSeconds: number,
+  constraint?: WebSearchRuleConstraint,
 ): Output {
   // The result is a sequence of these blocks:
   // - text to start -- always?
@@ -121,8 +159,12 @@ function makeOutputFromSearchResponse(
         results.push(errorMessage)
         continue
       }
-      // Success case - add results to our collection
-      const hits = block.content.map(r => ({ title: r.title, url: r.url }))
+      // Success case - add results to our collection. Apply client-side
+      // rules so match patterns / host+path rules are enforced even on the
+      // provider-side search path (the API only understands plain domains).
+      const hits = block.content
+        .filter(r => !constraint || matchesWebSearchRules(r.url, constraint))
+        .map(r => ({ title: r.title, url: r.url }))
       results.push({
         tool_use_id: block.tool_use_id,
         content: hits,
@@ -259,10 +301,33 @@ export const WebSearchTool = buildTool({
   async call(input, context, _canUseTool, _parentMessage, onProgress) {
     const startTime = performance.now()
     const { query } = input
+
+    // Merge per-call domain parameters with the persistent settings.json
+    // webSearch restrictions. Settings are a hard ceiling/floor: the model
+    // can only narrow within them.
+    const domains = resolveWebSearchDomains(
+      input,
+      getSettings_DEPRECATED().webSearch,
+    )
+
+    // Explicit deny-all: settings allowlist is empty. Don't hit the network
+    // at all.
+    if (domains.denyAll) {
+      return {
+        data: {
+          query,
+          results: [
+            'Web search not performed: domain restrictions (settings.json webSearch.allowedDomains) exclude every domain this search could return.',
+          ],
+          durationSeconds: 0,
+        },
+      }
+    }
+
     const userMessage = createUserMessage({
       content: 'Perform a web search for the query: ' + query,
     })
-    const toolSchema = makeToolSchema(input)
+    const toolSchema = makeToolSchema(domains)
 
     const useHaiku = getFeatureValue_CACHED_MAY_BE_STALE(
       'tengu_plum_vx3',
@@ -289,8 +354,9 @@ export const WebSearchTool = buildTool({
         extraToolSchemas: [toolSchema],
         webSearchRequest: {
           query,
-          allowedDomains: input.allowed_domains,
-          blockedDomains: input.blocked_domains,
+          allowedDomains: domains.allowedDomains,
+          blockedDomains: domains.blockedDomains,
+          extraAllowRuleSets: domains.extraAllowRuleSets,
         },
         querySource: 'web_search_tool',
         agents: context.options.agentDefinitions.activeAgents,
@@ -405,6 +471,7 @@ export const WebSearchTool = buildTool({
       allContentBlocks,
       query,
       durationSeconds,
+      makeRuleConstraint(domains),
     )
     return { data }
   },

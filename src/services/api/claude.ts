@@ -164,9 +164,12 @@ import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcpInstructionsDelta.js
 import { calculateUSDCost } from 'src/utils/modelCost.js'
 import {
   buildSearxngWebSearchErrorBlocks,
+  formatSearxngResultsText,
   hasSearxngWebSearchOverride,
   performSearxngWebSearch,
+  sanitizeSearxngBlocksForAPI,
   SearxngRequestError,
+  type SearxngWebSearchOutcome,
   type SearxngWebSearchRequest,
 } from 'src/tools/WebSearchTool/searxng.js'
 import { endQueryProfile, queryCheckpoint } from 'src/utils/queryProfiler.js'
@@ -1052,13 +1055,14 @@ async function* queryModel(
 
   if (shouldUseSearxngWebSearch(options)) {
     let searchMessage: AssistantMessage
+    let outcome: SearxngWebSearchOutcome
     try {
-      const content = await performSearxngWebSearch({
+      outcome = await performSearxngWebSearch({
         request: options.webSearchRequest,
         signal,
         fetchFn: options.fetchOverride,
       })
-      searchMessage = createAssistantMessage({ content })
+      searchMessage = createAssistantMessage({ content: outcome.blocks })
     } catch (error) {
       logError(error)
       // Surface the failure as a standard web_search_tool_result_error block
@@ -1079,14 +1083,27 @@ async function* queryModel(
 
     yield searchMessage
 
-    // Emulate the provider-side flow: the search results are now part of the
-    // conversation exactly as a real server-side web_search would leave them
-    // (server_tool_use + web_search_tool_result, snippets in
-    // encrypted_content), and the model writes its cited summary text as the
-    // continuation of this same turn. Strip the web_search tool schema so it
-    // cannot trigger a second search, and clear webSearchRequest so retries
-    // or continuations don't re-enter this branch.
-    messages = [...messages, searchMessage]
+    // Emulate the provider-side flow: the model now reads the search results
+    // and writes its cited summary text as the continuation of this same
+    // turn. Providers validate encrypted_content as a real server-encrypted
+    // blob (base64 + MAC), so the API-bound copy strips result items to an
+    // empty array (accepted, keeps the block pairing) and carries the actual
+    // results — including snippets — as plain text in a follow-up user
+    // message. Strip the web_search tool schema so it cannot trigger a
+    // second search, and clear webSearchRequest so retries or continuations
+    // don't re-enter this branch.
+    messages = [
+      ...messages,
+      createAssistantMessage({
+        content: sanitizeSearxngBlocksForAPI(outcome.blocks),
+      }),
+      createUserMessage({
+        content: formatSearxngResultsText(
+          options.webSearchRequest,
+          outcome.results,
+        ),
+      }),
+    ]
     options = {
       ...options,
       extraToolSchemas: (options.extraToolSchemas ?? []).filter(
