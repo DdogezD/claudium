@@ -24,7 +24,7 @@ import { Select } from '../CustomSelect/index.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
 import { ModelProfileDialog } from './ModelProfileDialog.js';
-import { DomainRulesDialog, type DomainRuleLists } from './DomainRulesDialog.js';
+import { DomainRulesDialog, deriveDomainRules, type DomainRuleLists, type DomainRulesResult } from './DomainRulesDialog.js';
 import { getAdvisorModel } from '../../utils/advisor.js';
 import { formatProfileSummary, getModelProfile, type ModelScope } from '../../utils/model/modelProfiles.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
@@ -76,13 +76,11 @@ function mergeFetchDomains(existing: string[] | undefined, domains: string[]): s
   return merged.length > 0 ? merged : undefined;
 }
 
-function domainRulesSummary(lists: DomainRuleLists): string {
+function domainRulesSummary(rules: DomainRulesResult): string {
   const parts: string[] = [];
-  const search = lists.searchAllowed.length + lists.searchBlocked.length;
-  const fetch = lists.fetchAllow.length + lists.fetchDeny.length;
-  if (search > 0) parts.push(`${search} search`);
-  if (fetch > 0) parts.push(`${fetch} fetch`);
-  if (lists.sandboxAllowed.length > 0) parts.push(`${lists.sandboxAllowed.length} sandbox`);
+  if (rules.search.rules.length > 0) parts.push(`${rules.search.rules.length} search ${rules.search.mode === 'allowlist' ? 'allowed' : 'blocked'}`);
+  if (rules.fetch.rules.length > 0) parts.push(`${rules.fetch.rules.length} fetch ${rules.fetch.mode === 'allowlist' ? 'allowed' : 'blocked'}`);
+  if (rules.sandbox.rules.length > 0) parts.push(`${rules.sandbox.rules.length} sandbox`);
   return parts.length > 0 ? parts.join(' · ') : 'Not configured';
 }
 
@@ -725,13 +723,13 @@ export function Config({
   }, {
     id: 'domainRules',
     label: 'Domain rules (search · fetch · sandbox)',
-    value: domainRulesSummary({
+    value: domainRulesSummary(deriveDomainRules({
       searchAllowed: settingsData?.webSearch?.allowedDomains ?? [],
       searchBlocked: settingsData?.webSearch?.blockedDomains ?? [],
       fetchAllow: extractFetchDomains(settingsData?.permissions?.allow),
       fetchDeny: extractFetchDomains(settingsData?.permissions?.deny),
       sandboxAllowed: settingsData?.sandbox?.network?.allowedDomains ?? []
-    }),
+    })),
     type: 'managedEnum' as const,
     onChange: () => {} // handled by DomainRulesDialog submenu
   }, ...(showDefaultViewPicker ? [{
@@ -1555,23 +1553,29 @@ export function Config({
         isDirty.current = true;
         const perms = userSettings?.permissions;
         updateSettingsForSource('userSettings', {
-          // Empty lists delete the key; both empty removes webSearch entirely.
-          webSearch: result.searchAllowed.length === 0 && result.searchBlocked.length === 0 ? undefined : {
-            allowedDomains: result.searchAllowed.length > 0 ? result.searchAllowed : undefined,
-            blockedDomains: result.searchBlocked.length > 0 ? result.searchBlocked : undefined
+          // Mode decides which settings key the single rule list maps to;
+          // the other key is explicitly deleted. Empty list removes the
+          // webSearch key entirely.
+          webSearch: result.search.rules.length === 0 ? undefined : result.search.mode === 'allowlist' ? {
+            allowedDomains: result.search.rules,
+            blockedDomains: undefined
+          } : {
+            allowedDomains: undefined,
+            blockedDomains: result.search.rules
           },
           // WebFetch(domain:...) rules live in permissions.allow/deny —
-          // rebuild those arrays preserving non-WebFetch entries.
+          // the list goes to the side matching the mode; the other side's
+          // WebFetch rules are stripped (non-WebFetch entries preserved).
           permissions: {
             ...(perms ?? {}),
-            allow: mergeFetchDomains(perms?.allow, result.fetchAllow),
-            deny: mergeFetchDomains(perms?.deny, result.fetchDeny)
+            allow: mergeFetchDomains(perms?.allow, result.fetch.mode === 'allowlist' ? result.fetch.rules : []),
+            deny: mergeFetchDomains(perms?.deny, result.fetch.mode === 'blocklist' ? result.fetch.rules : [])
           },
           sandbox: {
             ...(userSettings?.sandbox ?? {}),
             network: {
               ...(userSettings?.sandbox?.network ?? {}),
-              allowedDomains: result.sandboxAllowed.length > 0 ? result.sandboxAllowed : undefined
+              allowedDomains: result.sandbox.rules.length > 0 ? result.sandbox.rules : undefined
             }
           }
         });

@@ -5,6 +5,7 @@ import { useKeybinding } from '../../keybindings/useKeybinding.js'
 import { compileMatchPattern } from '../../tools/WebSearchTool/matchPattern.js'
 import TextInput from '../TextInput.js'
 
+// Raw settings-shaped lists, as read from settings.json.
 export type DomainRuleLists = {
   searchAllowed: string[]
   searchBlocked: string[]
@@ -13,15 +14,45 @@ export type DomainRuleLists = {
   sandboxAllowed: string[]
 }
 
-type ListRef = keyof DomainRuleLists
+export type DomainRuleMode = 'blocklist' | 'allowlist'
+
+// What the dialog reports: ONE rule list per group plus the mode that
+// gives it meaning. Mapping mode+list to concrete settings keys is the
+// caller's job — the UI never exposes two parallel lists.
+export type DomainRulesResult = {
+  search: { mode: DomainRuleMode; rules: string[] }
+  fetch: { mode: DomainRuleMode; rules: string[] }
+  sandbox: { rules: string[] }
+}
+
+// Collapse the raw settings lists into the single-list-per-group model.
+// When both sides are populated (hand-edited settings), the allowlist
+// wins for web search (it is the hard ceiling at runtime) and the
+// blocklist wins for web fetch (losing deny rules silently is worse).
+export function deriveDomainRules(lists: DomainRuleLists): DomainRulesResult {
+  return {
+    search:
+      lists.searchAllowed.length > 0
+        ? { mode: 'allowlist', rules: lists.searchAllowed }
+        : { mode: 'blocklist', rules: lists.searchBlocked },
+    fetch:
+      lists.fetchDeny.length > 0
+        ? { mode: 'blocklist', rules: lists.fetchDeny }
+        : lists.fetchAllow.length > 0
+          ? { mode: 'allowlist', rules: lists.fetchAllow }
+          : { mode: 'blocklist', rules: [] },
+    sandbox: { rules: lists.sandboxAllowed },
+  }
+}
 
 type GroupKey = 'websearch' | 'webfetch' | 'sandbox'
 
 type Group = {
   key: GroupKey
   title: string
-  lists: { ref: ListRef; title: string }[]
+  placeholder: string
   validate: (rule: string, existing: string[]) => string | null
+  modeLabel?: Record<DomainRuleMode, string>
 }
 
 function baseRuleError(rule: string, existing: string[]): string | null {
@@ -37,10 +68,11 @@ const GROUPS: Group[] = [
   {
     key: 'websearch',
     title: 'Web Search',
-    lists: [
-      { ref: 'searchAllowed', title: 'Allowed' },
-      { ref: 'searchBlocked', title: 'Blocked' },
-    ],
+    placeholder: 'example.com or *://*.example.com/path/*',
+    modeLabel: {
+      blocklist: 'Allow all except blocked',
+      allowlist: 'Allow only listed domains',
+    },
     validate(rule, existing) {
       const base = baseRuleError(rule, existing)
       if (base) return base
@@ -56,10 +88,11 @@ const GROUPS: Group[] = [
   {
     key: 'webfetch',
     title: 'Web Fetch',
-    lists: [
-      { ref: 'fetchAllow', title: 'Allowed' },
-      { ref: 'fetchDeny', title: 'Blocked' },
-    ],
+    placeholder: 'example.com or *.example.com',
+    modeLabel: {
+      blocklist: 'Block listed domains (others will ask)',
+      allowlist: 'Always allow listed domains (others will ask)',
+    },
     validate(rule, existing) {
       const base = baseRuleError(rule, existing)
       if (base) return base
@@ -74,7 +107,7 @@ const GROUPS: Group[] = [
   {
     key: 'sandbox',
     title: 'Sandbox',
-    lists: [{ ref: 'sandboxAllowed', title: 'Allowed' }],
+    placeholder: 'example.com',
     validate(rule, existing) {
       const base = baseRuleError(rule, existing)
       if (base) return base
@@ -88,13 +121,13 @@ const GROUPS: Group[] = [
 ]
 
 type Row =
-  | { type: 'entry'; list: ListRef; index: number }
-  | { type: 'add'; list: ListRef }
+  | { type: 'entry'; index: number }
+  | { type: 'add' }
   | { type: 'done' }
 
 type Props = {
   initial: DomainRuleLists
-  onComplete: (result: DomainRuleLists) => void
+  onComplete: (result: DomainRulesResult) => void
   onCancel: () => void
 }
 
@@ -103,29 +136,30 @@ export function DomainRulesDialog({
   onComplete,
   onCancel,
 }: Props): React.ReactNode {
-  const [lists, setLists] = useState<DomainRuleLists>(initial)
+  const derived = deriveDomainRules(initial)
+  const [rules, setRules] = useState<Record<GroupKey, string[]>>({
+    websearch: derived.search.rules,
+    webfetch: derived.fetch.rules,
+    sandbox: derived.sandbox.rules,
+  })
+  const [modes, setModes] = useState<Record<'websearch' | 'webfetch', DomainRuleMode>>({
+    websearch: derived.search.mode,
+    webfetch: derived.fetch.mode,
+  })
   const [groupIndex, setGroupIndex] = useState(0)
   const [selectedRow, setSelectedRow] = useState(0)
-  const [editing, setEditing] = useState<{
-    list: ListRef
-    index: number | null
-  } | null>(null)
+  const [editing, setEditing] = useState<{ index: number | null } | null>(null)
   const [editText, setEditText] = useState('')
   const [editOffset, setEditOffset] = useState(0)
   const [editError, setEditError] = useState<string | null>(null)
   const isTerminalFocused = useTerminalFocus()
 
   const group = GROUPS[groupIndex]!
+  const entries = rules[group.key]
 
   const rows: Row[] = [
-    ...group.lists.flatMap((l): Row[] => [
-      ...lists[l.ref].map((_, index): Row => ({
-        type: 'entry',
-        list: l.ref,
-        index,
-      })),
-      { type: 'add', list: l.ref },
-    ]),
+    ...entries.map((_, index): Row => ({ type: 'entry', index })),
+    { type: 'add' },
     { type: 'done' },
   ]
   const clampedSelected = Math.min(selectedRow, rows.length - 1)
@@ -137,13 +171,9 @@ export function DomainRulesDialog({
     isActive: editing === null,
   })
 
-  function setList(list: ListRef, next: string[]): void {
-    setLists(prev => ({ ...prev, [list]: next }))
-  }
-
-  function startEdit(list: ListRef, index: number | null): void {
-    const initialText = index === null ? '' : lists[list][index]!
-    setEditing({ list, index })
+  function startEdit(index: number | null): void {
+    const initialText = index === null ? '' : entries[index]!
+    setEditing({ index })
     setEditText(initialText)
     setEditOffset(initialText.length)
     setEditError(null)
@@ -151,8 +181,7 @@ export function DomainRulesDialog({
 
   function commitEdit(): void {
     if (!editing) return
-    const list = lists[editing.list]
-    const existing = list.filter((_, i) => i !== editing.index)
+    const existing = entries.filter((_, i) => i !== editing.index)
     const error = group.validate(editText, existing)
     if (error) {
       setEditError(error)
@@ -161,15 +190,24 @@ export function DomainRulesDialog({
     const trimmed = editText.trim()
     const next =
       editing.index === null
-        ? [...list, trimmed]
-        : list.map((e, i) => (i === editing.index ? trimmed : e))
-    setList(editing.list, next)
+        ? [...entries, trimmed]
+        : entries.map((e, i) => (i === editing.index ? trimmed : e))
+    setRules(prev => ({ ...prev, [group.key]: next }))
     setEditing(null)
   }
 
   function switchGroup(delta: -1 | 1): void {
     setGroupIndex(prev => (prev + delta + GROUPS.length) % GROUPS.length)
     setSelectedRow(0)
+  }
+
+  function toggleMode(): void {
+    if (!group.modeLabel) return
+    const key = group.key as 'websearch' | 'webfetch'
+    setModes(prev => ({
+      ...prev,
+      [key]: prev[key] === 'allowlist' ? 'blocklist' : 'allowlist',
+    }))
   }
 
   useInput((input, key) => {
@@ -187,24 +225,30 @@ export function DomainRulesDialog({
       switchGroup(-1)
     } else if (key.rightArrow) {
       switchGroup(1)
+    } else if (key.tab) {
+      toggleMode()
     } else if (key.upArrow) {
       setSelectedRow(prev => (prev - 1 + rows.length) % rows.length)
     } else if (key.downArrow) {
       setSelectedRow(prev => (prev + 1) % rows.length)
     } else if (input === 'd' && currentRow?.type === 'entry') {
-      setList(
-        currentRow.list,
-        lists[currentRow.list].filter((_, i) => i !== currentRow.index),
-      )
+      setRules(prev => ({
+        ...prev,
+        [group.key]: entries.filter((_, i) => i !== currentRow.index),
+      }))
       setSelectedRow(prev => Math.min(prev, rows.length - 2))
     } else if (key.return) {
       if (!currentRow) return
       if (currentRow.type === 'entry') {
-        startEdit(currentRow.list, currentRow.index)
+        startEdit(currentRow.index)
       } else if (currentRow.type === 'add') {
-        startEdit(currentRow.list, null)
+        startEdit(null)
       } else {
-        onComplete(lists)
+        onComplete({
+          search: { mode: modes.websearch, rules: rules.websearch },
+          fetch: { mode: modes.webfetch, rules: rules.webfetch },
+          sandbox: { rules: rules.sandbox },
+        })
       }
     }
   })
@@ -221,13 +265,7 @@ export function DomainRulesDialog({
           onSubmit={commitEdit}
           focus={isTerminalFocused}
           showCursor={isTerminalFocused}
-          placeholder={
-            group.key === 'websearch'
-              ? 'example.com or *://*.example.com/path/*'
-              : group.key === 'webfetch'
-                ? 'example.com or *.example.com'
-                : 'example.com'
-          }
+          placeholder={group.placeholder}
           columns={50}
           cursorOffset={editOffset}
           onChangeCursorOffset={setEditOffset}
@@ -237,7 +275,9 @@ export function DomainRulesDialog({
     )
   }
 
-  let rowNumber = -1
+  const mode = group.modeLabel
+    ? modes[group.key as 'websearch' | 'webfetch']
+    : undefined
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -253,57 +293,68 @@ export function DomainRulesDialog({
           </Text>
         ))}
       </Box>
-      <Box flexDirection="column">
-        {group.lists.map(l => (
-          <React.Fragment key={l.ref}>
-            <Text bold color="subtle">
-              {l.title}
-            </Text>
-            {lists[l.ref].length === 0 && <Text dimColor> (none)</Text>}
-            {lists[l.ref].map((entry, index) => {
-              rowNumber++
-              const thisRow = rowNumber
-              const isSelected = thisRow === clampedSelected && editing === null
-              const isEditingThis =
-                editing?.list === l.ref && editing.index === index
+      <Box gap={1}>
+        <Text dimColor>Mode</Text>
+        {group.modeLabel ? (
+          <>
+            {(Object.keys(group.modeLabel) as DomainRuleMode[]).map(m => {
+              const active = m === mode
               return (
-                <Box key={`${l.ref}-${index}`} gap={1}>
-                  <Text>{isSelected ? figures.pointer : ' '}</Text>
-                  {isEditingThis ? (
-                    renderEditBox()
-                  ) : (
-                    <Text color={isSelected ? 'suggestion' : undefined}>
-                      {entry}
-                    </Text>
-                  )}
-                </Box>
+                <Text
+                  key={m}
+                  bold={active}
+                  color={active ? 'suggestion' : 'subtle'}
+                >
+                  {active ? `‹ ${group.modeLabel![m]} ›` : ` ${group.modeLabel![m]} `}
+                </Text>
               )
             })}
-            {(() => {
-              rowNumber++
-              const thisRow = rowNumber
-              const isSelected = thisRow === clampedSelected && editing === null
-              const isEditingThis =
-                editing?.list === l.ref && editing.index === null
-              return (
-                <Box key={`${l.ref}-add`} gap={1}>
-                  <Text>{isSelected ? figures.pointer : ' '}</Text>
-                  {isEditingThis ? (
-                    renderEditBox()
-                  ) : (
-                    <Text
-                      dimColor={!isSelected}
-                      color={isSelected ? 'suggestion' : undefined}
-                    >
-                      + Add rule
-                    </Text>
-                  )}
-                </Box>
-              )
-            })()}
-          </React.Fragment>
-        ))}
-        <Box gap={1}>
+            <Text dimColor>(tab)</Text>
+          </>
+        ) : (
+          <Text>Allow only listed domains</Text>
+        )}
+      </Box>
+      <Box flexDirection="column">
+        <Text dimColor>Rules</Text>
+        {entries.length === 0 && <Text dimColor>  (none)</Text>}
+        {entries.map((entry, index) => {
+          const isSelected = index === clampedSelected && editing === null
+          const isEditingThis = editing !== null && editing.index === index
+          return (
+            <Box key={index} gap={1}>
+              <Text>{isSelected ? figures.pointer : ' '}</Text>
+              {isEditingThis ? (
+                renderEditBox()
+              ) : (
+                <Text color={isSelected ? 'suggestion' : undefined}>
+                  {entry}
+                </Text>
+              )}
+            </Box>
+          )
+        })}
+        {(() => {
+          const addRow = entries.length
+          const isSelected = addRow === clampedSelected && editing === null
+          const isEditingThis = editing !== null && editing.index === null
+          return (
+            <Box gap={1}>
+              <Text>{isSelected ? figures.pointer : ' '}</Text>
+              {isEditingThis ? (
+                renderEditBox()
+              ) : (
+                <Text
+                  dimColor={!isSelected}
+                  color={isSelected ? 'suggestion' : undefined}
+                >
+                  + Add rule
+                </Text>
+              )}
+            </Box>
+          )
+        })()}
+        <Box gap={1} marginTop={1}>
           <Text>
             {clampedSelected === rows.length - 1 && editing === null
               ? figures.pointer
@@ -324,7 +375,9 @@ export function DomainRulesDialog({
       <Text dimColor>
         {editing
           ? 'enter to save rule · Esc to cancel edit'
-          : '↑/↓ navigate · ←/→ group · enter edit · d delete · Esc cancel'}
+          : group.modeLabel
+            ? '↑/↓ navigate · ←/→ group · tab mode · enter edit · d delete · Esc cancel'
+            : '↑/↓ navigate · ←/→ group · enter edit · d delete · Esc cancel'}
       </Text>
     </Box>
   )
