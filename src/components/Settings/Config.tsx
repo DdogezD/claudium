@@ -24,6 +24,7 @@ import { Select } from '../CustomSelect/index.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
 import { ModelProfileDialog } from './ModelProfileDialog.js';
+import { DomainRulesDialog, type DomainRuleLists } from './DomainRulesDialog.js';
 import { getAdvisorModel } from '../../utils/advisor.js';
 import { formatProfileSummary, getModelProfile, type ModelScope } from '../../utils/model/modelProfiles.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
@@ -60,6 +61,31 @@ const ADVISOR_PREFERENCE_OPTIONS = [
   { label: "At user's demand", value: 'atUserDemand' as const, description: 'Only call advisor when the user explicitly asks to consult or review with advisor.' },
 ]
 
+const WEB_FETCH_DOMAIN_RULE_RE = /^WebFetch\(domain:([^)]*)\)$/;
+
+function extractFetchDomains(rules: string[] | undefined): string[] {
+  return (rules ?? []).flatMap(rule => {
+    const match = WEB_FETCH_DOMAIN_RULE_RE.exec(rule);
+    return match ? [match[1]!] : [];
+  });
+}
+
+function mergeFetchDomains(existing: string[] | undefined, domains: string[]): string[] | undefined {
+  const others = (existing ?? []).filter(rule => !WEB_FETCH_DOMAIN_RULE_RE.test(rule));
+  const merged = [...others, ...domains.map(d => `WebFetch(domain:${d})`)];
+  return merged.length > 0 ? merged : undefined;
+}
+
+function domainRulesSummary(lists: DomainRuleLists): string {
+  const parts: string[] = [];
+  const search = lists.searchAllowed.length + lists.searchBlocked.length;
+  const fetch = lists.fetchAllow.length + lists.fetchDeny.length;
+  if (search > 0) parts.push(`${search} search`);
+  if (fetch > 0) parts.push(`${fetch} fetch`);
+  if (lists.sandboxAllowed.length > 0) parts.push(`${lists.sandboxAllowed.length} sandbox`);
+  return parts.length > 0 ? parts.join(' · ') : 'Not configured';
+}
+
 type Props = {
   onClose: (result?: string, options?: {
     display?: CommandResultDisplay;
@@ -93,7 +119,7 @@ type Setting = (SettingBase & {
   onChange(value: string): void;
   type: 'managedEnum';
 });
-type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile';
+type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile' | 'DomainRules';
 export function Config({
   onClose,
   context,
@@ -696,6 +722,18 @@ export function Config({
     value: ADVISOR_PREFERENCE_OPTIONS.find(o => o.value === currentAdvisorPreference)?.label ?? currentAdvisorPreference,
     type: 'managedEnum' as const,
     onChange: () => {} // handled by AdvisorPreferencePicker submenu
+  }, {
+    id: 'domainRules',
+    label: 'Domain rules (search · fetch · sandbox)',
+    value: domainRulesSummary({
+      searchAllowed: settingsData?.webSearch?.allowedDomains ?? [],
+      searchBlocked: settingsData?.webSearch?.blockedDomains ?? [],
+      fetchAllow: extractFetchDomains(settingsData?.permissions?.allow),
+      fetchDeny: extractFetchDomains(settingsData?.permissions?.deny),
+      sandboxAllowed: settingsData?.sandbox?.network?.allowedDomains ?? []
+    }),
+    type: 'managedEnum' as const,
+    onChange: () => {} // handled by DomainRulesDialog submenu
   }, ...(showDefaultViewPicker ? [{
     id: 'defaultView',
     label: 'What you see by default',
@@ -1029,6 +1067,12 @@ export function Config({
       minimumVersion: iu?.minimumVersion,
       advisorPreference: iu?.advisorPreference,
       language: iu?.language,
+      // webSearch: restore the mount-time snapshot. Missing nested keys must
+      // be explicitly undefined so updateSettingsForSource deletes them.
+      webSearch: iu?.webSearch === undefined ? undefined : {
+        allowedDomains: iu.webSearch.allowedDomains,
+        blockedDomains: iu.webSearch.blockedDomains
+      },
       ...(feature('TRANSCRIPT_CLASSIFIER') ? {
         useAutoModeDuringPlan: (iu as {
           useAutoModeDuringPlan?: boolean;
@@ -1041,11 +1085,22 @@ export function Config({
       // settingsData.permissions into userSettings — project/policy allow/deny
       // arrays can leak to disk. Spread the full initial snapshot so the
       // mergeWith array-customizer (settings.ts:375) replaces leaked arrays.
-      // Explicitly include defaultMode so undefined triggers the customizer's
-      // delete path even when iu.permissions lacks that key.
+      // Explicitly include allow/deny/defaultMode so undefined triggers the
+      // customizer's delete path even when iu.permissions lacks those keys.
       permissions: iu?.permissions === undefined ? undefined : {
         ...iu.permissions,
+        allow: iu.permissions.allow,
+        deny: iu.permissions.deny,
         defaultMode: iu.permissions.defaultMode
+      },
+      // sandbox: restore the mount-time snapshot. Missing nested keys must be
+      // explicitly undefined so updateSettingsForSource deletes them.
+      sandbox: iu?.sandbox === undefined ? undefined : {
+        ...iu.sandbox,
+        network: iu.sandbox.network === undefined ? undefined : {
+          ...iu.sandbox.network,
+          allowedDomains: iu.sandbox.network.allowedDomains
+        }
       }
     });
     // AppState: batch-restore all possibly-touched fields.
@@ -1119,7 +1174,7 @@ export function Config({
       }
       return;
     }
-    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language') {
+    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language' || setting_0.id === 'domainRules') {
       // managedEnum items open a submenu — isDirty is set by the submenu's
       // completion callback, not here (submenu may be cancelled).
       switch (setting_0.id) {
@@ -1160,6 +1215,10 @@ export function Config({
           return;
         case 'language':
           setShowSubmenu('Language');
+          setTabsHidden(true);
+          return;
+        case 'domainRules':
+          setShowSubmenu('DomainRules');
           setTabsHidden(true);
           return;
       }
@@ -1482,7 +1541,53 @@ export function Config({
               <ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />
             </Byline>
           </Text>
-        </> : <Box flexDirection="column" gap={1} marginY={insideModal ? undefined : 1}>
+        </> : showSubmenu === 'DomainRules' ? (() => {
+      const userSettings = getSettingsForSource('userSettings');
+      const initialLists: DomainRuleLists = {
+        searchAllowed: userSettings?.webSearch?.allowedDomains ?? [],
+        searchBlocked: userSettings?.webSearch?.blockedDomains ?? [],
+        fetchAllow: extractFetchDomains(userSettings?.permissions?.allow),
+        fetchDeny: extractFetchDomains(userSettings?.permissions?.deny),
+        sandboxAllowed: userSettings?.sandbox?.network?.allowedDomains ?? []
+      };
+      return <>
+          <DomainRulesDialog initial={initialLists} onComplete={result => {
+        isDirty.current = true;
+        const perms = userSettings?.permissions;
+        updateSettingsForSource('userSettings', {
+          // Empty lists delete the key; both empty removes webSearch entirely.
+          webSearch: result.searchAllowed.length === 0 && result.searchBlocked.length === 0 ? undefined : {
+            allowedDomains: result.searchAllowed.length > 0 ? result.searchAllowed : undefined,
+            blockedDomains: result.searchBlocked.length > 0 ? result.searchBlocked : undefined
+          },
+          // WebFetch(domain:...) rules live in permissions.allow/deny —
+          // rebuild those arrays preserving non-WebFetch entries.
+          permissions: {
+            ...(perms ?? {}),
+            allow: mergeFetchDomains(perms?.allow, result.fetchAllow),
+            deny: mergeFetchDomains(perms?.deny, result.fetchDeny)
+          },
+          sandbox: {
+            ...(userSettings?.sandbox ?? {}),
+            network: {
+              ...(userSettings?.sandbox?.network ?? {}),
+              allowedDomains: result.sandboxAllowed.length > 0 ? result.sandboxAllowed : undefined
+            }
+          }
+        });
+        setSettingsData(getInitialSettings());
+        setChanges(prev => ({
+          ...prev,
+          'Domain rules': domainRulesSummary(result)
+        }));
+        setShowSubmenu(null);
+        setTabsHidden(false);
+      }} onCancel={() => {
+        setShowSubmenu(null);
+        setTabsHidden(false);
+      }} />
+        </>;
+    })() : <Box flexDirection="column" gap={1} marginY={insideModal ? undefined : 1}>
           <SearchBox query={searchQuery} isFocused={isSearchMode && !headerFocused} isTerminalFocused={isTerminalFocused} cursorOffset={searchCursorOffset} placeholder="Search settings…" />
           <Box flexDirection="column">
             {filteredSettingsItems.length === 0 ? <Text dimColor italic>

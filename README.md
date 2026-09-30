@@ -468,8 +468,41 @@ GET {CLAUDE_CODE_SEARXNG_BASE_URL}/search?q=<query>&format=json
 Notes:
 
 - This only changes the `WebSearch` tool. `WebFetch` still fetches page content directly.
-- `allowed_domains` and `blocked_domains` are still supported, but filtering is applied locally after SearXNG returns results.
+- `allowed_domains` and `blocked_domains` are still supported, but filtering is applied locally after SearXNG returns results. Claudium paginates (`pageno`) until it has collected enough matching results, so domain filtering applies to the full result stream rather than just the first page.
 - If `CLAUDE_CODE_SEARXNG_BASE_URL` is unset, Claudium falls back to the default provider behavior.
+
+### WebSearch domain restrictions
+
+Persistent allow/block lists for the `WebSearch` tool can be configured in `settings.json` (any settings source: user, project, local, or managed) — no environment variables involved:
+
+```json
+{
+  "webSearch": {
+    "allowedDomains": ["github.com", "*://docs.python.org/3/*"],
+    "blockedDomains": [
+      "*://cloud.tencent.com/developer/article/*",
+      "*://*.csdn.net/*",
+      "developer.aliyun.com"
+    ]
+  }
+}
+```
+
+Each entry is one of two rule forms:
+
+| Form | Example | Matches |
+|---|---|---|
+| Plain domain | `csdn.net` | That host and all subdomains |
+| uBlacklist-style match pattern | `*://cloud.tencent.com/developer/article/*` | `<scheme>://<host><path>` — scheme `*` = http+https; host `*` = any, `*.example.com` = domain + subdomains, bare host = exact; path supports `*` wildcards. A pattern without a path defaults to `/*`. |
+
+Semantics:
+
+- `allowedDomains` is a hard ceiling. If the model also passes `allowed_domains` in a call, both sets must match (AND) — the model can only narrow within the configured ceiling. An empty array (`[]`) denies all domains — the search short-circuits without any network request.
+- `blockedDomains` unions with the per-call `blocked_domains` (OR).
+- Applies to both the SearXNG override (local filtering) and provider-side web search. Provider APIs only accept plain domains, so those are sent upstream and match patterns / host+path rules are additionally enforced client-side on the returned results.
+- Arrays merge across settings sources (same semantics as `allowedMcpServers`).
+
+Rules can be edited interactively via `/config` → **Domain rules (search · fetch · sandbox)**. The editor also manages `WebFetch(domain:...)` permission rules (including `*.example.com` wildcards, which are matched against the host itself and its subdomains) and `sandbox.network.allowedDomains` — all written to user `settings.json`.
 
 ---
 
