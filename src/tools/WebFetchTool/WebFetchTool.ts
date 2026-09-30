@@ -6,6 +6,7 @@ import { formatFileSize } from '../../utils/format.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { getRuleByContentsForTool } from '../../utils/permissions/permissions.js'
+import { findDomainPermissionRule } from './domainPermissionRule.js'
 import { isPreapprovedHost } from './preapproved.js'
 import { DESCRIPTION, WEB_FETCH_TOOL_NAME } from './prompt.js'
 import {
@@ -121,14 +122,17 @@ export const WebFetchTool = buildTool({
       // If URL parsing fails, continue with normal permission checks
     }
 
-    // Check for a rule specific to the tool input (matching hostname)
+    // Check for a rule specific to the tool input (matching hostname).
+    // findDomainPermissionRule also honors domain:*.suffix wildcard rules.
     const ruleContent = webFetchToolInputToPermissionRuleContent(input)
+    const ruleHostname = ruleContent.startsWith('domain:')
+      ? ruleContent.slice('domain:'.length)
+      : ruleContent
 
-    const denyRule = getRuleByContentsForTool(
-      permissionContext,
-      WebFetchTool,
-      'deny',
-    ).get(ruleContent)
+    const denyRule = findDomainPermissionRule(
+      getRuleByContentsForTool(permissionContext, WebFetchTool, 'deny'),
+      ruleHostname,
+    )
     if (denyRule) {
       return {
         behavior: 'deny',
@@ -140,11 +144,10 @@ export const WebFetchTool = buildTool({
       }
     }
 
-    const askRule = getRuleByContentsForTool(
-      permissionContext,
-      WebFetchTool,
-      'ask',
-    ).get(ruleContent)
+    const askRule = findDomainPermissionRule(
+      getRuleByContentsForTool(permissionContext, WebFetchTool, 'ask'),
+      ruleHostname,
+    )
     if (askRule) {
       return {
         behavior: 'ask',
@@ -157,11 +160,10 @@ export const WebFetchTool = buildTool({
       }
     }
 
-    const allowRule = getRuleByContentsForTool(
-      permissionContext,
-      WebFetchTool,
-      'allow',
-    ).get(ruleContent)
+    const allowRule = findDomainPermissionRule(
+      getRuleByContentsForTool(permissionContext, WebFetchTool, 'allow'),
+      ruleHostname,
+    )
     if (allowRule) {
       return {
         behavior: 'allow',
