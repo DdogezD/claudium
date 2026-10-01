@@ -1488,7 +1488,8 @@ async function* queryModel(
 
   const effortScope = options.querySource === 'advisor'
     ? 'advisor'
-    : options.querySource.startsWith('agent:')
+    : options.querySource.startsWith('agent:') ||
+        options.querySource === 'web_search_tool'
       ? 'subagent'
       : undefined
   const effort = resolveAppliedEffort(options.model, options.effortValue, effortScope)
