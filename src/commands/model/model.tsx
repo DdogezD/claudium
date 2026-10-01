@@ -51,11 +51,11 @@ function ShowAllProfiles({
   return null
 }
 
-const VALID_EFFORT = new Set(['low', 'medium', 'high', 'max'])
-
 /**
  * Parse /model args — supports "model [context] [effort]" in any order.
  * Context can be raw digits (200000), K-suffix (200K), or M-suffix (1M).
+ * Effort is passed through verbatim — custom providers may accept
+ * arbitrary effort names beyond the stock low/medium/high/max set.
  */
 function parseModelArgs(raw: string): {
   model: string | null
@@ -88,12 +88,8 @@ function parseModelArgs(raw: string): {
       contextWindowTokens = num
       continue
     }
-    // Try parse as effort
-    if (VALID_EFFORT.has(p.toLowerCase())) {
-      reasoningEffort = p.toLowerCase()
-      continue
-    }
-    return { model, error: `Unrecognised argument: ${p}` }
+    // Anything else is the effort value, passed through as typed.
+    reasoningEffort = p
   }
 
   return { model, contextWindowTokens, reasoningEffort }
