@@ -22,6 +22,7 @@ import { logError } from '../log.js'
 import { getPlatform } from '../platform.js'
 import { clone, jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
+import { bumpSettingsVersion } from '../settingsVersion.js'
 import {
   type EditableSettingSource,
   getEnabledSettingSources,
@@ -491,6 +492,12 @@ export function updateSettingsForSource(
 
     // Invalidate the session cache since settings have been updated
     resetSettingsCache()
+
+    // Invalidate OffscreenFreeze caches so UI frozen in scrollback (LogoV2
+    // model/effort line) picks up the new values. Centralized here so every
+    // writer (/config, /model, /effort, pickers) triggers the invalidation,
+    // not just /config.
+    bumpSettingsVersion()
 
     if (source === 'localSettings') {
       // Okay to add to gitignore async without awaiting
