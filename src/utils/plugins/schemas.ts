@@ -28,18 +28,11 @@ export const ALLOWED_OFFICIAL_MARKETPLACE_NAMES = new Set([
 ])
 
 /**
- * Official marketplaces that should NOT auto-update by default.
- * These are still reserved/allowed names, but opt out of the auto-update
- * default that other official marketplaces receive.
- */
-const NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES = new Set(['knowledge-work-plugins'])
-
-/**
  * Check if auto-update is enabled for a marketplace.
- * Uses the stored value if set, otherwise defaults based on whether
- * it's an official Anthropic marketplace (true) or not (false).
- * Official marketplaces in NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES are excluded
- * from the auto-update default.
+ * Uses the stored value if set; otherwise defaults to false for ALL
+ * marketplaces (including official Anthropic ones) — Claudium never
+ * phones home to refresh marketplace content unless the user explicitly
+ * opted in via autoUpdate: true or a manual update command.
  *
  * @param marketplaceName - The name of the marketplace
  * @param entry - The marketplace entry (may have autoUpdate set)
@@ -49,12 +42,7 @@ export function isMarketplaceAutoUpdate(
   marketplaceName: string,
   entry: { autoUpdate?: boolean },
 ): boolean {
-  const normalizedName = marketplaceName.toLowerCase()
-  return (
-    entry.autoUpdate ??
-    (ALLOWED_OFFICIAL_MARKETPLACE_NAMES.has(normalizedName) &&
-      !NO_AUTO_UPDATE_OFFICIAL_MARKETPLACES.has(normalizedName))
-  )
+  return entry.autoUpdate ?? false
 }
 
 /**
