@@ -25,6 +25,7 @@ import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
 import { ModelProfileDialog } from './ModelProfileDialog.js';
 import { DomainRulesDialog, deriveDomainRules, type DomainRuleLists, type DomainRulesResult } from './DomainRulesDialog.js';
+import { WebSearchEffortDialog } from './WebSearchEffortDialog.js';
 import { getAdvisorModel } from '../../utils/advisor.js';
 import { formatProfileSummary, getModelProfile, type ModelScope } from '../../utils/model/modelProfiles.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
@@ -117,7 +118,7 @@ type Setting = (SettingBase & {
   onChange(value: string): void;
   type: 'managedEnum';
 });
-type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile' | 'DomainRules';
+type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile' | 'DomainRules' | 'WebSearchEffort';
 export function Config({
   onClose,
   context,
@@ -732,6 +733,12 @@ export function Config({
     })),
     type: 'managedEnum' as const,
     onChange: () => {} // handled by DomainRulesDialog submenu
+  }, {
+    id: 'webSearchEffort',
+    label: 'Web search effort',
+    value: settingsData?.webSearch?.effort ?? 'off (no thinking)',
+    type: 'managedEnum' as const,
+    onChange: () => {} // handled by WebSearchEffortDialog submenu
   }, ...(showDefaultViewPicker ? [{
     id: 'defaultView',
     label: 'What you see by default',
@@ -1172,7 +1179,7 @@ export function Config({
       }
       return;
     }
-    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language' || setting_0.id === 'domainRules') {
+    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language' || setting_0.id === 'domainRules' || setting_0.id === 'webSearchEffort') {
       // managedEnum items open a submenu — isDirty is set by the submenu's
       // completion callback, not here (submenu may be cancelled).
       switch (setting_0.id) {
@@ -1217,6 +1224,10 @@ export function Config({
           return;
         case 'domainRules':
           setShowSubmenu('DomainRules');
+          setTabsHidden(true);
+          return;
+        case 'webSearchEffort':
+          setShowSubmenu('WebSearchEffort');
           setTabsHidden(true);
           return;
       }
@@ -1555,8 +1566,12 @@ export function Config({
         updateSettingsForSource('userSettings', {
           // Mode decides which settings key the single rule list maps to;
           // the other key is explicitly deleted. Empty list removes the
-          // webSearch key entirely.
-          webSearch: result.search.rules.length === 0 ? undefined : result.search.mode === 'allowlist' ? {
+          // domain keys (webSearch itself is kept when effort is set).
+          webSearch: result.search.rules.length === 0 ? userSettings?.webSearch?.effort ? {
+            allowedDomains: undefined,
+            blockedDomains: undefined,
+            effort: userSettings.webSearch.effort
+          } : undefined : result.search.mode === 'allowlist' ? {
             allowedDomains: result.search.rules,
             blockedDomains: undefined
           } : {
@@ -1583,6 +1598,30 @@ export function Config({
         setChanges(prev => ({
           ...prev,
           'Domain rules': domainRulesSummary(result)
+        }));
+        setShowSubmenu(null);
+        setTabsHidden(false);
+      }} onCancel={() => {
+        setShowSubmenu(null);
+        setTabsHidden(false);
+      }} />
+        </>;
+    })() : showSubmenu === 'WebSearchEffort' ? (() => {
+      const userSettings = getSettingsForSource('userSettings');
+      return <>
+          <WebSearchEffortDialog initialEffort={userSettings?.webSearch?.effort} onComplete={effort => {
+        isDirty.current = true;
+        updateSettingsForSource('userSettings', {
+          // undefined deletes just the effort key; domain lists are
+          // preserved by the merge.
+          webSearch: {
+            effort: effort ?? undefined
+          }
+        });
+        setSettingsData(getInitialSettings());
+        setChanges(prev => ({
+          ...prev,
+          'Web search effort': effort ?? 'off (no thinking)'
         }));
         setShowSubmenu(null);
         setTabsHidden(false);

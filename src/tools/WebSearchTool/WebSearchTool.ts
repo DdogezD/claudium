@@ -8,6 +8,7 @@ import {
   hasSearxngWebSearchOverride,
   type SearxngSearchResult,
 } from 'src/tools/WebSearchTool/searxng.js'
+import { resolveWebSearchEffort } from 'src/utils/effort.js'
 import {
   buildRerankPrompt,
   filterByVerdicts,
@@ -30,11 +31,13 @@ import { buildTool, type ToolDef } from '../../Tool.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
+import { getMaxThinkingTokensForModel } from '../../utils/context.js'
 import { createUserMessage } from '../../utils/messages.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import { resolveModelProfileModel } from '../../utils/model/modelProfiles.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
+import type { ThinkingConfig } from '../../utils/thinking.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import {
   getToolUseSummary,
@@ -342,17 +345,28 @@ export const WebSearchTool = buildTool({
     const appState = context.getAppState()
     // The search subquery (issue search / read results and write the cited
     // summary) is an auxiliary task: use the subagent profile model (falls
-    // back to the main model when unconfigured) and never inherit the main
-    // loop's thinking/effort — a high effort setting would otherwise turn a
-    // "summarize these results" call into minutes of thinking tokens.
-    // querySource 'web_search_tool' maps to the subagent effort scope in
-    // queryModel, so modelProfiles.subagent.reasoningEffort still applies.
+    // back to the main model when unconfigured) and keep thinking off unless
+    // the user explicitly sets webSearch.effort — a high effort setting
+    // would otherwise turn a "summarize these results" call into minutes of
+    // thinking tokens.
     //
     // The quality layer (source-handling guidance + LLM rerank) activates
     // only on the SearXNG path — provider-native search does its own
     // grounding, and the rerank hook is only invoked from the SearXNG
     // branch in queryModel.
     const searxngActive = hasSearxngWebSearchOverride()
+    const subqueryModel =
+      resolveModelProfileModel('subagent') ?? context.options.mainLoopModel
+    // webSearch.effort is the thinking switch for the subqueries: unset =
+    // thinking blocks off; set = thinking enabled with exactly that effort
+    // (sent verbatim as output_config.effort; the budget is only the model
+    // ceiling). No dynamic adaptation, no fallback chain.
+    const subqueryThinking: ThinkingConfig = resolveWebSearchEffort()
+      ? {
+          type: 'enabled',
+          budgetTokens: getMaxThinkingTokensForModel(subqueryModel),
+        }
+      : { type: 'disabled' }
     const queryStream = queryModelWithStreaming({
       messages: [userMessage],
       systemPrompt: asSystemPrompt(
@@ -363,12 +377,12 @@ export const WebSearchTool = buildTool({
             ]
           : ['You are an assistant for performing a web search tool use'],
       ),
-      thinkingConfig: { type: 'disabled' as const },
+      thinkingConfig: subqueryThinking,
       tools: [],
       signal: context.abortController.signal,
       options: {
         getToolPermissionContext: async () => appState.toolPermissionContext,
-        model: resolveModelProfileModel('subagent') ?? context.options.mainLoopModel,
+        model: subqueryModel,
         toolChoice: undefined,
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
@@ -396,15 +410,13 @@ export const WebSearchTool = buildTool({
                 systemPrompt: asSystemPrompt([
                   'You are an assistant for performing a web search tool use',
                 ]),
-                thinkingConfig: { type: 'disabled' as const },
+                thinkingConfig: subqueryThinking,
                 tools: [],
                 signal,
                 options: {
                   getToolPermissionContext: async () =>
                     appState.toolPermissionContext,
-                  model:
-                    resolveModelProfileModel('subagent') ??
-                    context.options.mainLoopModel,
+                  model: subqueryModel,
                   toolChoice: undefined,
                   isNonInteractiveSession:
                     context.options.isNonInteractiveSession,

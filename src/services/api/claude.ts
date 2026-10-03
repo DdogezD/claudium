@@ -67,7 +67,7 @@ import {
   getModelMaxOutputTokens,
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/context.js'
-import { resolveAppliedEffort } from '../../utils/effort.js'
+import { resolveAppliedEffort, resolveWebSearchEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint-stub.js'
@@ -1527,7 +1527,12 @@ async function* queryModel(
         options.querySource === 'web_search_tool'
       ? 'subagent'
       : undefined
-  const effort = resolveAppliedEffort(options.model, options.effortValue, effortScope)
+  // WebSearch subqueries get their own configured effort (webSearch.effort)
+  // with no fallback chain — see resolveWebSearchEffort.
+  const effort =
+    options.querySource === 'web_search_tool'
+      ? resolveWebSearchEffort()
+      : resolveAppliedEffort(options.model, options.effortValue, effortScope)
 
   if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
     // Exclude defer_loading tools from the hash -- the API strips them from the

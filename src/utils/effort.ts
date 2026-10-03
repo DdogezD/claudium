@@ -3,6 +3,7 @@ import { resolveModelProfileEffort } from './model/modelProfiles.js'
 import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
+import { getInitialSettings } from './settings/settings.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 
 export type { EffortLevel }
@@ -144,6 +145,25 @@ export function resolveAppliedEffort(
   const resolved =
     envOverride ?? (profileEffort as EffortValue | undefined) ?? appStateEffortValue ?? getDefaultEffortForModel(model)
   return resolved
+}
+
+/**
+ * Resolve the effort for the WebSearch subquery (result summary + rerank).
+ * The webSearch.effort setting doubles as the thinking switch: when unset,
+ * no effort is sent and thinking blocks stay disabled; when set, the value
+ * is sent verbatim and thinking is enabled. There is deliberately no
+ * fallback to the subagent profile chain.
+ * Precedence: CLAUDE_CODE_EFFORT_LEVEL → webSearch.effort → off.
+ */
+export function resolveWebSearchEffort(): EffortValue | undefined {
+  const envOverride = getEffortEnvOverride()
+  if (envOverride === null) {
+    return undefined
+  }
+  if (envOverride !== undefined) {
+    return envOverride
+  }
+  return getInitialSettings().webSearch?.effort?.trim() || undefined
 }
 
 /**

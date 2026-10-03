@@ -418,6 +418,15 @@ export const SettingsSchema = lazySchema(() =>
                 'Merged with the per-call blocked_domains parameter. ' +
                 'Subdomains match. Arrays merge across settings sources.',
             ),
+          effort: z
+            .string()
+            .optional()
+            .describe(
+              'Thinking switch and reasoning effort for the WebSearch subquery ' +
+                '(search summary and result rerank), passed through verbatim ' +
+                '(e.g. "low", "high", "xhigh"). When unset, thinking blocks ' +
+                'stay disabled and no effort is sent.',
+            ),
         })
         .optional()
         .describe(
