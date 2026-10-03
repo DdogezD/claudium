@@ -4,7 +4,16 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getSettings_DEPRECATED } from 'src/utils/settings/settings.js'
-import { hasSearxngWebSearchOverride } from 'src/tools/WebSearchTool/searxng.js'
+import {
+  hasSearxngWebSearchOverride,
+  type SearxngSearchResult,
+} from 'src/tools/WebSearchTool/searxng.js'
+import {
+  buildRerankPrompt,
+  filterByVerdicts,
+  parseRerankVerdicts,
+  SEARXNG_RESULT_GUIDANCE,
+} from 'src/tools/WebSearchTool/rerank.js'
 import {
   resolveWebSearchDomains,
   type ResolvedWebSearchDomains,
@@ -18,6 +27,7 @@ import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js
 import { z } from 'zod/v4'
 import { queryModelWithStreaming } from '../../services/api/claude.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { createUserMessage } from '../../utils/messages.js'
@@ -337,11 +347,22 @@ export const WebSearchTool = buildTool({
     // "summarize these results" call into minutes of thinking tokens.
     // querySource 'web_search_tool' maps to the subagent effort scope in
     // queryModel, so modelProfiles.subagent.reasoningEffort still applies.
+    //
+    // The quality layer (source-handling guidance + LLM rerank) activates
+    // only on the SearXNG path — provider-native search does its own
+    // grounding, and the rerank hook is only invoked from the SearXNG
+    // branch in queryModel.
+    const searxngActive = hasSearxngWebSearchOverride()
     const queryStream = queryModelWithStreaming({
       messages: [userMessage],
-      systemPrompt: asSystemPrompt([
-        'You are an assistant for performing a web search tool use',
-      ]),
+      systemPrompt: asSystemPrompt(
+        searxngActive
+          ? [
+              'You are an assistant for performing a web search tool use',
+              SEARXNG_RESULT_GUIDANCE,
+            ]
+          : ['You are an assistant for performing a web search tool use'],
+      ),
       thinkingConfig: { type: 'disabled' as const },
       tools: [],
       signal: context.abortController.signal,
@@ -358,6 +379,64 @@ export const WebSearchTool = buildTool({
           blockedDomains: domains.blockedDomains,
           extraAllowRuleSets: domains.extraAllowRuleSets,
         },
+        webSearchRerank: searxngActive
+          ? async (
+              results: SearxngSearchResult[],
+              rerankQuery: string,
+              signal: AbortSignal,
+            ): Promise<SearxngSearchResult[]> => {
+              // IMPORTANT: no webSearchRequest here — the rerank call must
+              // not re-enter the SearXNG branch.
+              const rerankStream = queryModelWithStreaming({
+                messages: [
+                  createUserMessage({
+                    content: buildRerankPrompt(rerankQuery, results),
+                  }),
+                ],
+                systemPrompt: asSystemPrompt([
+                  'You are an assistant for performing a web search tool use',
+                ]),
+                thinkingConfig: { type: 'disabled' as const },
+                tools: [],
+                signal,
+                options: {
+                  getToolPermissionContext: async () =>
+                    appState.toolPermissionContext,
+                  model:
+                    resolveModelProfileModel('subagent') ??
+                    context.options.mainLoopModel,
+                  toolChoice: undefined,
+                  isNonInteractiveSession:
+                    context.options.isNonInteractiveSession,
+                  hasAppendSystemPrompt: false,
+                  extraToolSchemas: [],
+                  querySource: 'web_search_tool',
+                  agents: context.options.agentDefinitions.activeAgents,
+                  mcpTools: [],
+                  agentId: context.agentId,
+                  effortValue: undefined,
+                },
+              })
+              let text = ''
+              for await (const event of rerankStream) {
+                if (event.type === 'assistant') {
+                  for (const block of event.message.content) {
+                    if (block.type === 'text') {
+                      text += block.text
+                    }
+                  }
+                }
+              }
+              const filtered = filterByVerdicts(
+                results,
+                parseRerankVerdicts(text),
+              )
+              logForDebugging(
+                `web search rerank: ${results.length} -> ${filtered.length} results for "${rerankQuery}"`,
+              )
+              return filtered
+            }
+          : undefined,
         querySource: 'web_search_tool',
         agents: context.options.agentDefinitions.activeAgents,
         mcpTools: [],

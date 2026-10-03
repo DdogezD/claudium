@@ -37,7 +37,7 @@ type SearxngSearchResponse = {
   results?: SearxngSearchResult[]
 }
 
-type SearxngSearchResult = {
+export type SearxngSearchResult = {
   title?: string | null
   url?: string | null
   content?: string | null

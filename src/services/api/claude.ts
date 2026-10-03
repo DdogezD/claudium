@@ -164,11 +164,13 @@ import { isMcpInstructionsDeltaEnabled } from 'src/utils/mcpInstructionsDelta.js
 import { calculateUSDCost } from 'src/utils/modelCost.js'
 import {
   buildSearxngWebSearchErrorBlocks,
+  buildSearxngWebSearchBlocks,
   formatSearxngResultsText,
   hasSearxngWebSearchOverride,
   performSearxngWebSearch,
   sanitizeSearxngBlocksForAPI,
   SearxngRequestError,
+  type SearxngSearchResult,
   type SearxngWebSearchOutcome,
   type SearxngWebSearchRequest,
 } from 'src/tools/WebSearchTool/searxng.js'
@@ -683,6 +685,18 @@ export type Options = {
   isNonInteractiveSession: boolean
   extraToolSchemas?: BetaToolUnion[]
   webSearchRequest?: SearxngWebSearchRequest
+  /**
+   * Optional post-search filter for the SearXNG path (e.g. an LLM rerank).
+   * Called with the filtered/deduplicated results before they are rendered
+   * for the continuation; the returned list replaces them. Only invoked when
+   * the SearXNG override is active. Failures must be handled by the caller's
+   * fallback — the branch catches and keeps the unfiltered results.
+   */
+  webSearchRerank?: (
+    results: SearxngSearchResult[],
+    query: string,
+    signal: AbortSignal,
+  ) => Promise<SearxngSearchResult[]>
   maxOutputTokensOverride?: number
   fallbackModel?: string
   onStreamingFallback?: () => void
@@ -1062,6 +1076,27 @@ async function* queryModel(
         signal,
         fetchFn: options.fetchOverride,
       })
+      // Optional quality rerank (SearXNG path only). Rebuild the blocks so
+      // the transcript/UI reflect the same filtered list the continuation
+      // reads. Any failure keeps the unfiltered outcome.
+      if (options.webSearchRerank && outcome.results.length > 0) {
+        try {
+          const reranked = await options.webSearchRerank(
+            outcome.results,
+            options.webSearchRequest.query,
+            signal,
+          )
+          outcome = {
+            results: reranked,
+            blocks: buildSearxngWebSearchBlocks(
+              options.webSearchRequest,
+              reranked,
+            ),
+          }
+        } catch (error) {
+          logError(error)
+        }
+      }
       searchMessage = createAssistantMessage({ content: outcome.blocks })
     } catch (error) {
       logError(error)
