@@ -21,7 +21,11 @@ import { logForDebugging } from './debug.js'
 import { safeParseJSON } from './json.js'
 import { lazySchema } from './lazySchema.js'
 import { extractTextContent } from './messages.js'
+import { getMaxThinkingTokensForModel } from './context.js'
+import { resolveAuxiliaryEffort } from './effort.js'
+import { getSmallFastModel } from './model/model.js'
 import { asSystemPrompt } from './systemPromptType.js'
+import { getAuxiliaryThinkingConfig } from './thinking.js'
 
 const MAX_CONVERSATION_TEXT = 1000
 
@@ -84,9 +88,14 @@ export async function generateSessionTitle(
   if (!trimmed) return null
 
   try {
+    const effort = resolveAuxiliaryEffort('sessionTitle')
     const result = await queryHaiku({
       systemPrompt: asSystemPrompt([SESSION_TITLE_PROMPT]),
       userPrompt: trimmed,
+      thinkingConfig: getAuxiliaryThinkingConfig(
+        effort,
+        getMaxThinkingTokensForModel(getSmallFastModel()),
+      ),
       outputFormat: {
         type: 'json_schema',
         schema: {
@@ -101,6 +110,7 @@ export async function generateSessionTitle(
       signal,
       options: {
         querySource: 'generate_session_title',
+        effortOverride: effort ?? null,
         agents: [],
         // Reflect the actual session mode — this module is called from
         // both the SDK print path (non-interactive) and the CCR remote

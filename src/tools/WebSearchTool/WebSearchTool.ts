@@ -8,7 +8,7 @@ import {
   hasSearxngWebSearchOverride,
   type SearxngSearchResult,
 } from 'src/tools/WebSearchTool/searxng.js'
-import { resolveWebSearchEffort } from 'src/utils/effort.js'
+import { resolveAuxiliaryEffort } from 'src/utils/effort.js'
 import {
   buildRerankPrompt,
   filterByVerdicts,
@@ -37,7 +37,7 @@ import { getMainLoopModel } from '../../utils/model/model.js'
 import { resolveModelProfileModel } from '../../utils/model/modelProfiles.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
-import type { ThinkingConfig } from '../../utils/thinking.js'
+import { getAuxiliaryThinkingConfig } from '../../utils/thinking.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import {
   getToolUseSummary,
@@ -361,12 +361,11 @@ export const WebSearchTool = buildTool({
     // thinking blocks off; set = thinking enabled with exactly that effort
     // (sent verbatim as output_config.effort; the budget is only the model
     // ceiling). No dynamic adaptation, no fallback chain.
-    const subqueryThinking: ThinkingConfig = resolveWebSearchEffort()
-      ? {
-          type: 'enabled',
-          budgetTokens: getMaxThinkingTokensForModel(subqueryModel),
-        }
-      : { type: 'disabled' }
+    const subqueryEffort = resolveAuxiliaryEffort('webSearch')
+    const subqueryThinking = getAuxiliaryThinkingConfig(
+      subqueryEffort,
+      getMaxThinkingTokensForModel(subqueryModel),
+    )
     const queryStream = queryModelWithStreaming({
       messages: [userMessage],
       systemPrompt: asSystemPrompt(
@@ -427,6 +426,7 @@ export const WebSearchTool = buildTool({
                   mcpTools: [],
                   agentId: context.agentId,
                   effortValue: undefined,
+                  effortOverride: subqueryEffort ?? null,
                 },
               })
               let text = ''
@@ -454,6 +454,7 @@ export const WebSearchTool = buildTool({
         mcpTools: [],
         agentId: context.agentId,
         effortValue: undefined,
+        effortOverride: subqueryEffort ?? null,
       },
     })
 

@@ -67,7 +67,7 @@ import {
   getModelMaxOutputTokens,
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/context.js'
-import { resolveAppliedEffort, resolveWebSearchEffort } from '../../utils/effort.js'
+import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint-stub.js'
@@ -709,6 +709,8 @@ export type Options = {
   skipCacheWrite?: boolean
   temperatureOverride?: number
   effortValue?: EffortValue
+  // undefined uses the normal resolution chain; null explicitly disables effort inheritance.
+  effortOverride?: EffortValue | null
   mcpTools: Tools
   hasPendingMcpServers?: boolean
   queryTracking?: QueryChainTracking
@@ -1527,11 +1529,9 @@ async function* queryModel(
         options.querySource === 'web_search_tool'
       ? 'subagent'
       : undefined
-  // WebSearch subqueries get their own configured effort (webSearch.effort)
-  // with no fallback chain — see resolveWebSearchEffort.
   const effort =
-    options.querySource === 'web_search_tool'
-      ? resolveWebSearchEffort()
+    options.effortOverride !== undefined
+      ? options.effortOverride ?? undefined
       : resolveAppliedEffort(options.model, options.effortValue, effortScope)
 
   if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
@@ -3258,12 +3258,14 @@ export async function queryHaiku({
   systemPrompt = asSystemPrompt([]),
   userPrompt,
   outputFormat,
+  thinkingConfig = { type: 'disabled' },
   signal,
   options,
 }: {
   systemPrompt: SystemPrompt
   userPrompt: string
   outputFormat?: BetaJSONOutputFormat
+  thinkingConfig?: ThinkingConfig
   signal: AbortSignal
   options: HaikuOptions
 }): Promise<AssistantMessage> {
@@ -3286,7 +3288,7 @@ export async function queryHaiku({
       const result = await queryModelWithoutStreaming({
         messages,
         systemPrompt,
-        thinkingConfig: { type: 'disabled' },
+        thinkingConfig,
         tools: [],
         signal,
         options: {

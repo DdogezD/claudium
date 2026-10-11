@@ -4,11 +4,22 @@ import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getAPIProvider } from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
+import type { EffortValue } from './effort.js'
 
 export type ThinkingConfig =
   | { type: 'adaptive' }
   | { type: 'enabled'; budgetTokens: number }
   | { type: 'disabled' }
+
+export function getAuxiliaryThinkingConfig(
+  effort: EffortValue | undefined,
+  budgetTokens: number,
+): ThinkingConfig {
+  return effort === undefined ||
+    (typeof effort === 'string' && effort.toLowerCase() === 'none')
+    ? { type: 'disabled' }
+    : { type: 'enabled', budgetTokens }
+}
 
 const RAINBOW_COLORS: Array<keyof Theme> = [
   'rainbow_red',

@@ -129,7 +129,11 @@ export function resolveAppliedEffort(
   model: string,
   appStateEffortValue: EffortValue | undefined,
   scope?: 'subagent' | 'advisor',
+  requestOverride?: EffortValue | null,
 ): EffortValue | undefined {
+  if (requestOverride !== undefined) {
+    return requestOverride ?? undefined
+  }
   const scopeOverride =
     scope === 'subagent'
       ? getSubagentEffortEnvOverride()
@@ -147,15 +151,11 @@ export function resolveAppliedEffort(
   return resolved
 }
 
-/**
- * Resolve the effort for the WebSearch subquery (result summary + rerank).
- * The webSearch.effort setting doubles as the thinking switch: when unset,
- * no effort is sent and thinking blocks stay disabled; when set, the value
- * is sent verbatim and thinking is enabled. There is deliberately no
- * fallback to the subagent profile chain.
- * Precedence: CLAUDE_CODE_EFFORT_LEVEL → webSearch.effort → off.
- */
-export function resolveWebSearchEffort(): EffortValue | undefined {
+// Auxiliary tasks use only the global environment override or their own setting;
+// they do not inherit model profile effort.
+export function resolveAuxiliaryEffort(
+  task: 'webSearch' | 'sessionTitle',
+): EffortValue | undefined {
   const envOverride = getEffortEnvOverride()
   if (envOverride === null) {
     return undefined
@@ -163,7 +163,7 @@ export function resolveWebSearchEffort(): EffortValue | undefined {
   if (envOverride !== undefined) {
     return envOverride
   }
-  return getInitialSettings().webSearch?.effort?.trim() || undefined
+  return parseEffortValue(getInitialSettings()[task]?.effort)
 }
 
 /**

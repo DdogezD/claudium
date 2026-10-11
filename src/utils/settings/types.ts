@@ -422,10 +422,10 @@ export const SettingsSchema = lazySchema(() =>
             .string()
             .optional()
             .describe(
-              'Thinking switch and reasoning effort for the WebSearch subquery ' +
-                '(search summary and result rerank), passed through verbatim ' +
-                '(e.g. "low", "high", "xhigh"). When unset, thinking blocks ' +
-                'stay disabled and no effort is sent.',
+              'Independent effort for WebSearch summaries and result reranking. Passed ' +
+                'through to the provider (for example, low, high, or xhigh). ' +
+                'Unset values do not inherit model profile effort; unset or none ' +
+                'disables thinking.',
             ),
         })
         .optional()
@@ -434,6 +434,19 @@ export const SettingsSchema = lazySchema(() =>
             'provider-side web search and the SearXNG override. ' +
             'allowedDomains takes precedence over blockedDomains when both are set.',
         ),
+      sessionTitle: z
+        .object({
+          effort: z
+            .string()
+            .optional()
+            .describe(
+              'Independent effort for session title generation, passed through to the ' +
+                'provider. Unset values do not inherit model profile effort; unset ' +
+                'or none disables thinking.',
+            ),
+        })
+        .optional()
+        .describe('Session title generation settings'),
       modelProfiles: ModelProfilesSchema()
         .optional()
         .describe(
