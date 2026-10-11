@@ -12,7 +12,7 @@ export type ThinkingConfig =
   | { type: 'disabled' }
 
 export function getAuxiliaryThinkingConfig(
-  effort: EffortValue | undefined,
+  effort: EffortValue,
   budgetTokens: number,
 ): ThinkingConfig {
   return effort === undefined ||

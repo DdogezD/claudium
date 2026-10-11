@@ -357,8 +357,8 @@ export const WebSearchTool = buildTool({
     const searxngActive = hasSearxngWebSearchOverride()
     const subqueryModel =
       resolveModelProfileModel('subagent') ?? context.options.mainLoopModel
-    // webSearch.effort is the thinking switch for the subqueries: unset =
-    // thinking blocks off; set = thinking enabled with exactly that effort
+    // webSearch.effort is the thinking switch for the subqueries: none =
+    // thinking blocks off; other values enable thinking with exactly that effort
     // (sent verbatim as output_config.effort; the budget is only the model
     // ceiling). No dynamic adaptation, no fallback chain.
     const subqueryEffort = resolveAuxiliaryEffort('webSearch')

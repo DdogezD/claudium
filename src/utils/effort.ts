@@ -155,15 +155,15 @@ export function resolveAppliedEffort(
 // they do not inherit model profile effort.
 export function resolveAuxiliaryEffort(
   task: 'webSearch' | 'sessionTitle',
-): EffortValue | undefined {
+): EffortValue {
   const envOverride = getEffortEnvOverride()
   if (envOverride === null) {
-    return undefined
+    return 'none'
   }
   if (envOverride !== undefined) {
     return envOverride
   }
-  return parseEffortValue(getInitialSettings()[task]?.effort)
+  return parseEffortValue(getInitialSettings()[task]?.effort) ?? 'none'
 }
 
 /**

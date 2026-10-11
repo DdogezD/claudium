@@ -26,8 +26,8 @@ export function DetailedEffortSettingsDialog({
   onComplete,
   onCancel,
 }: Props): React.ReactNode {
-  const initialValues = [initialWebSearchEffort, initialTitleEffort]
-  const [values, setValues] = useState(initialValues.map(value => value ?? ''))
+  const initialValues = [initialWebSearchEffort ?? 'none', initialTitleEffort ?? 'none']
+  const [values, setValues] = useState(initialValues)
   const [changed, setChanged] = useState([false, false])
   const [offsets, setOffsets] = useState(values.map(value => value.length))
   const [focusedField, setFocusedField] = useState(0)

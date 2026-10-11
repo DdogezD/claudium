@@ -736,7 +736,7 @@ export function Config({
   }, {
     id: 'detailedEffortSettings',
     label: 'Detailed effort settings',
-    value: `search: ${settingsData?.webSearch?.effort ?? 'unset'} · title: ${settingsData?.sessionTitle?.effort ?? 'unset'}`,
+    value: `search: ${settingsData?.webSearch?.effort ?? 'none'} · title: ${settingsData?.sessionTitle?.effort ?? 'none'}`,
     type: 'managedEnum' as const,
     onChange: () => {} // handled by DetailedEffortSettingsDialog submenu
   }, ...(showDefaultViewPicker ? [{

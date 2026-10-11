@@ -424,13 +424,13 @@ export const SettingsSchema = lazySchema(() =>
             .describe(
               'Independent effort for WebSearch summaries and result reranking. Passed ' +
                 'through to the provider (for example, low, high, or xhigh). ' +
-                'Unset values do not inherit model profile effort; unset or none ' +
-                'disables thinking.',
+                'Defaults to none and does not inherit model profile effort; ' +
+                'provider-specific values are passed through unchanged.',
             ),
         })
         .optional()
         .describe(
-          'Domain restrictions for the WebSearch tool. Applies to both ' +
+          'Domain restrictions and effort settings for the WebSearch tool. Applies to both ' +
             'provider-side web search and the SearXNG override. ' +
             'allowedDomains takes precedence over blockedDomains when both are set.',
         ),
@@ -441,8 +441,8 @@ export const SettingsSchema = lazySchema(() =>
             .optional()
             .describe(
               'Independent effort for session title generation, passed through to the ' +
-                'provider. Unset values do not inherit model profile effort; unset ' +
-                'or none disables thinking.',
+                'provider. Defaults to none and does not inherit model profile ' +
+                'effort; provider-specific values are passed through unchanged.',
             ),
         })
         .optional()
