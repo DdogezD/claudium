@@ -22,6 +22,9 @@ import { generateProgressiveArgumentHint, parseArguments } from '../utils/argume
 import { getShellCompletions, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
 import { formatLogMetadata } from '../utils/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
+import { refreshDiscoveredModels, subscribeModelDiscovery } from '../utils/model/modelDiscovery.js';
+import { getModelOptions } from '../utils/model/modelOptions.js';
+import { applyModelSuggestion, generateModelSuggestions, getModelCompletionToken } from '../utils/suggestions/modelSuggestions.js';
 import { applyCommandSuggestion, findMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
 import { getDirectoryCompletions, getPathCompletions, isPathLikeToken } from '../utils/suggestions/directoryCompletion.js';
 import { getShellHistoryCompletion } from '../utils/suggestions/shellHistoryCompletion.js';
@@ -374,6 +377,11 @@ export function useTypeahead({
   } = useNotifications();
   const thinkingToggleShortcut = useShortcutDisplay('chat:thinkingToggle', 'Chat', 'alt+t');
   const [suggestionType, setSuggestionType] = useState<SuggestionType>('none');
+  const [modelDiscoveryRevision, setModelDiscoveryRevision] = useState(0);
+  const modelToken = mode === 'prompt' ? getModelCompletionToken(input, cursorOffset) : null;
+  const modelCompletionKey = modelToken ? `${modelToken.start}:${modelToken.end}:${modelToken.query}` : undefined;
+  const modelSettings = useAppState(s => s.settings);
+  const sessionModel = useAppState(s => s.mainLoopModelForSession ?? s.mainLoopModel);
 
   // Compute max column width from ALL commands once (not filtered results)
   // This prevents layout shift when filtering
@@ -436,6 +444,7 @@ export function useTypeahead({
   suggestionsRef.current = suggestions;
   // Track the input value when suggestions were manually dismissed to prevent re-triggering
   const dismissedForInputRef = useRef<string | null>(null);
+  const modelQueryRef = useRef<string | null>(null);
 
   // Clear all suggestions
   const clearSuggestions = useCallback(() => {
@@ -538,6 +547,34 @@ export function useTypeahead({
       clearSuggestions();
       return;
     }
+
+    if (mode === 'prompt' && /^\/model[ \t]/.test(value)) {
+      debouncedFetchFileSuggestions.cancel();
+      debouncedFetchSlackChannels.cancel();
+      latestSearchTokenRef.current = null;
+      latestSlackTokenRef.current = '\0';
+      const token = getModelCompletionToken(value, effectiveCursorOffset);
+      if (!token || dismissedForInputRef.current === value) {
+        modelQueryRef.current = null;
+        clearSuggestions();
+        return;
+      }
+      const modelSuggestions = generateModelSuggestions(getModelOptions(sessionModel), token.query);
+      const preserveSelection = modelQueryRef.current === token.query;
+      modelQueryRef.current = token.query;
+      setSuggestionsState(prev => ({
+        suggestions: modelSuggestions,
+        selectedSuggestion: preserveSelection
+          ? getPreservedSelection(prev.suggestions, prev.selectedSuggestion, modelSuggestions)
+          : modelSuggestions.length > 0 ? 0 : -1,
+        commandArgumentHint: modelSuggestions.length === 0 ? '[model] [context] [effort]' : undefined
+      }));
+      setSuggestionType(modelSuggestions.length > 0 ? 'model' : 'none');
+      setMaxColumnWidth(undefined);
+      return;
+    }
+    modelQueryRef.current = null;
+    if (suggestionType === 'model') clearSuggestions();
 
     // Check for mid-input slash command (e.g., "help me /com")
     // Only in prompt mode, not when input starts with "/" (handled separately)
@@ -884,12 +921,16 @@ export function useTypeahead({
   }, [suggestionType, commands, setSuggestionsState, clearSuggestions, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, mode, suppressSuggestions,
   // Note: using suggestionsRef instead of suggestions to avoid recreating
   // this callback when only selectedSuggestion changes (not the suggestions list)
-  allCommandsMaxWidth]);
+  allCommandsMaxWidth, sessionModel]);
+
+  useEffect(() => {
+    if (modelCompletionKey === undefined || suppressSuggestions || dismissedForInputRef.current === input) return;
+    const unsubscribe = subscribeModelDiscovery(() => setModelDiscoveryRevision(revision => revision + 1));
+    void refreshDiscoveredModels();
+    return unsubscribe;
+  }, [modelCompletionKey, input, suppressSuggestions, modelSettings]);
 
   // Update suggestions when input changes
-  // Note: We intentionally don't depend on cursorOffset here - cursor movement alone
-  // shouldn't re-trigger suggestions. The cursorOffsetRef is used to get the current
-  // position when needed without causing re-renders.
   useEffect(() => {
     // If suggestions were dismissed for this exact input, don't re-trigger
     if (dismissedForInputRef.current === input) {
@@ -905,7 +946,17 @@ export function useTypeahead({
     // Clear the dismissed state when input changes
     dismissedForInputRef.current = null;
     void updateSuggestions(input);
-  }, [input, updateSuggestions]);
+  }, [input, updateSuggestions, modelCompletionKey, modelDiscoveryRevision, modelSettings]);
+
+  const acceptModelSuggestion = useCallback((suggestion: SuggestionItem) => {
+    const result = applyModelSuggestion(input, cursorOffset, suggestion.id);
+    if (result) {
+      dismissedForInputRef.current = result.newInput;
+      onInputChange(result.newInput);
+      setCursorOffset(result.cursorPos);
+    }
+    clearSuggestions();
+  }, [input, cursorOffset, onInputChange, setCursorOffset, clearSuggestions]);
 
   // Handle tab key press - complete suggestions or trigger file suggestions
   const handleTab = useCallback(async () => {
@@ -941,7 +992,9 @@ export function useTypeahead({
       debouncedFetchSlackChannels.cancel();
       const index = selectedSuggestion === -1 ? 0 : selectedSuggestion;
       const suggestion = suggestions[index];
-      if (suggestionType === 'command' && index < suggestions.length) {
+      if (suggestionType === 'model') {
+        if (suggestion) acceptModelSuggestion(suggestion);
+      } else if (suggestionType === 'command' && index < suggestions.length) {
         if (suggestion) {
           applyCommandSuggestion(suggestion, false,
           // don't execute on tab
@@ -1131,13 +1184,15 @@ export function useTypeahead({
         setMaxColumnWidth(undefined);
       }
     }
-  }, [suggestions, selectedSuggestion, input, suggestionType, commands, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, cursorOffset, updateSuggestions, mcpResources, setSuggestionsState, agents, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, effectiveGhostText]);
+  }, [suggestions, selectedSuggestion, input, suggestionType, commands, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, cursorOffset, updateSuggestions, mcpResources, setSuggestionsState, agents, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, effectiveGhostText, acceptModelSuggestion]);
 
   // Handle enter key press - apply and execute suggestions
   const handleEnter = useCallback(() => {
     if (selectedSuggestion < 0 || suggestions.length === 0) return;
     const suggestion = suggestions[selectedSuggestion];
-    if (suggestionType === 'command' && selectedSuggestion < suggestions.length) {
+    if (suggestionType === 'model') {
+      if (suggestion) acceptModelSuggestion(suggestion);
+    } else if (suggestionType === 'command' && selectedSuggestion < suggestions.length) {
       if (suggestion) {
         applyCommandSuggestion(suggestion, true,
         // execute on return
@@ -1222,7 +1277,7 @@ export function useTypeahead({
         clearSuggestions();
       }
     }
-  }, [suggestions, selectedSuggestion, suggestionType, commands, input, cursorOffset, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, debouncedFetchFileSuggestions, debouncedFetchSlackChannels]);
+  }, [suggestions, selectedSuggestion, suggestionType, commands, input, cursorOffset, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, acceptModelSuggestion]);
 
   // Handler for autocomplete:accept - accepts current suggestion via Tab or Right Arrow
   const handleAutocompleteAccept = useCallback(() => {
@@ -1357,6 +1412,7 @@ export function useTypeahead({
     // so don't accept the suggestion for those.
     if (e.key === 'return' && !e.shift && !e.meta) {
       e.preventDefault();
+      if (suggestionType === 'model') e.stopImmediatePropagation();
       handleEnter();
     }
   };

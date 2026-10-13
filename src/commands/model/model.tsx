@@ -171,6 +171,7 @@ function SetModelAndClose({
       setAppState(prev => ({
         ...prev,
         mainLoopModel: model ?? null,
+        mainLoopModelForSession: null,
       }))
 
       // Build success message

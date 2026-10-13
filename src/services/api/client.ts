@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto'
 import {
   getAnthropicApiKey,
   getApiKeyFromApiKeyHelper,
+  getApiKeyFromApiKeyHelperCached,
+  getConfiguredApiKeyHelper,
 } from 'src/utils/auth.js'
 import { getUserAgent } from 'src/utils/http.js'
 import {
@@ -110,6 +112,37 @@ async function configureApiKeyHeaders(
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
+}
+
+export function getAnthropicRequestHeaders(): Headers | null {
+  const headers = new Headers()
+  for (const [name, value] of Object.entries(getCustomHeaders())) {
+    headers.set(name, value)
+  }
+  const apiKey = getAnthropicApiKey()
+  if (apiKey && !headers.has('x-api-key')) headers.set('x-api-key', apiKey)
+  let token = process.env.ANTHROPIC_AUTH_TOKEN
+  if (!token && getConfiguredApiKeyHelper()) {
+    const cached = getApiKeyFromApiKeyHelperCached()
+    if (!cached?.trim()) return null
+    token = cached
+  }
+  if (token) headers.set('authorization', `Bearer ${token}`)
+  if (!headers.has('x-app')) headers.set('x-app', 'cli')
+  if (!headers.has('user-agent')) headers.set('user-agent', getUserAgent())
+  if (!headers.has('x-claude-code-session-id')) {
+    headers.set('x-claude-code-session-id', getSessionId())
+  }
+  if (process.env.CLAUDE_CODE_CONTAINER_ID) {
+    headers.set('x-claude-container-id', process.env.CLAUDE_CODE_CONTAINER_ID)
+  }
+  if (process.env.CLAUDE_AGENT_SDK_CLIENT_APP) {
+    headers.set('x-client-app', process.env.CLAUDE_AGENT_SDK_CLIENT_APP)
+  }
+  if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_PROTECTION)) {
+    headers.set('x-anthropic-additional-protection', 'true')
+  }
+  return headers
 }
 
 function getCustomHeaders(): Record<string, string> {

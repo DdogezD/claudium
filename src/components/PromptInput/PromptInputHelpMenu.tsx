@@ -76,16 +76,6 @@ export function PromptInputHelpMenu(props) {
     t9 = $[9];
   }
   const cycleModeShortcut = t9;
-  const t10 = useShortcutDisplay("chat:modelPicker", "Chat", "alt+p");
-  let t11;
-  if ($[10] !== t10) {
-    t11 = formatShortcut(t10);
-    $[10] = t10;
-    $[11] = t11;
-  } else {
-    t11 = $[11];
-  }
-  const modelPickerShortcut = t11;
   const t14 = useShortcutDisplay("chat:externalEditor", "Chat", "ctrl+g");
   let t15;
   if ($[14] !== t14) {
@@ -271,15 +261,6 @@ export function PromptInputHelpMenu(props) {
   } else {
     t38 = $[69];
   }
-  let t39;
-  if ($[70] !== dimColor || $[71] !== modelPickerShortcut) {
-    t39 = <Box><Text dimColor={dimColor}>{modelPickerShortcut} to switch model</Text></Box>;
-    $[70] = dimColor;
-    $[71] = modelPickerShortcut;
-    $[72] = t39;
-  } else {
-    t39 = $[72];
-  }
   let t41;
   if ($[76] !== dimColor || $[77] !== stashShortcut) {
     t41 = <Box><Text dimColor={dimColor}>{stashShortcut} to stash prompt</Text></Box>;
@@ -307,12 +288,11 @@ export function PromptInputHelpMenu(props) {
     t43 = $[83];
   }
   let t44;
-  if ($[84] !== t36 || $[85] !== t37 || $[86] !== t38 || $[87] !== t39 || $[89] !== t41 || $[90] !== t42 || $[91] !== t43) {
-    t44 = <Box flexDirection="column">{t36}{t37}{t38}{t39}{t41}{t42}{t43}</Box>;
+  if ($[84] !== t36 || $[85] !== t37 || $[86] !== t38 || $[89] !== t41 || $[90] !== t42 || $[91] !== t43) {
+    t44 = <Box flexDirection="column">{t36}{t37}{t38}{t41}{t42}{t43}</Box>;
     $[84] = t36;
     $[85] = t37;
     $[86] = t38;
-    $[87] = t39;
     $[89] = t41;
     $[90] = t42;
     $[91] = t43;
