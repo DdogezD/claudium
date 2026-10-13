@@ -63,7 +63,7 @@ Claudium 不提供 claude.ai OAuth 登录，认证完全由本地环境中的 AP
 }
 ```
 
-`webSearch.effort` 同时控制 WebSearch 摘要和结果重排子查询的 thinking block：未设置时关闭 thinking；设置后按原值发送 effort 并启用 thinking。`/config` 可编辑该设置。
+`webSearch.effort` 用于搜索摘要和结果重排，`sessionTitle.effort` 用于会话标题生成；两者均可在 `/config` 编辑，默认 `none` 关闭 thinking block，其他值原样透传并启用模型支持的 thinking。它们不继承 model profile 的 effort，但全局 `CLAUDE_CODE_EFFORT_LEVEL` 环境变量仍优先。
 
 ## SearXNG WebSearch
 
