@@ -1,511 +1,91 @@
 # Claudium
 
-Anthropic OAuth and first-party remote control stripped. Telemetry stripped. Injected security-prompt guardrails removed. Supported experimental features are enabled in the Claudium preset. One binary, zero callbacks home.
+Claudium 是一个终端原生的 AI coding agent。它保留 Claude Code 的本地 CLI 工作流，移除上游 OAuth、远程控制、遥测和自动更新相关服务，使用你配置的 Anthropic API endpoint。
 
-### Stable (main branch)
+## 安装
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
-```
-
-> Checks your system, installs Bun if needed, clones, builds the supported Claudium feature preset, installs `claudium`, and creates a `claudium-bypass` launcher that starts in bypass permission mode. See [API Configuration](#api-configuration) for API setup.
-
-### Dev (bleeding edge)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install_dev.sh | bash
-```
-
-> Installs from the `dev` branch as `claudium` (and `claudium-bypass`). Same binary names as the stable installer — only the source branch differs.
-
-<p align="center">
-  <img src="assets/screenshot.png" alt="claudium screenshot" width="800" />
-</p>
-
----
-
-## What is this
-
-This is a clean, buildable fork of Anthropic's [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI -- the terminal-native AI coding agent. The upstream source became publicly available on March 31, 2026 through a source map exposure in the npm distribution.
-
-This fork applies six categories of changes on top of that snapshot:
-
-### 1. Privacy-First
-
-Eliminates all tracking and remote-control mechanisms present in the original Claude Code:
-
-- No telemetry -- No unnecessary data is transmitted to Anthropic servers
-- No analytics -- No usage tracking or event logging
-- No fingerprinting -- No user or environment identification
-- No auto-updates -- No remote version control or forced updates
-
-### 2. OAuth and Cloud Services Stripped
-
-Unlike the upstream Claude Code, Claudium has no first-party OAuth login or claude.ai remote sessions:
-
-- No `/login` command -- first-party claude.ai OAuth is removed
-- No remote CCR sessions -- bridge, Session Ingress, and remote session code are removed
-- No GrowthBook server-side feature flag dependency
-- No auto-update infrastructure
-- No settings sync to/from cloud
-
-Configure credentials for the provider and API endpoint you choose (see [API Configuration](#api-configuration)).
-
-### 3. OpenAI-compatible API support
-
-Added an API shim layer (`src/services/api/openaiShim.ts`) that transparently translates between Anthropic message format and OpenAI-compatible APIs. It supports both Chat Completions and the newer Responses API, so all Claudium tools (bash, file read/write, grep, glob, agents, MCP, etc.) keep working while you swap in a different backend LLM.
-
-### 4. SearXNG-backed WebSearch
-
-Added an optional override for the built-in `WebSearch` tool so it can query your own SearXNG instance instead of relying on provider-side web search.
-
-- Configured with one env var: `CLAUDE_CODE_SEARXNG_BASE_URL`
-- Keeps the existing `WebSearch` tool contract and UI intact
-- Preserves `allowed_domains` / `blocked_domains` semantics with local filtering
-- Falls back to the default provider behavior when the env var is unset
-
-### 5. Security-prompt guardrails removed
-
-Anthropic injects system-level instructions into every conversation that constrain Claude's behavior beyond what the model itself enforces. These include:
-
-- Hardcoded refusal patterns for certain categories of prompts
-- Injected "cyber risk" instruction blocks
-- Managed-settings security overlays pushed from Anthropic's servers
-
-This build strips those injections. The model's own safety training still applies -- this just removes the extra layer of prompt-level restrictions that the CLI wraps around it.
-
-### 6. Selected experimental features
-
-Claude Code ships with dozens of feature flags gated behind `bun:bundle` compile-time switches. Claudium enables a selected set that compiles and runs in the supported build presets, including:
-
-| Feature | What it does |
-|---|---|
-| `VOICE_MODE` | Push-to-talk voice input and dictation |
-| `AGENT_TRIGGERS` | Local cron/trigger tools for background automation |
-| `TOKEN_BUDGET` | Token budget tracking and usage warnings |
-| `BUILTIN_EXPLORE_PLAN_AGENTS` | Built-in explore/plan agent presets |
-| `VERIFICATION_AGENT` | Verification agent for task validation |
-| `BASH_CLASSIFIER` | Classifier-assisted bash permission decisions |
-| `EXTRACT_MEMORIES` | Post-query automatic memory extraction |
-| `HISTORY_PICKER` | Interactive prompt history picker |
-| `MESSAGE_ACTIONS` | Message action entrypoints in the UI |
-| `QUICK_SEARCH` | Prompt quick-search |
-| `SHOT_STATS` | Shot-distribution stats |
-| `COMPACTION_REMINDERS` | Smart reminders around context compaction |
-| `CACHED_MICROCOMPACT` | Cached microcompact state through query flows |
-
-See [FEATURES.md](FEATURES.md) for the full audit of all 88 flags and their status.
-
----
-
-## Quick install
+要求：Bun `>=1.3.11`、Git、ripgrep；支持 macOS、Linux 和 WSL。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | bash
 ```
 
-This will check your system, install Bun if needed, clone the repo, build the supported development binary `claudium-cli-dev`, install it as `claudium`, and create a `claudium-bypass` launcher in `~/.local/bin`.
-
----
-
-## Requirements
-
-- [Bun](https://bun.sh) >= 1.3.11
-- macOS or Linux (Windows via WSL)
-- An API key ([Anthropic Messages](#anthropic-messages-api) or [OpenAI-compatible APIs](#openai-compatible-apis))
+安装后提供：
 
 ```bash
-# Install Bun if you don't have it
-curl -fsSL https://bun.sh/install | bash
+claudium                 # 交互式 REPL
+claudium-bypass          # bypassPermissions 模式
+claudium -p "..."       # 单次执行
 ```
 
----
-
-## Build
+## 本地构建
 
 ```bash
-# Clone the repo
-git clone https://github.com/DdogezD/claudium.git
-cd claudium
-
-# Install dependencies
 bun install
-
-# Standard build -- produces ./claudium-cli
-bun run build
-
-# Dev build -- dev version stamp
-bun run build:dev
-
-# Dev build with the supported Claudium feature preset -- produces ./claudium-cli-dev
-bun run build:dev:claudium
-
-# Compiled build (alternative output path) -- produces ./dist/claudium-cli
-bun run compile
+bun run build            # ./claudium-cli
+bun run compile          # ./dist/claudium-cli
+bun run dev              # 从源码运行
 ```
 
-### Build variants
+默认构建使用当前 Claudium feature preset。实验性 feature 可通过 `--feature=NAME` 临时追加；完整审计见 [FEATURES.md](FEATURES.md)。
 
-| Command | Output | Features | Notes |
-|---|---|---|---|
-| `bun run build` | `./claudium-cli` | `VOICE_MODE` only | Production-like binary |
-| `bun run build:dev` | `./claudium-cli-dev` | `VOICE_MODE` only | Dev version stamp |
-| `bun run build:dev:claudium` | `./claudium-cli-dev` | Supported Claudium preset | Installer preset; first-party remote and broken flags are excluded |
-| `bun run compile` | `./dist/claudium-cli` | `VOICE_MODE` only | Alternative output directory |
+## API 配置
 
-### Individual feature flags
-
-You can enable specific flags without the full bundle:
-
-```bash
-# Enable a specific flag on top of the dev build
-bun run ./scripts/build.ts --dev --feature=VOICE_MODE
-```
-
----
-
-## Run
-
-```bash
-# Run the installed binary
-claudium
-
-# Run the installed binary in bypass permission mode
-claudium-bypass
-
-# Or the built binary
-./claudium-cli
-
-# Or the dev binary
-./claudium-cli-dev
-
-# Or run from source without compiling (slower startup)
-bun run dev
-
-# See [API Configuration](#api-configuration) for API setup.
-```
-
-`claudium-bypass` is installed by `install.sh`. It exports `IS_SANDBOX=1` and runs the installed `claudium` binary with `--permission-mode bypassPermissions`.
-
-### Quick test
-
-```bash
-# One-shot mode
-claudium -p "what files are in this directory?"
-
-# One-shot mode with bypass permission mode enabled
-claudium-bypass -p "scan this repo and summarize risky scripts"
-
-# Interactive REPL (default)
-claudium
-
-# Interactive REPL (bypassPermissions)
-claudium-bypass
-
-# With specific model
-claudium --model claude-sonnet-4-6-20250514
-
-# Set advisor model
-claudium --advisor-model claude-sonnet-4-6-20250514
-```
-
-## Advisor Tool
-
-Claudium includes a built-in **Advisor** tool that runs a stronger reviewer model
-to audit your approach before you commit to implementation. The advisor checks for
-architecture flaws, security issues, edge cases, and correctness.
-
-- Configured via `CLAUDE_CODE_ADVISOR_MODEL` or the `/advisor <model>` slash command
-- Provider-agnostic — works with any model, including OpenAI-compatible backends
-- Automatically called by the executor model on the first significant action of each task
-- Also available for manual review: call the `Advisor` tool with your question
-
-```bash
-# Enable via env var
-export CLAUDE_CODE_ADVISOR_MODEL="claude-opus-4-6"
-
-# Enable via slash command (interactive session)
-/advisor claude-opus-4-6
-
-# Disable
-/advisor off
-```
-
----
-
-## Project structure
-
-```
-scripts/
-  build.ts              # Build script with feature flag system
-
-src/
-  entrypoints/cli.tsx   # CLI entrypoint
-  commands.ts           # Command registry (slash commands)
-  tools.ts              # Tool registry (agent tools)
-  QueryEngine.ts        # LLM query engine
-  screens/REPL.tsx      # Main interactive UI
-
-  commands/             # /slash command implementations
-  tools/                # Agent tool implementations (Bash, Read, Edit, etc.)
-  components/           # Ink/React terminal UI components
-  hooks/                # React hooks
-  services/             # API client, MCP, analytics
-  state/                # App state store
-  utils/                # Utilities
-  skills/               # Skill system
-  plugins/              # Plugin system
-  voice/                # Voice input
-  tasks/                # Background task management
-```
-
----
-
-## Tech stack
-
-| | |
-|---|---|
-| Runtime | [Bun](https://bun.sh) |
-| Language | TypeScript |
-| Terminal UI | React + [Ink](https://github.com/vadimdemedes/ink) |
-| CLI parsing | [Commander.js](https://github.com/tj/commander.js) |
-| Schema validation | Zod v4 |
-| Code search | ripgrep (bundled) |
-| Protocols | MCP, LSP |
-| API | Anthropic Messages API / OpenAI-compatible APIs |
-
----
-
-## API Configuration
-
-Claudium supports both **Anthropic Messages API** (natively) and **OpenAI-compatible APIs**. The shim can use either Chat Completions or the newer Responses API depending on the provider and model you configure.
-
-Note: Unlike the upstream Claude Code, Claudium does **not** support OAuth login via claude.ai. All authentication is done via API keys.
-
-### Anthropic Messages API
-
-Use the official Anthropic Messages API with your Anthropic API key.
+使用 Anthropic Messages API：
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-### OpenAI-compatible APIs
+也可以通过 `ANTHROPIC_BASE_URL` 使用兼容 Anthropic Messages API 的 endpoint，并配合 `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN` 完成认证。
 
-Enable OpenAI-compatible mode and configure your preferred provider:
+Claudium 不提供 claude.ai OAuth 登录，认证完全由本地环境中的 API key、token 和 endpoint 配置决定。
 
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-```
+## 模型与 effort
 
-#### Environment Variables
+`settings.json` 支持为主模型、subagent 和 advisor 分别配置 model、context window 与 reasoning effort。辅助任务默认不继承主任务 effort，而是使用 `none`：
 
-| Variable | Description |
-|---|---|
-| `OPENAI_API_KEY` | API key (required for cloud APIs, optional for local models) |
-| `OPENAI_BASE_URL` | API base URL (default: `https://api.openai.com/v1`) |
-| `OPENAI_MODEL` | Explicit model ID (required) |
-| `OPENAI_API_MODE` | Force transport selection: `chat_completions` or `responses` |
-| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Override max context window size |
-| `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` | Override token limit for summarized context |
-| `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS` | Override auto-compact buffer size |
-| `CLAUDE_CODE_ADVISOR_MODEL` | Set the advisor/reviewer model (provider-agnostic) |
-| `CLAUDE_CODE_SUBAGENT_MAX_CONTEXT_TOKENS` | Override max context window size for subagents |
-| `CLAUDE_CODE_SUBAGENT_BUFFER_TOKENS` | Override auto-compact buffer size for subagents |
-| `CLAUDE_CODE_SUBAGENT_SUMMARY_OUTPUT_TOKENS` | Override summary output token reservation for subagents |
-| `CLAUDE_CODE_ADVISOR_MAX_CONTEXT_TOKENS` | Override max context window size for the advisor tool |
-| `CLAUDE_CODE_ADVISOR_BUFFER_TOKENS` | Override auto-compact buffer size for the advisor tool |
-| `CLAUDE_CODE_ADVISOR_SUMMARY_OUTPUT_TOKENS` | Override summary output token reservation for the advisor tool |
-
-**Autocompact buffer** = `CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS` + `CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS`
-
-#### Subagent & Advisor Context Configuration
-
-Subagents (spawned via the `Agent` tool) and the `Advisor` tool each run their own
-query loops with independent context management. By default they inherit the same
-context window, auto-compact buffer, and summary output reservation as the main
-agent. You can override these independently using env vars or `settings.json`.
-
-**Env vars (highest priority):**
-```bash
-# Subagent overrides
-export CLAUDE_CODE_SUBAGENT_MAX_CONTEXT_TOKENS=100000
-export CLAUDE_CODE_SUBAGENT_BUFFER_TOKENS=5000
-export CLAUDE_CODE_SUBAGENT_SUMMARY_OUTPUT_TOKENS=8000
-
-# Advisor overrides
-export CLAUDE_CODE_ADVISOR_MAX_CONTEXT_TOKENS=150000
-export CLAUDE_CODE_ADVISOR_BUFFER_TOKENS=10000
-export CLAUDE_CODE_ADVISOR_SUMMARY_OUTPUT_TOKENS=16000
-```
-
-**settings.json (persistent config):**
 ```json
 {
-  "subagentContextWindow": 100000,
-  "subagentBufferTokens": 5000,
-  "subagentSummaryOutputTokens": 8000,
-  "advisorContextWindow": 150000,
-  "advisorBufferTokens": 10000,
-  "advisorSummaryOutputTokens": 16000
+  "modelProfiles": {
+    "main": {
+      "model": "your-model-id",
+      "contextWindowTokens": 131072,
+      "reasoningEffort": "high"
+    }
+  },
+  "webSearch": {
+    "effort": "low"
+  },
+  "sessionTitle": {
+    "effort": "none"
+  }
 }
 ```
 
-**Priority chain** (each parameter independently):
-1. context-specific env var (e.g. `CLAUDE_CODE_SUBAGENT_MAX_CONTEXT_TOKENS`)
-2. context-specific `settings.json` field (e.g. `subagentContextWindow`)
-3. general env var (e.g. `CLAUDE_CODE_MAX_CONTEXT_TOKENS`)
-4. model default
+`webSearch.effort` 同时控制 WebSearch 摘要和结果重排子查询的 thinking block：未设置时关闭 thinking；设置后按原值发送 effort 并启用 thinking。`/config` 可编辑该设置。
 
-Context window overrides use `min()` semantics — they only cap downward, never
-expand beyond what the model supports.
+## SearXNG WebSearch
 
-**Calculation reminder:**
-```
-effectiveWindow = min(modelContextWindow, contextWindowOverride, AUTO_COMPACT_WINDOW)
-                   - summaryOutputTokens
-compactThreshold = effectiveWindow - bufferTokens
-totalBuffer       = summaryOutputTokens + bufferTokens  (default: 20000 + 13000 = 33000)
-```
-
-Set an explicit provider model ID in `OPENAI_MODEL` or the active model profile. Legacy family aliases such as `opus`, `sonnet`, and `haiku` are rejected; use the provider-specific model ID instead.
-
-#### Transport selection
-
-- Other OpenAI-compatible backends stay on Chat Completions by default for maximum compatibility unless you explicitly select Responses.
-- Official OpenAI requests that include reasoning still use the Responses API.
-- Set `OPENAI_API_MODE=responses` to force `/responses` on providers that support it, or `OPENAI_API_MODE=chat_completions` to force the legacy path.
-
-#### Provider Examples
-
-**OpenAI (Responses API, explicit):**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL=gpt-5.4
-export OPENAI_API_MODE=responses
-```
-
-**OpenAI ChatGPT:**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL=gpt-4o
-export OPENAI_API_MODE=chat_completions
-```
-
-**OpenAI ChatGPT Codex:**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export CODEX_API_KEY=eyJ...
-export CHATGPT_ACCOUNT_ID=account_...
-export OPENAI_MODEL=codexplan
-```
-
-**OpenRouter:**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=sk-or-v1-...
-export OPENAI_BASE_URL=https://openrouter.ai/api/v1
-export OPENAI_MODEL=openai/gpt-5.4
-```
-
-**DeepSeek:**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=sk-...
-export OPENAI_BASE_URL=https://api.deepseek.com/v1
-export OPENAI_MODEL=deepseek-chat
-```
-
-**LLaMA.CPP (local):**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_BASE_URL=http://localhost:1234/v1
-export OPENAI_MODEL=your-model-name
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS=65536
-export CLAUDE_CODE_SUMMARY_OUTPUT_TOKENS=12000
-export CLAUDE_CODE_AUTO_COMPACT_BUFFER_TOKENS=4000
-```
-
-**Ollama (local):**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_BASE_URL=http://localhost:1234/v1
-export OPENAI_MODEL=llama3.3
-```
-
-**LM Studio (local):**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_BASE_URL=http://localhost:1234/v1
-export OPENAI_MODEL=your-model-name
-```
-
-**Azure OpenAI:**
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=your-azure-key
-export OPENAI_BASE_URL=https://your-resource.openai.azure.com/openai/deployments/your-deployment
-export OPENAI_MODEL=gpt-4o
-export AZURE_OPENAI_API_VERSION=2024-12-01-preview
-```
-
-### SearXNG-backed WebSearch
-
-You can route Claudium's built-in `WebSearch` tool through your own SearXNG instance by setting one environment variable:
+设置以下变量后，内置 WebSearch 会使用自己的 SearXNG 实例：
 
 ```bash
 export CLAUDE_CODE_SEARXNG_BASE_URL=http://localhost:8888/
 ```
 
-When this variable is set, `WebSearch` no longer relies on the provider's server-side web search. Instead, Claudium calls your SearXNG instance directly at:
+该路径保留 WebSearch 工具契约，并支持：
 
-```text
-GET {CLAUDE_CODE_SEARXNG_BASE_URL}/search?q=<query>&format=json
-```
+- `allowed_domains` / `blocked_domains` 以及 `settings.json` 中的持久化域名规则
+- 结果分页、去重和本地过滤
+- 仅在 SearXNG 路径启用的来源指导与 LLM rerank
+- 对来源优先级、来源冲突和引用编号的搜索摘要指导
 
-Notes:
+未设置 SearXNG 时，WebSearch 使用默认 provider 行为；SearXNG 质量层不会介入。域名规则可通过 `/config` → **Domain rules (search · fetch · sandbox)** 编辑。
 
-- This only changes the `WebSearch` tool. `WebFetch` still fetches page content directly.
-- `allowed_domains` and `blocked_domains` are still supported, but filtering is applied locally after SearXNG returns results. Claudium paginates (`pageno`) until it has collected enough matching results, so domain filtering applies to the full result stream rather than just the first page.
-- If `CLAUDE_CODE_SEARXNG_BASE_URL` is unset, Claudium falls back to the default provider behavior.
+## 设计边界
 
-### WebSearch domain restrictions
-
-Persistent allow/block lists for the `WebSearch` tool can be configured in `settings.json` (any settings source: user, project, local, or managed) — no environment variables involved:
-
-```json
-{
-  "webSearch": {
-    "allowedDomains": ["github.com", "*://docs.python.org/3/*"],
-    "blockedDomains": [
-      "*://cloud.tencent.com/developer/article/*",
-      "*://*.csdn.net/*",
-      "developer.aliyun.com"
-    ]
-  }
-}
-```
-
-Each entry is one of two rule forms:
-
-| Form | Example | Matches |
-|---|---|---|
-| Plain domain | `csdn.net` | That host and all subdomains |
-| uBlacklist-style match pattern | `*://cloud.tencent.com/developer/article/*` | `<scheme>://<host><path>` — scheme `*` = http+https; host `*` = any, `*.example.com` = domain + subdomains, bare host = exact; path supports `*` wildcards. A pattern without a path defaults to `/*`. |
-
-Semantics:
-
-- `allowedDomains` is a hard ceiling. If the model also passes `allowed_domains` in a call, both sets must match (AND) — the model can only narrow within the configured ceiling. An empty array (`[]`) denies all domains — the search short-circuits without any network request.
-- `blockedDomains` unions with the per-call `blocked_domains` (OR).
-- Applies to both the SearXNG override (local filtering) and provider-side web search. Provider APIs only accept plain domains, so those are sent upstream and match patterns / host+path rules are additionally enforced client-side on the returned results.
-- Arrays merge across settings sources (same semantics as `allowedMcpServers`).
-
-Rules can be edited interactively via `/config` → **Domain rules (search · fetch · sandbox)**. The editor also manages `WebFetch(domain:...)` permission rules (including `*.example.com` wildcards, which are matched against the host itself and its subdomains) and `sandbox.network.allowedDomains` — all written to user `settings.json`.
-
----
+Claudium 不保证搜索结果天然可靠。SearXNG 返回的来源质量取决于实例配置和上游搜索引擎；rerank 与来源指导用于降低垃圾、冲突和聚合转载对最终摘要的影响，但不会替代人工核验。
 
 ## License
 
-The original Claude Code source is the property of Anthropic. This fork exists because the source was publicly exposed through their npm distribution. Use at your own discretion.
+原始 Claude Code source 属于 Anthropic。本项目是基于公开 npm source snapshot 的个人 fork，按你自己的风险使用。

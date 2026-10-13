@@ -8,9 +8,8 @@ const pkg = await Bun.file(new URL('../package.json', import.meta.url)).json() a
 
 const args = process.argv.slice(2)
 const compile = args.includes('--compile')
-const dev = args.includes('--dev')
 
-const fullExperimentalFeatures = [
+const defaultFeatures = [
   'AGENT_MEMORY_SNAPSHOT',
   'AGENT_TRIGGERS',
   'AWAY_SUMMARY',
@@ -18,7 +17,6 @@ const fullExperimentalFeatures = [
   'BUILTIN_EXPLORE_PLAN_AGENTS',
   'CACHED_MICROCOMPACT',
   'COMPACTION_REMINDERS',
-  'CONNECTOR_TEXT',
   'EXTRACT_MEMORIES',
   'HISTORY_PICKER',
   'HOOK_PROMPTS',
@@ -40,91 +38,10 @@ const fullExperimentalFeatures = [
   'UNATTENDED_RETRY',
   'VERIFICATION_AGENT',
   'VOICE_MODE',
-] as const
-
-function runCommand(cmd: string[]): string | null {
-  const proc = Bun.spawnSync({
-    cmd,
-    cwd: process.cwd(),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-
-  if (proc.exitCode !== 0) {
-    return null
-  }
-
-  return new TextDecoder().decode(proc.stdout).trim() || null
-}
-
-function getDevVersion(baseVersion: string): string {
-  const timestamp = new Date().toISOString()
-  const date = timestamp.slice(0, 10).replaceAll('-', '')
-  const time = timestamp.slice(11, 19).replaceAll(':', '')
-  const sha = runCommand(['git', 'rev-parse', '--short=8', 'HEAD']) ?? 'unknown'
-  return `${baseVersion}-dev.${date}.t${time}.sha${sha}`
-}
-
-function getVersionChangelog(): string {
-  return (
-    runCommand(['git', 'log', '--format=%h %s', '-20']) ??
-    'Local development build'
-  )
-}
-
-const defaultFeatures = ['VOICE_MODE']
+]
 const featureSet = new Set(defaultFeatures)
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]
-  if (arg === '--feature-set' && args[i + 1]) {
-    if (args[i + 1] === 'dev-full') {
-      for (const feature of fullExperimentalFeatures) {
-        featureSet.add(feature)
-      }
-    } else if (args[i + 1] === 'claudium') {
-      const claudiumFeatures = [
-        'AGENT_MEMORY_SNAPSHOT',
-        'AGENT_TRIGGERS',
-        'AWAY_SUMMARY',
-        'BASH_CLASSIFIER',
-        'BUILTIN_EXPLORE_PLAN_AGENTS',
-        'CACHED_MICROCOMPACT',
-        'COMPACTION_REMINDERS',
-        'EXTRACT_MEMORIES',
-        'HISTORY_PICKER',
-        'HOOK_PROMPTS',
-        'KAIROS_BRIEF',
-        'KAIROS_CHANNELS',
-        'LODESTONE',
-        'MCP_RICH_OUTPUT',
-        'MESSAGE_ACTIONS',
-        'NATIVE_CLIPBOARD_IMAGE',
-        'NEW_INIT',
-        'POWERSHELL_AUTO_MODE',
-        'PROMPT_CACHE_BREAK_DETECTION',
-        'QUICK_SEARCH',
-        'SHOT_STATS',
-        'TEAMMEM',
-        'TOKEN_BUDGET',
-        'TREE_SITTER_BASH',
-        'TREE_SITTER_BASH_SHADOW',
-        'UNATTENDED_RETRY',
-        'VERIFICATION_AGENT',
-        'VOICE_MODE',
-      ]
-      for (const feature of claudiumFeatures) {
-        featureSet.add(feature)
-      }
-    }
-    i += 1
-    continue
-  }
-  if (arg === '--feature-set=dev-full') {
-    for (const feature of fullExperimentalFeatures) {
-      featureSet.add(feature)
-    }
-    continue
-  }
   if (arg === '--feature' && args[i + 1]) {
     featureSet.add(args[i + 1]!)
     i += 1
@@ -136,10 +53,8 @@ for (let i = 0; i < args.length; i += 1) {
 }
 const features = [...featureSet]
 
-const outfileName = dev ? 'claudium-cli-dev' : 'claudium-cli'
-const outfile = compile ? `./dist/${outfileName}` : `./${outfileName}`
+const outfile = compile ? './dist/claudium-cli' : './claudium-cli'
 const buildTime = new Date().toISOString()
-const version = dev ? getDevVersion(pkg.version) : pkg.version
 
 mkdirSync(dirname(outfile), { recursive: true })
 
@@ -154,16 +69,8 @@ const externals = [
 const defines = {
   'process.env.USER_TYPE': JSON.stringify('external'),
   'process.env.CLAUDE_CODE_FORCE_FULL_LOGO': JSON.stringify('true'),
-  ...(dev
-    ? { 'process.env.NODE_ENV': JSON.stringify('development') }
-    : {}),
-  ...(dev
-    ? {
-        'process.env.CLAUDE_CODE_EXPERIMENTAL_BUILD': JSON.stringify('true'),
-      }
-    : {}),
   'process.env.CLAUDE_CODE_VERIFY_PLAN': JSON.stringify('false'),
-  'MACRO.VERSION': JSON.stringify(version),
+  'MACRO.VERSION': JSON.stringify(pkg.version),
   'MACRO.BUILD_TIME': JSON.stringify(buildTime),
   'MACRO.PACKAGE_URL': JSON.stringify(pkg.name),
   'MACRO.NATIVE_PACKAGE_URL': 'undefined',
@@ -171,9 +78,7 @@ const defines = {
   'MACRO.ISSUES_EXPLAINER': JSON.stringify(
     'This reconstructed source snapshot does not include Anthropic internal issue routing.',
   ),
-  'MACRO.VERSION_CHANGELOG': JSON.stringify(
-    dev ? getVersionChangelog() : 'https://github.com/DdogezD/claudium',
-  ),
+  'MACRO.VERSION_CHANGELOG': JSON.stringify('https://github.com/DdogezD/claudium'),
 } as const
 
 const cmd = [

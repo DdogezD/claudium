@@ -113,18 +113,33 @@ install_bun() {
 
 clone_repo() {
   if [ -d "$BUILD_DIR" ]; then
-    warn "$BUILD_DIR already exists"
-    if [ -d "$BUILD_DIR/.git" ]; then
-      info "Pulling latest changes..."
-      git -C "$BUILD_DIR" pull --ff-only origin main 2>/dev/null || {
-        warn "Pull failed, continuing with existing copy"
-      }
+    if [ ! -d "$BUILD_DIR/.git" ]; then
+      fail "$BUILD_DIR exists but is not a Git checkout. Remove it and retry."
     fi
+
+    local remote
+    remote="$(git -C "$BUILD_DIR" remote get-url origin 2>/dev/null)" || \
+      fail "$BUILD_DIR has no origin remote. Remove it and retry."
+    if [ "$remote" != "$REPO" ]; then
+      fail "$BUILD_DIR points to an unexpected origin ($remote). Remove it and retry."
+    fi
+    if [ -n "$(git -C "$BUILD_DIR" status --porcelain)" ]; then
+      fail "$BUILD_DIR has local changes. Remove it or clean the checkout before retrying."
+    fi
+
+    info "Pulling latest changes from main..."
+    git -C "$BUILD_DIR" fetch origin main
+    git -C "$BUILD_DIR" checkout main
+    git -C "$BUILD_DIR" pull --ff-only origin main
+    local head remote_head
+    head="$(git -C "$BUILD_DIR" rev-parse HEAD)"
+    remote_head="$(git -C "$BUILD_DIR" rev-parse origin/main)"
+    [ "$head" = "$remote_head" ] || fail "Could not update the checkout to origin/main."
   else
-    info "Cloning repository to cache..."
-    git clone --depth 1 "$REPO" "$BUILD_DIR"
+    info "Cloning repository (main branch) to cache..."
+    git clone --depth 1 --branch main "$REPO" "$BUILD_DIR"
   fi
-  ok "Source cache: $BUILD_DIR"
+  ok "Source cache: $BUILD_DIR (main branch)"
 }
 
 install_deps() {
@@ -137,8 +152,8 @@ install_deps() {
 build_binary() {
   info "Building claudium..."
   cd "$BUILD_DIR" || fail "Cannot enter $BUILD_DIR"
-  bun run build:dev:claudium
-  local binary="$BUILD_DIR/claudium-cli-dev"
+  bun run build
+  local binary="$BUILD_DIR/claudium-cli"
   ok "Binary built: $binary"
 }
 
@@ -161,7 +176,7 @@ EOF
 install_binary() {
   mkdir -p "$INSTALL_DIR"
 
-  cp "$BUILD_DIR/claudium-cli-dev" "$INSTALL_DIR/claudium"
+  cp "$BUILD_DIR/claudium-cli" "$INSTALL_DIR/claudium"
   chmod +x "$INSTALL_DIR/claudium"
   ok "Installed: $INSTALL_DIR/claudium"
 
@@ -208,10 +223,6 @@ printf "    ${CYAN}claudium -p \"your prompt\"${RESET}          # one-shot mode\
 echo ""
 printf "  ${BOLD}Set your Anthropic Messages API key:${RESET}\n"
 printf "    ${CYAN}export ANTHROPIC_API_KEY=\"sk-ant-...\"${RESET}\n"
-echo ""
-printf "  ${BOLD}Also support OpenAI Chat Completions APIs:${RESET}\n"
-printf "    ${CYAN}export CLAUDE_CODE_USE_OPENAI=1${RESET}\n"
-printf "    ${CYAN}export OPENAI_BASE_URL=http://.../v1${RESET}\n"
 echo ""
 printf "  ${BOLD}See README.md for full configs.${RESET}\n"
 echo ""

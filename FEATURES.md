@@ -13,16 +13,14 @@ Important: "bundle cleanly" does not always mean "runtime-safe". Some flags
 still depend on optional native modules, claude.ai OAuth, GrowthBook gates, or
 externalized `@ant/*` packages.
 
-## Build Variants
+## Build
 
 - `bun run build`
-  Builds the regular external binary at `./claudium-cli`.
+  Builds the default Claudium feature preset at `./claudium-cli`.
 - `bun run compile`
-  Builds the regular external binary at `./dist/claudium-cli`.
-- `bun run build:dev`
-  Builds `./claudium-cli-dev` with a dev-stamped version.
-- `bun run build:dev:claudium`
-  Builds `./claudium-cli-dev` with the supported Claudium preset used by the installers.
+  Builds the same preset at `./dist/claudium-cli`.
+- `bun run dev`
+  Runs the CLI directly from source.
 
 ## Default Build Flags
 
