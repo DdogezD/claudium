@@ -53,7 +53,6 @@ import { Cursor } from '../../utils/Cursor.js';
 import { getGlobalConfig, type PastedContent, saveGlobalConfig } from '../../utils/config.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { parseDirectMemberMessage, sendDirectMemberMessage } from '../../utils/directMemberMessage.js';
-import type { EffortLevel } from '../../utils/effort.js';
 import { env } from '../../utils/env.js';
 import { errorMessage } from '../../utils/errors.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
@@ -63,7 +62,6 @@ import type { ImageDimensions } from '../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../utils/imageStore.js';
 import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/keyboardShortcuts.js';
 import { logError } from '../../utils/log.js';
-import { modelDisplayString } from '../../utils/model/model.js';
 import { setAutoModeActive } from '../../utils/permissions/autoModeState.js';
 import { cyclePermissionMode, getNextPermissionMode } from '../../utils/permissions/getNextPermissionMode.js';
 import { transitionPermissionMode } from '../../utils/permissions/permissionSetup.js';
@@ -89,7 +87,6 @@ import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { GlobalSearchDialog } from '../GlobalSearchDialog.js';
 import { HistorySearchDialog } from '../HistorySearchDialog.js';
-import { ModelPicker } from '../ModelPicker.js';
 import { QuickOpenDialog } from '../QuickOpenDialog.js';
 import TextInput from '../TextInput.js';
 import { ThinkingToggle } from '../ThinkingToggle.js';
@@ -299,8 +296,6 @@ function PromptInput({
   const briefOwnsGap = feature('KAIROS') || feature('KAIROS_BRIEF') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useAppState(s => s.isBriefOnly) && !viewingAgentTaskId : false;
-  const mainLoopModel_ = useAppState(s => s.mainLoopModel);
-  const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession);
   const thinkingEnabled = useAppState(s => s.thinkingEnabled);
   const effortValue = (resolveModelProfileEffort('main') ?? useAppState(s => s.effortValue)) as any;
   const viewedTeammate = getViewedTeammateTask(store.getState());
@@ -378,7 +373,6 @@ function PromptInput({
   }, [coordinatorTaskCount, coordinatorTaskIndex, minCoordinatorIndex]);
   const [isPasting, setIsPasting] = useState(false);
   const [isExternalEditorActive, setIsExternalEditorActive] = useState(false);
-  const [showModelPicker, setShowModelPicker] = useState(false);
   const [showQuickOpen, setShowQuickOpen] = useState(false);
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showHistoryPicker, setShowHistoryPicker] = useState(false);
@@ -1270,14 +1264,6 @@ function PromptInput({
     }
   }, [input, cursorOffset, stashedPrompt, trackAndSetInput, setStashedPrompt, pastedContents, setPastedContents]);
 
-  // Handler for chat:modelPicker - toggle model picker
-  const handleModelPicker = useCallback(() => {
-    setShowModelPicker(prev => !prev);
-    if (helpOpen) {
-      setHelpOpen(false);
-    }
-  }, [helpOpen]);
-
   // Handler for chat:thinkingToggle - toggle thinking mode
   const handleThinkingToggle = useCallback(() => {
     setShowThinkingToggle(prev => !prev);
@@ -1542,11 +1528,10 @@ function PromptInput({
     'chat:newline': handleNewline,
     'chat:externalEditor': handleExternalEditor,
     'chat:stash': handleStash,
-    'chat:modelPicker': handleModelPicker,
     'chat:thinkingToggle': handleThinkingToggle,
     'chat:cycleMode': handleCycleMode,
     'chat:imagePaste': handleImagePaste
-  }), [handleUndo, handleNewline, handleExternalEditor, handleStash, handleModelPicker, handleThinkingToggle, handleCycleMode, handleImagePaste]);
+  }), [handleUndo, handleNewline, handleExternalEditor, handleStash, handleThinkingToggle, handleCycleMode, handleImagePaste]);
   useKeybindings(chatHandlers, {
     context: 'Chat',
     isActive: !isModalOverlayActive
@@ -1866,39 +1851,6 @@ function PromptInput({
   // Calculate if input has multiple lines
   const isInputWrapped = useMemo(() => input.includes('\n'), [input]);
 
-  // Memoized callbacks for model picker to prevent re-renders when unrelated
-  // state (like notifications) changes. This prevents the inline model picker
-  // from visually "jumping" when notifications arrive.
-  const handleModelSelect = useCallback((model: string | null, _effort: EffortLevel | undefined) => {
-    setAppState(prev => ({
-      ...prev,
-      mainLoopModel: model,
-      mainLoopModelForSession: null
-    }));
-    setShowModelPicker(false);
-    let message = `Model set to ${modelDisplayString(model)}`;
-    addNotification({
-      key: 'model-switched',
-      jsx: <Text>{message}</Text>,
-      priority: 'immediate',
-      timeoutMs: 3000
-    });
-    logEvent('tengu_model_picker_hotkey', {
-      model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-    });
-  }, [setAppState, addNotification]);
-  const handleModelCancel = useCallback(() => {
-    setShowModelPicker(false);
-  }, []);
-
-  // Memoize the model picker element to prevent unnecessary re-renders
-  // when AppState changes for unrelated reasons (e.g., notifications arriving)
-  const modelPickerElement = useMemo(() => {
-    if (!showModelPicker) return null;
-    return <Box flexDirection="column" marginTop={1}>
-        <ModelPicker initial={mainLoopModel_} sessionModel={mainLoopModelForSession} onSelect={handleModelSelect} onCancel={handleModelCancel} isStandaloneCommand />
-      </Box>;
-  }, [showModelPicker, mainLoopModel_, mainLoopModelForSession, handleModelSelect, handleModelCancel]);
   // Memoized callbacks for thinking toggle
   const handleThinkingSelect = useCallback((enabled: boolean) => {
     setAppState(prev => ({
@@ -1968,10 +1920,6 @@ function PromptInput({
     }} onCancel={() => setShowHistoryPicker(false)} />;
   }
 
-  // Show loop mode menu when requested (ant-only, eliminated from external builds)
-  if (modelPickerElement) {
-    return modelPickerElement;
-  }
   if (thinkingToggleElement) {
     return thinkingToggleElement;
   }
