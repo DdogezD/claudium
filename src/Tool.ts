@@ -86,6 +86,7 @@ import type { DeepImmutable } from './types/utils.js'
 import type { AttributionState } from './utils/commitAttribution.js'
 import type { FileHistoryState } from './utils/fileHistory.js'
 import type { Theme, ThemeName } from './utils/theme.js'
+import type { EffortValue } from './utils/effort.js'
 
 export type QueryChainTracking = {
   chainId: string
@@ -165,6 +166,8 @@ export type ToolUseContext = {
     tools: Tools
     verbose: boolean
     thinkingConfig: ThinkingConfig
+    /** Request-level effort override for isolated auxiliary forks. */
+    effortOverride?: EffortValue | null
     mcpClients: MCPServerConnection[]
     mcpResources: Record<string, ServerResource[]>
     isNonInteractiveSession: boolean

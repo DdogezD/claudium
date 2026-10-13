@@ -736,7 +736,7 @@ export function Config({
   }, {
     id: 'detailedEffortSettings',
     label: 'Detailed effort settings',
-    value: `search: ${settingsData?.webSearch?.effort ?? 'none'} · title: ${settingsData?.sessionTitle?.effort ?? 'none'}`,
+    value: `search: ${settingsData?.webSearch?.effort ?? 'none'} · title: ${settingsData?.sessionTitle?.effort ?? 'none'} · suggestion: ${settingsData?.promptSuggestion?.effort ?? 'inherit'}`,
     type: 'managedEnum' as const,
     onChange: () => {} // handled by DetailedEffortSettingsDialog submenu
   }, ...(showDefaultViewPicker ? [{
@@ -1080,6 +1080,9 @@ export function Config({
       },
       sessionTitle: iu?.sessionTitle === undefined ? undefined : {
         effort: iu.sessionTitle.effort
+      },
+      promptSuggestion: iu?.promptSuggestion === undefined ? undefined : {
+        effort: iu.promptSuggestion.effort
       },
       ...(feature('TRANSCRIPT_CLASSIFIER') ? {
         useAutoModeDuringPlan: (iu as {
@@ -1615,6 +1618,7 @@ export function Config({
           <DetailedEffortSettingsDialog
             initialWebSearchEffort={userSettings?.webSearch?.effort}
             initialTitleEffort={userSettings?.sessionTitle?.effort}
+            initialPromptSuggestionEffort={userSettings?.promptSuggestion?.effort}
             onComplete={changes => {
           const settings: Parameters<typeof updateSettingsForSource>[1] = {};
           if (changes.webSearch !== undefined) {
@@ -1625,6 +1629,11 @@ export function Config({
           if (changes.sessionTitle !== undefined) {
             settings.sessionTitle = {
               effort: changes.sessionTitle ?? undefined
+            };
+          }
+          if (changes.promptSuggestion !== undefined) {
+            settings.promptSuggestion = {
+              effort: changes.promptSuggestion ?? undefined
             };
           }
           if (Object.keys(settings).length === 0) {
@@ -1643,6 +1652,9 @@ export function Config({
               : null,
             changes.sessionTitle !== undefined
               ? `Title: ${changes.sessionTitle ?? 'unset'}`
+              : null,
+            changes.promptSuggestion !== undefined
+              ? `Prompt suggestion: ${changes.promptSuggestion ?? 'inherit'}`
               : null
           ].filter(Boolean).join(', ');
           setChanges(prev => ({

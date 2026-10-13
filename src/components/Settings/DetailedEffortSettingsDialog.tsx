@@ -7,28 +7,39 @@ import TextInput from '../TextInput.js'
 export type DetailedEffortChanges = {
   webSearch?: string | null
   sessionTitle?: string | null
+  promptSuggestion?: string | null
 }
 
 type Props = {
   initialWebSearchEffort?: string
   initialTitleEffort?: string
+  initialPromptSuggestionEffort?: string
   // undefined means unchanged; null clears the user override. Draft values stay
   // visible when saving fails.
   onComplete: (changes: DetailedEffortChanges) => Error | null
   onCancel: () => void
 }
 
-const FIELDS = ['WebSearch (summary + rerank)', 'Title generation'] as const
+const FIELDS = [
+  'WebSearch (summary + rerank)',
+  'Title generation',
+  'Prompt suggestion',
+] as const
 
 export function DetailedEffortSettingsDialog({
   initialWebSearchEffort,
   initialTitleEffort,
+  initialPromptSuggestionEffort,
   onComplete,
   onCancel,
 }: Props): React.ReactNode {
-  const initialValues = [initialWebSearchEffort ?? 'none', initialTitleEffort ?? 'none']
+  const initialValues = [
+    initialWebSearchEffort ?? 'none',
+    initialTitleEffort ?? 'none',
+    initialPromptSuggestionEffort ?? '',
+  ]
   const [values, setValues] = useState(initialValues)
-  const [changed, setChanged] = useState([false, false])
+  const [changed, setChanged] = useState([false, false, false])
   const [offsets, setOffsets] = useState(values.map(value => value.length))
   const [focusedField, setFocusedField] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -37,14 +48,22 @@ export function DetailedEffortSettingsDialog({
   useKeybinding('confirm:no', onCancel, { context: 'Settings' })
 
   function advanceOrSubmit() {
-    if (focusedField === 0) {
-      setFocusedField(1)
+    if (focusedField < FIELDS.length - 1) {
+      setFocusedField(previous => previous + 1)
       return
     }
     const changes: DetailedEffortChanges = {}
-    for (const [index, field] of ['webSearch', 'sessionTitle'].entries()) {
+    for (const [index, field] of [
+      'webSearch',
+      'sessionTitle',
+      'promptSuggestion',
+    ].entries()) {
       const value = values[index]!.trim() || null
-      if (changed[index] && value !== (initialValues[index] ?? null)) {
+      if (
+        changed[index] &&
+        value !==
+          (initialValues[index] === '' ? null : initialValues[index] ?? null)
+      ) {
         changes[field as keyof DetailedEffortChanges] = value
       }
     }
@@ -56,7 +75,13 @@ export function DetailedEffortSettingsDialog({
   const handleNavigationInput = useCallback(
     (_input: string, key: Key) => {
       if (!isTerminalFocused) return
-      if (key.upArrow || key.downArrow) setFocusedField(previous => 1 - previous)
+      if (key.upArrow || key.downArrow) {
+        setFocusedField(previous =>
+          key.upArrow
+            ? Math.max(0, previous - 1)
+            : Math.min(FIELDS.length - 1, previous + 1),
+        )
+      }
     },
     [isTerminalFocused],
   )
@@ -87,7 +112,7 @@ export function DetailedEffortSettingsDialog({
                 onSubmit={advanceOrSubmit}
                 focus={isActive}
                 showCursor={isActive}
-                placeholder="low / high / xhigh / none"
+                placeholder={index === 2 ? 'leave blank / low / high / none' : 'low / high / xhigh / none'}
                 columns={30}
                 cursorOffset={offsets[index]!}
                 onChangeCursorOffset={offset => {
@@ -101,7 +126,7 @@ export function DetailedEffortSettingsDialog({
       {error && <Text color="error">Save failed: {error}</Text>}
       <Box marginTop={1}>
         <Text dimColor>
-          ↑/↓ switch fields · {focusedField === 0 ? 'Enter next field' : 'Enter save'} · Esc cancel
+          ↑/↓ switch fields · {focusedField < FIELDS.length - 1 ? 'Enter next field' : 'Enter save'} · Esc cancel
         </Text>
       </Box>
     </Box>

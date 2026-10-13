@@ -8,7 +8,10 @@ import {
   hasSearxngWebSearchOverride,
   type SearxngSearchResult,
 } from 'src/tools/WebSearchTool/searxng.js'
-import { resolveAuxiliaryEffort } from 'src/utils/effort.js'
+import {
+  resolveAuxiliaryEffortWithSource,
+  resolveAppliedEffort,
+} from 'src/utils/effort.js'
 import {
   buildRerankPrompt,
   filterByVerdicts,
@@ -345,10 +348,9 @@ export const WebSearchTool = buildTool({
     const appState = context.getAppState()
     // The search subquery (issue search / read results and write the cited
     // summary) is an auxiliary task: use the subagent profile model (falls
-    // back to the main model when unconfigured) and keep thinking off unless
-    // the user explicitly sets webSearch.effort — a high effort setting
-    // would otherwise turn a "summarize these results" call into minutes of
-    // thinking tokens.
+    // back to the main model when unconfigured). When webSearch.effort is not
+    // configured, inherit the current main request effort; an explicit value
+    // controls this auxiliary request independently.
     //
     // The quality layer (source-handling guidance + LLM rerank) activates
     // only on the SearXNG path — provider-native search does its own
@@ -357,15 +359,21 @@ export const WebSearchTool = buildTool({
     const searxngActive = hasSearxngWebSearchOverride()
     const subqueryModel =
       resolveModelProfileModel('subagent') ?? context.options.mainLoopModel
-    // webSearch.effort is the thinking switch for the subqueries: none =
-    // thinking blocks off; other values enable thinking with exactly that effort
-    // (sent verbatim as output_config.effort; the budget is only the model
-    // ceiling). No dynamic adaptation, no fallback chain.
-    const subqueryEffort = resolveAuxiliaryEffort('webSearch')
-    const subqueryThinking = getAuxiliaryThinkingConfig(
-      subqueryEffort,
-      getMaxThinkingTokensForModel(subqueryModel),
+    const inheritedEffort = resolveAppliedEffort(
+      context.options.mainLoopModel,
+      appState.effortValue,
     )
+    const effort = resolveAuxiliaryEffortWithSource(
+      'webSearch',
+      inheritedEffort,
+    )
+    const subqueryEffort = effort.value
+    const subqueryThinking = effort.explicitlyConfigured
+      ? getAuxiliaryThinkingConfig(
+          subqueryEffort ?? 'none',
+          getMaxThinkingTokensForModel(subqueryModel),
+        )
+      : context.options.thinkingConfig
     const queryStream = queryModelWithStreaming({
       messages: [userMessage],
       systemPrompt: asSystemPrompt(
@@ -426,7 +434,9 @@ export const WebSearchTool = buildTool({
                   mcpTools: [],
                   agentId: context.agentId,
                   effortValue: undefined,
-                  effortOverride: subqueryEffort ?? null,
+                  effortOverride: effort.explicitlyConfigured
+                    ? subqueryEffort
+                    : inheritedEffort,
                 },
               })
               let text = ''
@@ -454,7 +464,9 @@ export const WebSearchTool = buildTool({
         mcpTools: [],
         agentId: context.agentId,
         effortValue: undefined,
-        effortOverride: subqueryEffort ?? null,
+        effortOverride: effort.explicitlyConfigured
+          ? subqueryEffort
+          : inheritedEffort,
       },
     })
 

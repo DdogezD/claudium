@@ -447,6 +447,19 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Session title generation settings'),
+      promptSuggestion: z
+        .object({
+          effort: z
+            .string()
+            .optional()
+            .describe(
+              'Independent effort for prompt suggestion generation, passed through to the ' +
+                'provider. Inherits the main request when unset; provider-specific ' +
+                'values are passed through unchanged.',
+            ),
+        })
+        .optional()
+        .describe('Prompt suggestion generation settings'),
       modelProfiles: ModelProfilesSchema()
         .optional()
         .describe(

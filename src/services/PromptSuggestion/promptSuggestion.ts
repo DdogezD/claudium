@@ -17,8 +17,11 @@ import {
   createUserMessage,
   getLastAssistantMessage,
 } from '../../utils/messages.js'
+import { getMaxThinkingTokensForModel } from '../../utils/context.js'
+import { resolveAuxiliaryEffortWithSource } from '../../utils/effort.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { isTeammate } from '../../utils/teammate.js'
+import { getAuxiliaryThinkingConfig } from '../../utils/thinking.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics-stub.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -306,20 +309,32 @@ export async function generateSuggestion(
     decisionReason: { type: 'other' as const, reason: 'suggestion only' },
   })
 
-  // DO NOT override any API parameter that differs from the parent request.
-  // The fork piggybacks on the main thread's prompt cache by sending identical
-  // cache-key params. The billing cache key includes more than just
-  // system/tools/model/messages/thinking — empirically, setting effortValue
-  // or maxOutputTokens on the fork (even via output_config or getAppState)
-  // busts cache. PR #18143 tried effort:'low' and caused a 45x spike in cache
-  // writes (92.7% → 61% hit rate). The only safe overrides are:
-  //   - abortController (not sent to API)
-  //   - skipTranscript (client-side only)
-  //   - skipCacheWrite (controls cache_control markers, not the cache key)
-  //   - canUseTool (client-side permission check)
+  // When promptSuggestion.effort is unset, keep the parent options identical so
+  // this fork can continue to share the parent's prompt cache. An explicit
+  // setting intentionally opts out of that cache-safe thinking configuration.
+  const effort = resolveAuxiliaryEffortWithSource('promptSuggestion')
+  const suggestionCacheSafeParams = effort.explicitlyConfigured
+    ? {
+        ...cacheSafeParams,
+        toolUseContext: {
+          ...cacheSafeParams.toolUseContext,
+          options: {
+            ...cacheSafeParams.toolUseContext.options,
+            thinkingConfig: getAuxiliaryThinkingConfig(
+              effort.value ?? 'none',
+              getMaxThinkingTokensForModel(
+                cacheSafeParams.toolUseContext.options.mainLoopModel,
+              ),
+            ),
+            effortOverride: effort.value,
+          },
+        },
+      }
+    : cacheSafeParams
+
   const result = await runForkedAgent({
     promptMessages: [createUserMessage({ content: prompt })],
-    cacheSafeParams, // Don't override tools/thinking settings - busts cache
+    cacheSafeParams: suggestionCacheSafeParams,
     canUseTool,
     querySource: 'prompt_suggestion',
     forkLabel: 'prompt_suggestion',

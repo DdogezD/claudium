@@ -151,19 +151,40 @@ export function resolveAppliedEffort(
   return resolved
 }
 
-// Auxiliary tasks use only the global environment override or their own setting;
-// they do not inherit model profile effort.
-export function resolveAuxiliaryEffort(
-  task: 'webSearch' | 'sessionTitle',
-): EffortValue {
+// Auxiliary tasks use the global environment override or their own setting when
+// configured; otherwise callers can pass the main request's resolved effort.
+export type AuxiliaryEffortTask =
+  | 'webSearch'
+  | 'sessionTitle'
+  | 'promptSuggestion'
+
+export type AuxiliaryEffortResolution = {
+  value: EffortValue | null | undefined
+  explicitlyConfigured: boolean
+}
+
+export function resolveAuxiliaryEffortWithSource(
+  task: AuxiliaryEffortTask,
+  inheritedEffort?: EffortValue,
+): AuxiliaryEffortResolution {
   const envOverride = getEffortEnvOverride()
   if (envOverride === null) {
-    return 'none'
+    return { value: null, explicitlyConfigured: true }
   }
   if (envOverride !== undefined) {
-    return envOverride
+    return { value: envOverride, explicitlyConfigured: true }
   }
-  return parseEffortValue(getInitialSettings()[task]?.effort) ?? 'none'
+  const configured = parseEffortValue(getInitialSettings()[task]?.effort)
+  return {
+    value: configured ?? inheritedEffort,
+    explicitlyConfigured: configured !== undefined,
+  }
+}
+
+export function resolveAuxiliaryEffort(
+  task: AuxiliaryEffortTask,
+): EffortValue | null | undefined {
+  return resolveAuxiliaryEffortWithSource(task).value
 }
 
 /**
