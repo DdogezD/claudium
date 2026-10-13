@@ -97,6 +97,17 @@ export type SDKCompactBoundaryMessage = SDKSystemMessage & {
   subtype: 'compact_boundary' | 'microcompact_boundary'
 }
 
+export type SDKStreamResetMessage = {
+  type: 'system'
+  subtype: 'stream_reset'
+  request_id?: string
+  reason: 'REASONING_LOOP' | 'TEXT_LOOP'
+  withdrawn_message_ids: string[]
+  recovering: boolean
+  session_id: string
+  uuid: string
+}
+
 export type SDKToolProgressMessage = SDKBaseMessage & {
   type: 'tool_progress'
   data?: Record<string, unknown>
@@ -164,6 +175,7 @@ export type SDKMessage =
   | SDKResultMessage
   | SDKStatusMessage
   | SDKSystemMessage
+  | SDKStreamResetMessage
   | SDKToolProgressMessage
   | SDKUserMessage
   | SDKUserMessageReplay

@@ -42,6 +42,7 @@ import { emitTaskTerminatedSdk } from '../utils/sdkEventQueue.js'
 import {
   getAgentTranscriptPath,
   recordSidechainTranscript,
+  revokeTranscriptMessages,
 } from '../utils/sessionStorage.js'
 import {
   evictTaskOutput,
@@ -398,6 +399,70 @@ export function startBackgroundSession({
             })
           }
           return
+        }
+
+        if (event.type === 'tombstone' || event.type === 'stream_reset') {
+          const withdrawnIds = event.type === 'tombstone'
+            ? [event.message.uuid]
+            : event.withdrawnMessageIds
+          const withdrawn = new Set(withdrawnIds)
+          for (let index = bgMessages.length - 1; index >= 0; index--) {
+            if (withdrawn.has(bgMessages[index]!.uuid)) {
+              bgMessages.splice(index, 1)
+            }
+          }
+          lastRecordedUuid = bgMessages.at(-1)?.uuid ?? null
+          // Persist every withdrawn UUID, including entries no longer present in
+          // memory, so queued or late sidechain writes remain revoked.
+          {
+            let correctedTokenCount = 0
+            let correctedToolCount = 0
+            const correctedActivities: ToolActivity[] = []
+            for (const message of bgMessages) {
+              if (message.type !== 'assistant') continue
+              for (const block of message.message.content) {
+                if (block.type === 'text') {
+                  correctedTokenCount += roughTokenCountEstimation(block.text)
+                } else if (block.type === 'tool_use') {
+                  correctedToolCount++
+                  correctedActivities.push({
+                    toolName: block.name,
+                    input: block.input as Record<string, unknown>,
+                  })
+                }
+              }
+            }
+            tokenCount = correctedTokenCount
+            toolCount = correctedToolCount
+            recentActivities.splice(
+              0,
+              recentActivities.length,
+              ...correctedActivities.slice(-MAX_RECENT_ACTIVITIES),
+            )
+            setAppState(prev => {
+              const task = prev.tasks[taskId]
+              if (!task || task.type !== 'local_agent') return prev
+              return {
+                ...prev,
+                tasks: {
+                  ...prev.tasks,
+                  [taskId]: {
+                    ...task,
+                    messages: bgMessages,
+                    progress: {
+                      tokenCount,
+                      toolUseCount: toolCount,
+                      recentActivities: [...recentActivities],
+                    },
+                  },
+                },
+              }
+            })
+          }
+          // Persist every withdrawn UUID, including entries no longer present in
+          // memory, so queued or late sidechain writes remain revoked.
+          await revokeTranscriptMessages([...withdrawn], taskId)
+          continue
         }
 
         if (

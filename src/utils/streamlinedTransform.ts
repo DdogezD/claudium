@@ -175,6 +175,11 @@ export function createStreamlinedTransformer(): (
         return message
 
       case 'system':
+        if (message.subtype === 'stream_reset') {
+          cumulativeCounts = createEmptyToolCounts()
+          return message
+        }
+        return null
       case 'user':
       case 'stream_event':
       case 'tool_progress':
@@ -197,5 +202,9 @@ export function createStreamlinedTransformer(): (
  * Useful for filtering before transformation.
  */
 export function shouldIncludeInStreamlined(message: StdoutMessage): boolean {
-  return message.type === 'assistant' || message.type === 'result'
+  return (
+    message.type === 'assistant' ||
+    message.type === 'result' ||
+    (message.type === 'system' && message.subtype === 'stream_reset')
+  )
 }

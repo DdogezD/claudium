@@ -22,6 +22,38 @@ externalized `@ant/*` packages.
 - `bun run dev`
   Runs the CLI directly from source.
 
+## Runtime AntiRep / Reasoning Loop Guard
+
+AntiRep is built into the normal Query Loop and configured through the independent
+`antiRepetition` settings object, **not** a `feature()` compile-time flag. It is
+disabled by default. When enabled, reasoning detection is on, text detection is
+off, and automatic recovery is limited to two consecutive attempts by default.
+`/config` groups the controls under `AntiRep settings`; auto-resume is scoped to
+`antiRepetition.autoResume`, not a global continuation switch.
+See [README.md](README.md#antirep--reasoning-loop-guard) for the full configuration.
+
+The Guard consumes only `thinking_delta` and `text_delta`, closes the upstream
+iterator on a hit, retracts the failed attempt and appends a meta continuation.
+It does not invoke an API error retry, non-streaming fallback or a second agent
+driver. Tool-use signals disable detection for that request to avoid replaying
+side effects. The existing output-token continuation mechanism is independent.
+
+CLI/SDK consumers receive an explicit reset rather than a fabricated Anthropic
+`message_stop`. Stream-json consumers must support `system/stream_reset` and its
+withdrawn message IDs. Text recovery remains experimental; final usage can be
+incomplete when a stream is interrupted. Persisted retractions prevent invalid
+thinking from being replayed on resume.
+
+Verification:
+
+```bash
+bun test src/services/antiRepetition src/query/antiRepetition.test.ts
+bun test src/QueryEngine.test.ts src/utils/sessionStorage.retraction.test.ts
+bun test src/utils/messages.test.ts src/services/tools/StreamingToolExecutor.test.ts
+bun run build
+bun run compile
+```
+
 ## Default Build Flags
 
 - `VOICE_MODE`

@@ -2,6 +2,10 @@ import { randomUUID } from 'crypto'
 import { queryModelWithStreaming } from '../services/api/claude.js'
 import { autoCompactIfNeeded } from '../services/compact/autoCompact.js'
 import { microcompactMessages } from '../services/compact/microCompact.js'
+import type { QueryConfig } from './config.js'
+import type { runTools } from '../services/tools/toolOrchestration.js'
+import type { handleStopHooks } from './stopHooks.js'
+import type { executePostSamplingHooks } from '../utils/hooks/postSamplingHooks.js'
 
 // -- deps
 
@@ -15,9 +19,6 @@ import { microcompactMessages } from '../services/compact/microCompact.js'
 // the production factory — tests that import this file for typing are
 // already importing query.ts (which imports everything), so there's no
 // new module-graph cost.
-//
-// Scope is intentionally narrow (4 deps) to prove the pattern. Followup
-// PRs can add runTools, handleStopHooks, logEvent, queue ops, etc.
 export type QueryDeps = {
   // -- model
   callModel: typeof queryModelWithStreaming
@@ -28,6 +29,11 @@ export type QueryDeps = {
 
   // -- platform
   uuid: () => string
+
+  config?: QueryConfig
+  runTools?: typeof runTools
+  handleStopHooks?: typeof handleStopHooks
+  postSamplingHooks?: typeof executePostSamplingHooks
 }
 
 export function productionDeps(): QueryDeps {

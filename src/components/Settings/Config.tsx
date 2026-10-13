@@ -26,6 +26,7 @@ import { LanguagePicker } from '../LanguagePicker.js';
 import { ModelProfileDialog } from './ModelProfileDialog.js';
 import { DomainRulesDialog, deriveDomainRules, type DomainRuleLists, type DomainRulesResult } from './DomainRulesDialog.js';
 import { DetailedEffortSettingsDialog } from './DetailedEffortSettingsDialog.js';
+import { AntiRepetitionSettingsDialog } from './AntiRepetitionSettingsDialog.js';
 import { getAdvisorModel } from '../../utils/advisor.js';
 import { formatProfileSummary, getModelProfile, type ModelScope } from '../../utils/model/modelProfiles.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
@@ -36,6 +37,7 @@ import { useTabHeaderFocus } from '../design-system/Tabs.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { SearchBox } from '../SearchBox.js';
 import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
+import { ANTI_REPETITION_DEFAULTS } from '../../services/antiRepetition/config.js';
 import { bumpSettingsVersion } from '../../utils/settingsVersion.js';
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js';
 import { DEFAULT_OUTPUT_STYLE_NAME, OUTPUT_STYLE_CONFIG } from 'src/constants/outputStyles.js';
@@ -118,7 +120,7 @@ type Setting = (SettingBase & {
   onChange(value: string): void;
   type: 'managedEnum';
 });
-type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile' | 'DomainRules' | 'DetailedEffortSettings';
+type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile' | 'DomainRules' | 'DetailedEffortSettings' | 'AntiRepetitionSettings';
 export function Config({
   onClose,
   context,
@@ -386,8 +388,15 @@ export function Config({
         enabled
       });
     }
+  }, {
+    id: 'antiRepetitionSettings',
+    label: 'AntiRep settings',
+    value: `enabled: ${settingsData?.antiRepetition?.enabled ?? ANTI_REPETITION_DEFAULTS.enabled} · max recoveries: ${settingsData?.antiRepetition?.maxRecoveries ?? ANTI_REPETITION_DEFAULTS.maxRecoveries}`,
+    type: 'managedEnum' as const,
+    onChange: () => {}
   },
   ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false) ? [{
+
     id: 'promptSuggestionEnabled',
     label: 'Prompt suggestions',
     value: promptSuggestionEnabled,
@@ -1069,6 +1078,14 @@ export function Config({
     updateSettingsForSource('userSettings', {
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
       promptSuggestionEnabled: iu?.promptSuggestionEnabled,
+      antiRepetition: iu?.antiRepetition === undefined ? undefined : {
+        ...iu.antiRepetition,
+        enabled: iu.antiRepetition.enabled,
+        reasoning: iu.antiRepetition.reasoning,
+        text: iu.antiRepetition.text,
+        autoResume: iu.antiRepetition.autoResume,
+        maxRecoveries: iu.antiRepetition.maxRecoveries
+      },
       minimumVersion: iu?.minimumVersion,
       advisorPreference: iu?.advisorPreference,
       language: iu?.language,
@@ -1185,7 +1202,7 @@ export function Config({
       }
       return;
     }
-    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language' || setting_0.id === 'domainRules' || setting_0.id === 'detailedEffortSettings') {
+    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language' || setting_0.id === 'domainRules' || setting_0.id === 'detailedEffortSettings' || setting_0.id === 'antiRepetitionSettings') {
       // managedEnum items open a submenu — isDirty is set by the submenu's
       // completion callback, not here (submenu may be cancelled).
       switch (setting_0.id) {
@@ -1234,6 +1251,10 @@ export function Config({
           return;
         case 'detailedEffortSettings':
           setShowSubmenu('DetailedEffortSettings');
+          setTabsHidden(true);
+          return;
+        case 'antiRepetitionSettings':
+          setShowSubmenu('AntiRepetitionSettings');
           setTabsHidden(true);
           return;
       }
@@ -1612,6 +1633,37 @@ export function Config({
         setTabsHidden(false);
       }} />
         </>;
+    })() : showSubmenu === 'AntiRepetitionSettings' ? (() => {
+      const userSettings = getSettingsForSource('userSettings');
+      const effectiveAntiRepetition = settingsData?.antiRepetition;
+      return <AntiRepetitionSettingsDialog
+        initial={effectiveAntiRepetition}
+        onComplete={changes => {
+          if (Object.keys(changes).length === 0) {
+            setShowSubmenu(null);
+            setTabsHidden(false);
+            return null;
+          }
+          const result = updateSettingsForSource('userSettings', {
+            antiRepetition: changes
+          });
+          if (result.error) return result.error;
+          isDirty.current = true;
+          setSettingsData(getInitialSettings());
+          const effectiveAfterSave = getInitialSettings()?.antiRepetition;
+          setChanges(prev => ({
+            ...prev,
+            'AntiRep settings': `enabled: ${effectiveAfterSave?.enabled ?? ANTI_REPETITION_DEFAULTS.enabled} · max recoveries: ${effectiveAfterSave?.maxRecoveries ?? ANTI_REPETITION_DEFAULTS.maxRecoveries}`
+          }));
+          setShowSubmenu(null);
+          setTabsHidden(false);
+          return null;
+        }}
+        onCancel={() => {
+          setShowSubmenu(null);
+          setTabsHidden(false);
+        }}
+      />;
     })() : showSubmenu === 'DetailedEffortSettings' ? (() => {
       const userSettings = getSettingsForSource('userSettings');
       return <>

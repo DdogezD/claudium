@@ -74,6 +74,7 @@ import { setCwd } from './utils/Shell.js'
 import {
   flushSessionStorage,
   recordTranscript,
+  revokeTranscriptMessages,
 } from './utils/sessionStorage.js'
 import { asSystemPrompt } from './utils/systemPromptType.js'
 import { resolveThemeSetting } from './utils/systemTheme.js'
@@ -137,6 +138,7 @@ export type QueryEngineConfig = {
   getAppState: () => AppState
   setAppState: (f: (prev: AppState) => AppState) => void
   initialMessages?: Message[]
+  queryGenerator?: typeof query
   readFileCache: FileStateCache
   customSystemPrompt?: string
   appendSystemPrompt?: string
@@ -657,6 +659,32 @@ export class QueryEngine {
 
     // Track current message usage (reset on each message_start)
     let currentMessageUsage: NonNullableUsage = EMPTY_USAGE
+    let currentUsagePending = false
+    const settleObservedUsage = () => {
+      if (!currentUsagePending) return
+      this.totalUsage = accumulateUsage(this.totalUsage, currentMessageUsage)
+      currentUsagePending = false
+    }
+    const withdrawMessages = (uuids: readonly string[]) => {
+      const withdrawn = new Set(uuids)
+      for (const store of [messages, this.mutableMessages]) {
+        for (let i = store.length - 1; i >= 0; i--) {
+          if (withdrawn.has(store[i]!.uuid)) store.splice(i, 1)
+        }
+      }
+    }
+    // A failed tombstone must not hide the immediately following SDK reset.
+    // Keep the original rejection (including non-Error values) until that reset,
+    // but never process recovery or unrelated messages after a failed write.
+    let pendingWithdrawalError: { error: unknown } | undefined
+    const persistWithdrawal = async (uuids: readonly string[]) => {
+      if (!persistSession || pendingWithdrawalError) return
+      try {
+        await revokeTranscriptMessages(uuids)
+      } catch (error) {
+        pendingWithdrawalError = { error }
+      }
+    }
     let turnCount = 1
     let hasAcknowledgedInitialMessages = false
     // Track structured output from StructuredOutput tool calls
@@ -673,7 +701,7 @@ export class QueryEngine {
       ? countToolCalls(this.mutableMessages, SYNTHETIC_OUTPUT_TOOL_NAME)
       : 0
 
-    for await (const message of query({
+    for await (const message of (this.config.queryGenerator ?? query)({
       messages,
       systemPrompt,
       userContext,
@@ -685,6 +713,13 @@ export class QueryEngine {
       maxTurns,
       taskBudget,
     })) {
+      if (
+        pendingWithdrawalError &&
+        message.type !== 'tombstone' &&
+        message.type !== 'stream_reset'
+      ) {
+        throw pendingWithdrawalError.error
+      }
       // Record assistant, user, and compact boundary messages
       if (
         message.type === 'assistant' ||
@@ -751,19 +786,45 @@ export class QueryEngine {
         }
       }
 
-      if (message.type === 'user') {
+      if (message.type === 'user' && !message.isMeta) {
         turnCount++
       }
 
       switch (message.type) {
         case 'tombstone':
-          // Tombstone messages are control signals for removing messages, skip them
+          withdrawMessages([message.message.uuid])
+          await persistWithdrawal([message.message.uuid])
+          // Skip budget/result handling while waiting only for more tombstones
+          // or the reset that tells the SDK to discard the withdrawn output.
+          if (pendingWithdrawalError) continue
+          break
+        case 'stream_reset':
+          withdrawMessages(message.withdrawnMessageIds)
+          settleObservedUsage()
+          currentMessageUsage = EMPTY_USAGE
+          lastStopReason = null
+          await persistWithdrawal(message.withdrawnMessageIds)
+          yield {
+            type: 'system',
+            subtype: 'stream_reset',
+            request_id: message.requestId,
+            reason: message.reason,
+            withdrawn_message_ids: message.withdrawnMessageIds,
+            recovering: pendingWithdrawalError ? false : message.recovering,
+            session_id: getSessionId(),
+            uuid: randomUUID(),
+          }
+          if (pendingWithdrawalError) throw pendingWithdrawalError.error
           break
         case 'assistant':
           // Capture stop_reason if already set (synthetic messages). For
           // streamed responses, this is null at content_block_stop time;
           // the real value arrives via message_delta (handled below).
-          if (message.message.stop_reason != null) {
+          if (
+            message.message.stop_reason != null &&
+            message.apiError !== 'REASONING_LOOP' &&
+            message.apiError !== 'TEXT_LOOP'
+          ) {
             lastStopReason = message.message.stop_reason
           }
           this.mutableMessages.push(message)
@@ -790,6 +851,7 @@ export class QueryEngine {
           if (message.event.type === 'message_start') {
             // Reset current message usage for new message
             currentMessageUsage = EMPTY_USAGE
+            currentUsagePending = true
             currentMessageUsage = updateUsage(
               currentMessageUsage,
               message.event.message.usage,
@@ -809,11 +871,7 @@ export class QueryEngine {
             }
           }
           if (message.event.type === 'message_stop') {
-            // Accumulate current message usage into total
-            this.totalUsage = accumulateUsage(
-              this.totalUsage,
-              currentMessageUsage,
-            )
+            settleObservedUsage()
           }
 
           if (includePartialMessages) {
@@ -1037,6 +1095,8 @@ export class QueryEngine {
       }
     }
 
+    if (pendingWithdrawalError) throw pendingWithdrawalError.error
+
     // Stop hooks yield progress/attachment messages AFTER the assistant
     // response (via yield* handleStopHooks in query.ts). Since #23537 pushes
     // those to `messages` inline, last(messages) can be a progress/attachment
@@ -1114,7 +1174,10 @@ export class QueryEngine {
       ) {
         textResult = lastContent.text
       }
-      isApiError = Boolean(result.isApiErrorMessage)
+      isApiError =
+        Boolean(result.isApiErrorMessage) ||
+        result.apiError === 'REASONING_LOOP' ||
+        result.apiError === 'TEXT_LOOP'
     }
 
     yield {

@@ -112,6 +112,18 @@ import {
 } from './bootstrap/state.js'
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
+import { StreamRepetitionGuard } from './services/antiRepetition/detector.js'
+import { isAntiRepetitionQuerySource } from './services/antiRepetition/config.js'
+import { createAntiRepetitionPrompt } from './services/antiRepetition/prompt.js'
+import type { RepetitionHit } from './services/antiRepetition/types.js'
+
+export type StreamResetEvent = {
+  type: 'stream_reset'
+  requestId: string | undefined
+  reason: 'REASONING_LOOP' | 'TEXT_LOOP'
+  withdrawnMessageIds: string[]
+  recovering: boolean
+}
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const snipModule = feature('HISTORY_SNIP')
@@ -208,6 +220,7 @@ type State = {
   toolUseContext: ToolUseContext
   autoCompactTracking: AutoCompactTrackingState | undefined
   maxOutputTokensRecoveryCount: number
+  antiRepRecoveryCount: number
   hasAttemptedReactiveCompact: boolean
   maxOutputTokensOverride: number | undefined
   pendingToolUseSummary: Promise<ToolUseSummaryMessage | null> | undefined
@@ -222,6 +235,7 @@ export async function* query(
   params: QueryParams,
 ): AsyncGenerator<
   | StreamEvent
+  | StreamResetEvent
   | RequestStartEvent
   | Message
   | TombstoneMessage
@@ -245,6 +259,7 @@ async function* queryLoop(
   consumedCommandUuids: string[],
 ): AsyncGenerator<
   | StreamEvent
+  | StreamResetEvent
   | RequestStartEvent
   | Message
   | TombstoneMessage
@@ -274,6 +289,7 @@ async function* queryLoop(
     autoCompactTracking: undefined,
     stopHookActive: undefined,
     maxOutputTokensRecoveryCount: 0,
+    antiRepRecoveryCount: 0,
     hasAttemptedReactiveCompact: false,
     turnCount: 1,
     pendingToolUseSummary: undefined,
@@ -294,7 +310,7 @@ async function* queryLoop(
 
   // Snapshot immutable env/statsig/session state once at entry. See QueryConfig
   // for what's included and why feature() gates are intentionally excluded.
-  const config = buildQueryConfig()
+  const config = deps.config ?? buildQueryConfig()
 
   // Fired once per user turn — the prompt is invariant across loop iterations,
   // so per-iteration firing would ask sideQuery the same question N times.
@@ -315,6 +331,7 @@ async function* queryLoop(
       messages,
       autoCompactTracking,
       maxOutputTokensRecoveryCount,
+      antiRepRecoveryCount,
       hasAttemptedReactiveCompact,
       maxOutputTokensOverride,
       pendingToolUseSummary,
@@ -667,6 +684,15 @@ async function* queryLoop(
     }
 
     let attemptWithFallback = true
+    const repetitionGuard = config.antiRepetition.enabled && isAntiRepetitionQuerySource(querySource)
+      ? new StreamRepetitionGuard(config.antiRepetition)
+      : undefined
+    let antiRepHit: RepetitionHit | undefined
+    let toolTouched = false
+    let antiRepRequestId: string | undefined
+    const emittedAssistantMessages: AssistantMessage[] = []
+    const pendingAgentMessages: AssistantMessage[] = []
+    const deferAgentMessages = !!repetitionGuard && querySource.startsWith('agent:')
 
     queryCheckpoint('query_api_loop_start')
     try {
@@ -727,6 +753,9 @@ async function* queryLoop(
             // We could.. but then we'd have to merge assistant messages
             // with different ids and double up on full the tool_results
             if (streamingFallbackOccured) {
+              streamingFallbackOccured = false
+              repetitionGuard?.resetForRequest()
+              pendingAgentMessages.length = 0
               // Yield tombstones for orphaned messages so they're removed from UI and transcript.
               // These partial messages (especially thinking blocks) have invalid signatures
               // that would cause "thinking blocks cannot be modified" API errors.
@@ -755,6 +784,37 @@ async function* queryLoop(
                   toolUseContext,
                 )
               }
+            }
+            if (repetitionGuard) {
+              if (message.type === 'stream_event') {
+                const event = message.event
+                if (event.type === 'message_start') {
+                  repetitionGuard.resetForRequest()
+                  antiRepRequestId = event.message.id
+                }
+                if (
+                  (event.type === 'content_block_start' &&
+                    (event.content_block.type === 'tool_use' || event.content_block.type === 'server_tool_use')) ||
+                  (event.type === 'content_block_delta' && event.delta.type === 'input_json_delta')
+                ) {
+                  toolTouched = true
+                }
+                if (!toolTouched && !toolUseContext.abortController.signal.aborted) {
+                  antiRepHit = repetitionGuard.observeSseEvent(event)
+                  if (antiRepHit) break
+                }
+              } else if (message.type === 'assistant' && message.message.content.some(
+                block => block.type === 'tool_use' || block.type === 'server_tool_use',
+              )) {
+                toolTouched = true
+              }
+            }
+            if (toolTouched && pendingAgentMessages.length > 0) {
+              for (const pending of pendingAgentMessages) {
+                emittedAssistantMessages.push(pending)
+                yield pending
+              }
+              pendingAgentMessages.length = 0
             }
             // Backfill tool_use inputs on a cloned message before yield so
             // SDK stream output and transcript serialization see legacy/derived
@@ -838,7 +898,12 @@ async function* queryLoop(
               withheld = true
             }
             if (!withheld) {
-              yield yieldMessage
+              if (yieldMessage.type === 'assistant' && deferAgentMessages && !toolTouched) {
+                pendingAgentMessages.push(yieldMessage)
+              } else {
+                if (yieldMessage.type === 'assistant') emittedAssistantMessages.push(yieldMessage)
+                yield yieldMessage
+              }
             }
             if (message.type === 'assistant') {
               assistantMessages.push(message)
@@ -879,6 +944,14 @@ async function* queryLoop(
             }
           }
           queryCheckpoint('query_api_streaming_end')
+          if (antiRepHit) break
+          if (!toolUseContext.abortController.signal.aborted) {
+            for (const pending of pendingAgentMessages) {
+              emittedAssistantMessages.push(pending)
+              yield pending
+            }
+          }
+          pendingAgentMessages.length = 0
 
           // Yield deferred microcompact boundary message using actual API-reported
           // token deletion count instead of client-side estimates.
@@ -912,6 +985,8 @@ async function* queryLoop(
             // Fallback was triggered - switch model and retry
             currentModel = fallbackModel
             attemptWithFallback = true
+            pendingAgentMessages.length = 0
+            repetitionGuard?.resetForRequest()
 
             // Clear assistant messages since we'll retry the entire request
             yield* yieldMissingToolResultBlocks(
@@ -1013,9 +1088,80 @@ async function* queryLoop(
       return { reason: 'model_error', error }
     }
 
+    if (antiRepHit) {
+      streamingToolExecutor?.discard()
+      const withdrawnMessageIds = emittedAssistantMessages.map(message => message.uuid)
+      for (const message of emittedAssistantMessages) {
+        yield { type: 'tombstone', message }
+      }
+      assistantMessages.length = 0
+      toolResults.length = 0
+      toolUseBlocks.length = 0
+      needsFollowUp = false
+      const recovering = config.antiRepetition.autoResume &&
+        antiRepRecoveryCount < config.antiRepetition.maxRecoveries &&
+        !toolUseContext.abortController.signal.aborted
+      logEvent('claudium_anti_repetition_hit', {
+        code: antiRepHit.code,
+        channel: antiRepHit.channel,
+        rule: antiRepHit.rule,
+        observedChars: antiRepHit.observedChars,
+        repeatedChars: antiRepHit.repeatedChars,
+        recoveryCount: antiRepRecoveryCount,
+      })
+      yield {
+        type: 'stream_reset',
+        requestId: antiRepRequestId,
+        reason: antiRepHit.code,
+        withdrawnMessageIds,
+        recovering,
+      }
+      if (toolUseContext.abortController.signal.aborted) {
+        if (toolUseContext.abortController.signal.reason !== 'interrupt') {
+          yield createUserInterruptionMessage({ toolUse: false })
+        }
+        return { reason: 'aborted_streaming' }
+      }
+      if (!recovering) {
+        yield createAssistantAPIErrorMessage({
+          content: `${antiRepHit.code}: Pathological ${antiRepHit.channel === 'thinking' ? 'reasoning' : 'text'} repetition detected. Generation stopped; automatic recovery is disabled or its limit was reached.`,
+          apiError: antiRepHit.code,
+          error: 'unknown',
+        })
+        return { reason: 'repetition_loop', code: antiRepHit.code }
+      }
+      yield createSystemMessage(
+        `Repetitive ${antiRepHit.channel === 'thinking' ? 'reasoning' : 'text'} detected. Stopped this generation and continuing the task (${antiRepRecoveryCount + 1}/${config.antiRepetition.maxRecoveries}).`,
+        'warning',
+      )
+      if (toolUseContext.abortController.signal.aborted) {
+        if (toolUseContext.abortController.signal.reason !== 'interrupt') {
+          yield createUserInterruptionMessage({ toolUse: false })
+        }
+        return { reason: 'aborted_streaming' }
+      }
+      const recoveryMessage = createUserMessage({
+        content: createAntiRepetitionPrompt(antiRepHit),
+        isMeta: true,
+      })
+      const recoveryMessages = [...messagesForQuery, recoveryMessage]
+      yield recoveryMessage
+      if (toolUseContext.abortController.signal.aborted) return { reason: 'aborted_streaming' }
+      state = {
+        ...state,
+        messages: recoveryMessages,
+        toolUseContext: { ...toolUseContext, messages: recoveryMessages },
+        autoCompactTracking: tracking,
+        antiRepRecoveryCount: antiRepRecoveryCount + 1,
+        pendingToolUseSummary: undefined,
+        transition: { reason: 'anti_rep_recovery', attempt: antiRepRecoveryCount + 1 },
+      }
+      continue
+    }
+
     // Execute post-sampling hooks after model response is complete
     if (assistantMessages.length > 0) {
-      void executePostSamplingHooks(
+      void (deps.postSamplingHooks ?? executePostSamplingHooks)(
         [...messagesForQuery, ...assistantMessages],
         systemPrompt,
         userContext,
@@ -1118,6 +1264,7 @@ async function* queryLoop(
               toolUseContext,
               autoCompactTracking: tracking,
               maxOutputTokensRecoveryCount,
+              antiRepRecoveryCount,
               hasAttemptedReactiveCompact,
               maxOutputTokensOverride: undefined,
               pendingToolUseSummary: undefined,
@@ -1181,6 +1328,7 @@ async function* queryLoop(
             toolUseContext,
             autoCompactTracking: undefined,
             maxOutputTokensRecoveryCount,
+            antiRepRecoveryCount,
             hasAttemptedReactiveCompact: true,
             maxOutputTokensOverride: undefined,
             pendingToolUseSummary: undefined,
@@ -1236,6 +1384,7 @@ async function* queryLoop(
             toolUseContext,
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount,
+            antiRepRecoveryCount,
             hasAttemptedReactiveCompact,
             maxOutputTokensOverride: ESCALATED_MAX_TOKENS,
             pendingToolUseSummary: undefined,
@@ -1264,6 +1413,7 @@ async function* queryLoop(
             toolUseContext,
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount: maxOutputTokensRecoveryCount + 1,
+            antiRepRecoveryCount,
             hasAttemptedReactiveCompact,
             maxOutputTokensOverride: undefined,
             pendingToolUseSummary: undefined,
@@ -1291,7 +1441,7 @@ async function* queryLoop(
         return { reason: 'completed' }
       }
 
-      const stopHookResult = yield* handleStopHooks(
+      const stopHookResult = yield* (deps.handleStopHooks ?? handleStopHooks)(
         messagesForQuery,
         assistantMessages,
         systemPrompt,
@@ -1316,6 +1466,7 @@ async function* queryLoop(
           toolUseContext,
           autoCompactTracking: tracking,
           maxOutputTokensRecoveryCount: 0,
+          antiRepRecoveryCount,
           // Preserve the reactive compact guard — if compact already ran and
           // couldn't recover from prompt-too-long, retrying after a stop-hook
           // blocking error will produce the same result. Resetting to false
@@ -1357,6 +1508,7 @@ async function* queryLoop(
             toolUseContext,
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount: 0,
+            antiRepRecoveryCount,
             hasAttemptedReactiveCompact: false,
             maxOutputTokensOverride: undefined,
             pendingToolUseSummary: undefined,
@@ -1406,7 +1558,7 @@ async function* queryLoop(
 
     const toolUpdates = streamingToolExecutor
       ? streamingToolExecutor.getRemainingResults()
-      : runTools(toolUseBlocks, assistantMessages, canUseTool, toolUseContext)
+      : (deps.runTools ?? runTools)(toolUseBlocks, assistantMessages, canUseTool, toolUseContext)
 
     for await (const update of toolUpdates) {
       if (update.message) {
@@ -1434,6 +1586,15 @@ async function* queryLoop(
       }
     }
     queryCheckpoint('query_tool_execution_end')
+    const madeToolProgress = toolResults.some(result => {
+      if (result.type !== 'user' || result.isVirtual || result.isMeta || !Array.isArray(result.message.content)) return false
+      const output = result.toolUseResult as { interrupted?: boolean; terminationReason?: string } | undefined
+      if (output?.interrupted && output.terminationReason !== 'completed') return false
+      return result.message.content.some(block =>
+        block.type === 'tool_result' && !block.is_error &&
+        toolUseBlocks.some(tool => tool.id === block.tool_use_id),
+      )
+    })
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
     let nextPendingToolUseSummary:
@@ -1745,6 +1906,7 @@ async function* queryLoop(
       autoCompactTracking: tracking,
       turnCount: nextTurnCount,
       maxOutputTokensRecoveryCount: 0,
+      antiRepRecoveryCount: madeToolProgress ? 0 : antiRepRecoveryCount,
       hasAttemptedReactiveCompact: false,
       pendingToolUseSummary: nextPendingToolUseSummary,
       maxOutputTokensOverride: undefined,

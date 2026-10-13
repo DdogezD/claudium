@@ -95,6 +95,12 @@ import { validateUuid } from './uuid.js'
 // See: https://github.com/oven-sh/bun/issues/26168
 const VERSION = typeof MACRO !== 'undefined' ? MACRO.VERSION : 'unknown'
 
+type MessageRetractionEntry = {
+  type: 'message_retraction'
+  uuids: readonly string[]
+}
+type StorageEntry = Entry | MessageRetractionEntry
+
 type Transcript = (
   | UserMessage
   | AssistantMessage
@@ -133,7 +139,9 @@ const SKIP_FIRST_PROMPT_PATTERN =
  * chain. Including them caused chain forks that orphaned real conversation
  * messages on resume (see #14373, #23537).
  */
-export function isTranscriptMessage(entry: Entry): entry is TranscriptMessage {
+export function isTranscriptMessage(
+  entry: StorageEntry,
+): entry is TranscriptMessage {
   return (
     entry.type === 'user' ||
     entry.type === 'assistant' ||
@@ -409,13 +417,57 @@ class Project {
   // Entries buffered while sessionFile is null. Flushed by materializeSessionFile
   // on the first user/assistant message — prevents metadata-only session files.
   private pendingEntries: Entry[] = []
+  private revoked = new Set<string>()
+  private messageParents = new Map<string, UUID | null>()
+
+  isRevoked(uuid: string): boolean {
+    return this.revoked.has(uuid)
+  }
+
+  rememberParent(uuid: string, parent: UUID | null): void {
+    if (!this.messageParents.has(uuid)) this.messageParents.set(uuid, parent)
+  }
+
+  resolveParent(parent: UUID | null): UUID | null {
+    const seen = new Set<string>()
+    while (parent && this.revoked.has(parent)) {
+      if (seen.has(parent)) return null
+      seen.add(parent)
+      parent = this.messageParents.get(parent) ?? null
+    }
+    return parent
+  }
+
+  markRevoked(uuids: readonly string[]): void {
+    for (const uuid of uuids) this.revoked.add(uuid)
+  }
+
+  async revokeMessages(uuids: readonly string[], agentId?: string): Promise<void> {
+    const uniqueUuids = [...new Set(uuids)]
+    if (uniqueUuids.length === 0) return
+    this.markRevoked(uniqueUuids)
+    if (this.shouldSkipPersistence()) return
+    const filePath = agentId === undefined
+      ? this.ensureCurrentSessionFile()
+      : getAgentTranscriptPath(asAgentId(agentId))
+    const written = this.enqueueWrite(
+      filePath,
+      { type: 'message_retraction', uuids: uniqueUuids },
+      true,
+    )
+    await written
+  }
   private pendingWriteCount: number = 0
   private flushResolvers: Array<() => void> = []
   // Per-file write queues. Each entry carries a resolve callback so
   // callers of enqueueWrite can optionally await their specific write.
   private writeQueues = new Map<
     string,
-    Array<{ entry: Entry; resolve: () => void }>
+    Array<{
+      entry: StorageEntry
+      resolve: () => void
+      reject?: (error: unknown) => void
+    }>
   >()
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private activeDrain: Promise<void> | null = null
@@ -458,14 +510,18 @@ class Project {
     }
   }
 
-  private enqueueWrite(filePath: string, entry: Entry): Promise<void> {
-    return new Promise<void>(resolve => {
+  private enqueueWrite(
+    filePath: string,
+    entry: StorageEntry,
+    requirePersistence = false,
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       let queue = this.writeQueues.get(filePath)
       if (!queue) {
         queue = []
         this.writeQueues.set(filePath, queue)
       }
-      queue.push({ entry, resolve })
+      queue.push({ entry, resolve, reject: requirePersistence ? reject : undefined })
       this.scheduleDrain()
     })
   }
@@ -476,9 +532,7 @@ class Project {
     }
     this.flushTimer = setTimeout(async () => {
       this.flushTimer = null
-      this.activeDrain = this.drainWriteQueue()
-      await this.activeDrain
-      this.activeDrain = null
+      await this.drainPendingWrites()
       // If more items arrived during drain, schedule again
       if (this.writeQueues.size > 0) {
         this.scheduleDrain()
@@ -497,6 +551,16 @@ class Project {
     }
   }
 
+  private async drainPendingWrites(): Promise<void> {
+    while (this.activeDrain) await this.activeDrain
+    this.activeDrain = this.drainWriteQueue()
+    try {
+      await this.activeDrain
+    } finally {
+      this.activeDrain = null
+    }
+  }
+
   private async drainWriteQueue(): Promise<void> {
     for (const [filePath, queue] of this.writeQueues) {
       if (queue.length === 0) {
@@ -504,31 +568,34 @@ class Project {
       }
       const batch = queue.splice(0)
 
-      let content = ''
-      const resolvers: Array<() => void> = []
+      try {
+        let content = ''
+        const resolvers: Array<() => void> = []
 
-      for (const { entry, resolve } of batch) {
-        const line = jsonStringify(entry) + '\n'
+        for (const { entry, resolve } of batch) {
+          const line = jsonStringify(entry) + '\n'
 
-        if (content.length + line.length >= this.MAX_CHUNK_BYTES) {
-          // Flush chunk and resolve its entries before starting a new one
-          await this.appendToFile(filePath, content)
-          for (const r of resolvers) {
-            r()
+          if (content.length + line.length >= this.MAX_CHUNK_BYTES) {
+            await this.appendToFile(filePath, content)
+            for (const r of resolvers) r()
+            resolvers.length = 0
+            content = ''
           }
-          resolvers.length = 0
-          content = ''
+
+          content += line
+          resolvers.push(resolve)
         }
 
-        content += line
-        resolvers.push(resolve)
-      }
-
-      if (content.length > 0) {
-        await this.appendToFile(filePath, content)
-        for (const r of resolvers) {
-          r()
+        if (content.length > 0) {
+          await this.appendToFile(filePath, content)
+          for (const r of resolvers) r()
         }
+      } catch (error) {
+        for (const item of batch) {
+          if (item.reject) item.reject(error)
+          else item.resolve()
+        }
+        logError(error)
       }
     }
 
@@ -699,12 +766,7 @@ class Project {
       clearTimeout(this.flushTimer)
       this.flushTimer = null
     }
-    // Wait for any in-flight drain to finish
-    if (this.activeDrain) {
-      await this.activeDrain
-    }
-    // Drain anything remaining in the queues
-    await this.drainWriteQueue()
+    await this.drainPendingWrites()
 
     // Wait for non-queue tracked operations (e.g. removeMessageByUuid)
     if (this.pendingWriteCount === 0) {
@@ -853,7 +915,7 @@ class Project {
     teamInfo?: { teamName?: string; agentName?: string },
   ) {
     return this.trackWrite(async () => {
-      let parentUuid: UUID | null = startingParentUuid ?? null
+      let parentUuid: UUID | null = this.resolveParent(startingParentUuid ?? null)
 
       // First user/assistant message materializes the session file.
       // Hook progress/attachment messages alone stay buffered.
@@ -878,6 +940,11 @@ class Project {
       const slug = getPlanSlugCache().get(sessionId)
 
       for (const message of messages) {
+        if (this.isRevoked(message.uuid)) {
+          this.rememberParent(message.uuid, parentUuid)
+          continue
+        }
+        parentUuid = this.resolveParent(parentUuid)
         const isCompactBoundary = isCompactBoundaryMessage(message)
 
         // For tool_result messages, use the assistant message UUID from the message
@@ -918,7 +985,7 @@ class Project {
           slug,
         }
         await this.appendEntry(transcriptMessage)
-        if (isChainParticipant(message)) {
+        if (isChainParticipant(message) && !this.isRevoked(message.uuid)) {
           parentUuid = message.uuid
         }
       }
@@ -1094,6 +1161,9 @@ class Project {
         // persistence (session-ingress) uses a single Last-Uuid chain per
         // sessionId, so re-POSTing a UUID it already has 409s and eventually
         // exhausts retries → gracefulShutdownSync(1). See inc-4718.
+        this.rememberParent(entry.uuid, entry.parentUuid)
+        if (this.isRevoked(entry.uuid)) return
+        entry.parentUuid = this.resolveParent(entry.parentUuid)
         const isNewUuid = !messageSet.has(entry.uuid)
         if (isAgentSidechain || isNewUuid) {
           // Enqueue write — appendToFile handles ENOENT by creating directories
@@ -1187,7 +1257,16 @@ export async function recordTranscript(
   const newMessages: typeof cleanedMessages = []
   let startingParentUuid: UUID | undefined = startingParentUuidHint
   let seenNewMessage = false
+  const storage = getProject()
   for (const m of cleanedMessages) {
+    if (storage.isRevoked(m.uuid)) {
+      storage.rememberParent(
+        m.uuid,
+        (newMessages.findLast(isChainParticipant)?.uuid as UUID | undefined) ??
+          startingParentUuid ?? null,
+      )
+      continue
+    }
     if (messageSet.has(m.uuid as UUID)) {
       // Only track skipped messages that form a prefix. After compaction,
       // messagesToKeep appear AFTER new CB/summary, so this skips them.
@@ -1214,8 +1293,19 @@ export async function recordTranscript(
   // slice is all-recorded (rewind, /resume scenarios where every message is
   // already in messageSet). Progress is skipped — it's written to the JSONL
   // but nothing chains TO it (see isChainParticipant).
-  const lastRecorded = newMessages.findLast(isChainParticipant)
-  return (lastRecorded?.uuid as UUID | undefined) ?? startingParentUuid ?? null
+  const lastRecorded = newMessages.findLast(
+    m => isChainParticipant(m) && !storage.isRevoked(m.uuid),
+  )
+  return storage.resolveParent(
+    (lastRecorded?.uuid as UUID | undefined) ?? startingParentUuid ?? null,
+  )
+}
+
+export async function revokeTranscriptMessages(
+  uuids: readonly string[],
+  agentId?: string,
+): Promise<void> {
+  await getProject().revokeMessages(uuids, agentId)
 }
 
 export async function recordSidechainTranscript(
@@ -2752,10 +2842,10 @@ const METADATA_TYPE_MARKERS = [
   '"type":"mode"',
   '"type":"worktree-state"',
   '"type":"pr-link"',
+  '"type":"message_retraction"',
 ]
 const METADATA_MARKER_BUFS = METADATA_TYPE_MARKERS.map(m => Buffer.from(m))
-// Longest marker is 22 bytes; +1 for leading `{` = 23.
-const METADATA_PREFIX_BOUND = 25
+const METADATA_PREFIX_BOUND = Math.max(...METADATA_MARKER_BUFS.map(m => m.length)) + 1
 
 // null = carry spans whole chunk. Skips concat when carry provably isn't
 // a metadata line (markers sit at byte 1 after `{`).
@@ -3148,6 +3238,7 @@ export async function loadTranscriptFile(
   const contextCollapseCommits: ContextCollapseCommitEntry[] = []
   // Last-wins — later entries supersede.
   let contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
+  const revokedUuids = new Set<string>()
 
   try {
     // For large transcripts, avoid materializing megabytes of stale content.
@@ -3204,6 +3295,8 @@ export async function loadTranscriptFile(
     if (
       !opts?.keepAllLeaves &&
       !hasPreservedSegment &&
+      !buf.includes('"message_retraction"') &&
+      !metadataLines?.some(line => line.includes('"message_retraction"')) &&
       !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP) &&
       buf.length > SKIP_PRECOMPACT_THRESHOLD
     ) {
@@ -3215,11 +3308,13 @@ export async function loadTranscriptFile(
     // etc.) for entries written before the compact boundary. Any overlap with
     // the post-boundary buffer is harmless — later values overwrite earlier ones.
     if (metadataLines && metadataLines.length > 0) {
-      const metaEntries = parseJSONL<Entry>(
+      const metaEntries = parseJSONL<StorageEntry>(
         Buffer.from(metadataLines.join('\n')),
       )
       for (const entry of metaEntries) {
-        if (entry.type === 'summary' && entry.leafUuid) {
+        if (entry.type === 'message_retraction') {
+          for (const uuid of entry.uuids) revokedUuids.add(uuid)
+        } else if (entry.type === 'summary' && entry.leafUuid) {
           summaries.set(entry.leafUuid, entry.summary)
         } else if (entry.type === 'custom-title' && entry.sessionId) {
           customTitles.set(entry.sessionId, entry.customTitle)
@@ -3243,7 +3338,12 @@ export async function loadTranscriptFile(
       }
     }
 
-    const entries = parseJSONL<Entry>(buf)
+    const entries = parseJSONL<StorageEntry>(buf)
+    for (const entry of entries) {
+      if (entry.type === 'message_retraction') {
+        for (const uuid of entry.uuids) revokedUuids.add(uuid)
+      }
+    }
 
     // Bridge map for legacy progress entries: progress_uuid → progress_parent_uuid.
     // PR #24099 removed progress from isTranscriptMessage, so old transcripts with
@@ -3333,6 +3433,31 @@ export async function loadTranscriptFile(
     // File doesn't exist or can't be read
   }
 
+  if (revokedUuids.size > 0) {
+    const deletedParents = new Map<string, UUID | null>()
+    for (const uuid of revokedUuids) {
+      const entry = messages.get(uuid as UUID)
+      if (entry) {
+        deletedParents.set(uuid, entry.parentUuid)
+        getProject().rememberParent(uuid, entry.parentUuid)
+        messages.delete(uuid as UUID)
+      }
+    }
+    getProject().markRevoked([...revokedUuids])
+    for (const entry of messages.values()) {
+      const seen = new Set<string>()
+      let parent = entry.parentUuid
+      while (parent && revokedUuids.has(parent)) {
+        if (seen.has(parent)) {
+          parent = null
+          break
+        }
+        seen.add(parent)
+        parent = deletedParents.get(parent) ?? null
+      }
+      entry.parentUuid = parent
+    }
+  }
   applyPreservedSegmentRelinks(messages)
   applySnipRemovals(messages)
 

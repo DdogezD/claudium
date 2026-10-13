@@ -1486,6 +1486,21 @@ export const SDKSystemMessageSchema = lazySchema(() =>
   }),
 )
 
+export const SDKStreamResetMessageSchema = lazySchema(() =>
+  z.object({
+    type: z.literal('system'),
+    subtype: z.literal('stream_reset'),
+    request_id: z.string().optional(),
+    reason: z.enum(['REASONING_LOOP', 'TEXT_LOOP']),
+    withdrawn_message_ids: z.array(z.string()),
+    recovering: z.boolean(),
+    session_id: z.string(),
+    uuid: UUIDPlaceholder(),
+  }).describe(
+    'Stream retraction control event; not added to conversation history. Clients must clear partial state and withdraw displayed output by UUID. Older SDKs that reject the new system subtype or ignore this event do not support retraction and must be upgraded before enabling Guard. Usage includes only observed snapshots and may be incomplete; complete token or cost accounting is not guaranteed.',
+  ),
+)
+
 export const SDKPartialAssistantMessageSchema = lazySchema(() =>
   z.object({
     type: z.literal('stream_event'),
@@ -1830,6 +1845,7 @@ export const SDKMessageSchema = lazySchema(() =>
     SDKResultMessageSchema(),
     SDKSystemMessageSchema(),
     SDKPartialAssistantMessageSchema(),
+    SDKStreamResetMessageSchema(),
     SDKCompactBoundaryMessageSchema(),
     SDKStatusMessageSchema(),
     SDKAPIRetryMessageSchema(),

@@ -1820,6 +1820,16 @@ async function* queryModel(
   const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
+  const settledUsage = new Set<'stream' | 'fallback'>()
+  const settleUsage = (source: 'stream' | 'fallback', observedUsage: BetaUsage) => {
+    if (settledUsage.has(source)) return
+    settledUsage.add(source)
+    costUSD += addToTotalSessionCost(
+      calculateUSDCost(resolvedModel, observedUsage),
+      observedUsage,
+      options.model,
+    )
+  }
   let stopReason: BetaStopReason | null = null
   let didFallBackToNonStreaming = false
   let fallbackMessage: AssistantMessage | undefined
@@ -2280,13 +2290,7 @@ async function* queryModel(
               lastMsg.message.stop_reason = stopReason
             }
 
-            // Update cost
-            const costUSDForPart = calculateUSDCost(resolvedModel, usage)
-            costUSD += addToTotalSessionCost(
-              costUSDForPart,
-              usage,
-              options.model,
-            )
+            settleUsage('stream', usage)
 
             const refusalMessage = getErrorMessageIfRefusal(
               part.delta.stop_reason,
@@ -2831,19 +2835,16 @@ async function* queryModel(
     // until the generator itself is GC'd (see GH #32920).
     releaseStreamResources()
 
-    // Non-streaming fallback cost: the streaming path tracks cost in the
-    // message_delta handler before any yield. Fallback pushes to newMessages
-    // then yields, so tracking must be here to survive .return() at the yield.
+    // Early iterator closure can skip message_delta. Only settle usage actually
+    // observed after message_start; never estimate output from partial content.
+    // Settle the old stream before replacing its snapshot with fallback usage:
+    // these are separate requests, even when the fallback fails or is withdrawn.
+    if (partialMessage) settleUsage('stream', usage)
     if (fallbackMessage) {
       const fallbackUsage = fallbackMessage.message.usage
+      settleUsage('fallback', fallbackUsage)
       usage = updateUsage(EMPTY_USAGE, fallbackUsage)
       stopReason = fallbackMessage.message.stop_reason
-      const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage)
-      costUSD += addToTotalSessionCost(
-        fallbackCost,
-        fallbackUsage,
-        options.model,
-      )
     }
   }
 

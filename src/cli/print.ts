@@ -816,6 +816,16 @@ export async function runHeadless(
     options,
     turnInterruptionState,
   )) {
+    if (
+      message.type === 'system' &&
+      message.subtype === 'stream_reset' &&
+      needsFullArray
+    ) {
+      const withdrawn = new Set(message.withdrawn_message_ids as string[])
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (withdrawn.has(messages[i]!.uuid!)) messages.splice(i, 1)
+      }
+    }
     if (transformToStreamlined) {
       // Streamlined mode: transform messages and stream immediately
       const transformed = transformToStreamlined(message)
@@ -840,7 +850,8 @@ export async function runHeadless(
           message.subtype === 'task_notification' ||
           message.subtype === 'task_started' ||
           message.subtype === 'task_progress' ||
-          message.subtype === 'post_turn_summary')
+          message.subtype === 'post_turn_summary' ||
+          message.subtype === 'stream_reset')
       ) &&
       message.type !== 'stream_event' &&
       message.type !== 'keep_alive' &&

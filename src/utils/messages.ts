@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import type { StreamResetEvent } from '../query.js'
 import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   ContentBlock,
@@ -2937,7 +2938,8 @@ export function handleMessageFromStream(
     | TombstoneMessage
     | StreamEvent
     | RequestStartEvent
-    | ToolUseSummaryMessage,
+    | ToolUseSummaryMessage
+    | StreamResetEvent,
   onMessage: (message: Message) => void,
   onUpdateLength: (newContent: string) => void,
   onSetStreamMode: (mode: SpinnerMode) => void,
@@ -2950,7 +2952,16 @@ export function handleMessageFromStream(
   ) => void,
   onApiMetrics?: (metrics: { ttftMs: number }) => void,
   onStreamingText?: (f: (current: string | null) => string | null) => void,
+  onResetLength?: () => void,
 ): void {
+  if (message.type === 'stream_reset') {
+    onStreamingThinking?.(() => null)
+    onStreamingText?.(() => null)
+    onStreamingToolUses(() => [])
+    onResetLength?.()
+    onSetStreamMode(message.recovering ? 'requesting' : 'responding')
+    return
+  }
   if (
     message.type !== 'stream_event' &&
     message.type !== 'stream_request_start'
