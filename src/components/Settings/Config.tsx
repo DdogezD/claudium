@@ -736,7 +736,7 @@ export function Config({
   }, {
     id: 'detailedEffortSettings',
     label: 'Detailed effort settings',
-    value: `search: ${settingsData?.webSearch?.effort ?? 'none'} · title: ${settingsData?.sessionTitle?.effort ?? 'none'} · suggestion: ${settingsData?.promptSuggestion?.effort ?? 'inherit'}`,
+    value: `search: ${settingsData?.webSearch?.effort ?? 'inherit'} · title: ${settingsData?.sessionTitle?.effort ?? 'inherit'} · suggestion: ${settingsData?.promptSuggestion?.effort ?? 'inherit'}`,
     type: 'managedEnum' as const,
     onChange: () => {} // handled by DetailedEffortSettingsDialog submenu
   }, ...(showDefaultViewPicker ? [{

@@ -34,8 +34,8 @@ export function DetailedEffortSettingsDialog({
   onCancel,
 }: Props): React.ReactNode {
   const initialValues = [
-    initialWebSearchEffort ?? 'none',
-    initialTitleEffort ?? 'none',
+    initialWebSearchEffort ?? '',
+    initialTitleEffort ?? '',
     initialPromptSuggestionEffort ?? '',
   ]
   const [values, setValues] = useState(initialValues)
@@ -112,7 +112,7 @@ export function DetailedEffortSettingsDialog({
                 onSubmit={advanceOrSubmit}
                 focus={isActive}
                 showCursor={isActive}
-                placeholder={index === 2 ? 'leave blank / low / high / none' : 'low / high / xhigh / none'}
+                placeholder="leave blank / low / high / xhigh / none"
                 columns={30}
                 cursorOffset={offsets[index]!}
                 onChangeCursorOffset={offset => {
