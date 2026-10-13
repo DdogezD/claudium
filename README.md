@@ -65,6 +65,25 @@ Claudium 不提供 claude.ai OAuth 登录，认证完全由本地环境中的 AP
 
 `webSearch.effort` 用于搜索摘要和结果重排，`sessionTitle.effort` 用于会话标题生成；两者均可在 `/config` 编辑，默认 `none` 关闭 thinking block，其他值原样透传并启用模型支持的 thinking。它们不继承 model profile 的 effort，但全局 `CLAUDE_CODE_EFFORT_LEVEL` 环境变量仍优先。
 
+## Advisor
+
+Advisor 是用于方案审查和风险检查的只读辅助模型，可以分析当前会话上下文、代码和搜索结果，但不能直接修改文件。它适合检查架构、边界条件、安全问题和复杂调试决策。
+
+通过 `settings.json` 或环境变量配置模型：
+
+```json
+{
+  "modelProfiles": {
+    "advisor": {
+      "model": "your-review-model-id"
+    }
+  },
+  "advisorPreference": "default"
+}
+```
+
+也可以使用 `CLAUDE_CODE_ADVISOR_MODEL`。`advisorPreference` 支持 `default`、`prefer` 和 `atUserDemand`：分别表示在重要决策时使用、优先在实质性任务前使用、以及仅在用户明确要求时使用。未配置 Advisor 模型时，该功能关闭。
+
 ## SearXNG WebSearch
 
 设置以下变量后，内置 WebSearch 会使用自己的 SearXNG 实例：
@@ -81,6 +100,14 @@ export CLAUDE_CODE_SEARXNG_BASE_URL=http://localhost:8888/
 - 对来源优先级、来源冲突和引用编号的搜索摘要指导
 
 未设置 SearXNG 时，WebSearch 使用默认 provider 行为；SearXNG 质量层不会介入。域名规则可通过 `/config` → **Domain rules (search · fetch · sandbox)** 编辑。
+
+## 隐私与安全边界
+
+- 内置 analytics、GrowthBook 和遥测上报实现已 stub 化，正常启动路径不提供有效的上报；源码仍保留部分 OpenTelemetry/OTLP 兼容接口和 tracing 代码，因此不宣称删除了所有 OTel 依赖。
+- claude.ai OAuth 登录、远程控制、远程环境和相关云服务 CLI 入口已移除或禁用；认证改为本地 API key/token 与 Anthropic-compatible endpoint。
+- 专门的 cyber-risk prompt 指令不再由 CLI 注入；这不等于关闭模型自身的安全策略。
+- system reminders、prompt-injection 提示、安全编码要求和高风险操作确认仍然保留。
+- 工具权限规则、用户确认、PermissionRequest hooks、sandbox 隔离和部分 bypass-immune safety checks 仍然生效；`claudium-bypass` 不是无条件关闭全部防护。
 
 ## 设计边界
 
