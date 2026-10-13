@@ -69,6 +69,8 @@ const externals = [
 const defines = {
   'process.env.USER_TYPE': JSON.stringify('external'),
   'process.env.CLAUDE_CODE_FORCE_FULL_LOGO': JSON.stringify('true'),
+  'process.env.NODE_ENV': JSON.stringify('development'),
+  'process.env.CLAUDE_CODE_EXPERIMENTAL_BUILD': JSON.stringify('true'),
   'process.env.CLAUDE_CODE_VERIFY_PLAN': JSON.stringify('false'),
   'MACRO.VERSION': JSON.stringify(pkg.version),
   'MACRO.BUILD_TIME': JSON.stringify(buildTime),

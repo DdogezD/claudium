@@ -25,7 +25,7 @@ externalized `@ant/*` packages.
 ## Default Build Flags
 
 - `VOICE_MODE`
-  This is now included in the default build pipeline, not just the dev build.
+  This is included in the default build pipeline.
   It enables `/voice`, push-to-talk UI, voice notices, and dictation plumbing.
   Note: claude.ai OAuth has been stripped in Claudium. Voice mode requires a
   local recording backend (e.g., SoX).
