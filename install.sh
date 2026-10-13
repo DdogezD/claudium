@@ -222,6 +222,7 @@ printf "    ${CYAN}claudium-bypass${RESET}                    # interactive REPL
 printf "    ${CYAN}claudium -p \"your prompt\"${RESET}          # one-shot mode\n"
 echo ""
 printf "  ${BOLD}Set your Anthropic Messages API key:${RESET}\n"
+printf "    ${CYAN}export ANTHROPIC_BASE_URL=\"your-api-endpoint\"${RESET}\n"
 printf "    ${CYAN}export ANTHROPIC_API_KEY=\"sk-ant-...\"${RESET}\n"
 echo ""
 printf "  ${BOLD}See README.md for full configs.${RESET}\n"
