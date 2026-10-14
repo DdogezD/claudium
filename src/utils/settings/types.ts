@@ -485,7 +485,7 @@ export const SettingsSchema = lazySchema(() =>
         .describe('Prompt suggestion generation settings'),
       antiRepetition: AntiRepetitionSettingsSchema()
         .optional()
-        .describe('Anti-repetition reasoning guard settings; disabled by default'),
+        .describe('Anti-repetition reasoning guard settings; enabled by default'),
       antiLoop: AntiLoopSettingsSchema()
         .optional()
         .describe('Repeated tool call reminder settings; enabled by default'),

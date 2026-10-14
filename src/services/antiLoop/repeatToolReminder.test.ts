@@ -5,7 +5,11 @@ import { canonicalizeToolArguments, RepeatToolReminderTracker } from './repeatTo
 
 const config = resolveAntiLoopConfig()
 
- test('canonicalizes nested objects while preserving arrays and strings', () => {
+test('enables Anti-Loop by default', () => {
+  expect(config.enabled).toBe(true)
+})
+
+test('canonicalizes nested objects while preserving arrays and strings', () => {
   expect(canonicalizeToolArguments({ z: 1, a: { b: 2, a: ' x ' }, list: [3, 1] }))
     .toBe('{"a":{"a":" x ","b":2},"list":[3,1],"z":1}')
   expect(canonicalizeToolArguments({ value: '01' })).not.toBe(canonicalizeToolArguments({ value: 1 }))

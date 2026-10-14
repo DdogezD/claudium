@@ -26,7 +26,7 @@ externalized `@ant/*` packages.
 
 Anti-Rep is built into the normal Query Loop and configured through the independent
 `antiRepetition` settings object, **not** a `feature()` compile-time flag. It is
-disabled by default. When enabled, it detects repeated thinking/reasoning output,
+enabled by default. When enabled, it detects repeated thinking/reasoning output,
 and automatic recovery is limited to two consecutive attempts by default.
 `/config` groups the controls under `Anti-Rep`; auto-resume is scoped to
 `antiRepetition.autoResume`, not a global continuation switch.

@@ -2,7 +2,7 @@ import type { AntiRepetitionConfig } from './types.js'
 export type { AntiRepetitionConfig } from './types.js'
 
 export const ANTI_REPETITION_DEFAULTS: Readonly<AntiRepetitionConfig> = Object.freeze({
-  enabled: false,
+  enabled: true,
   autoResume: true,
   maxRecoveries: 2,
   maxCyclePeriod: 512,

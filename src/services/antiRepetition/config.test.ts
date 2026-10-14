@@ -2,15 +2,15 @@ import { expect, test } from 'bun:test'
 import { ANTI_REPETITION_DEFAULTS, isAntiRepetitionQuerySource, resolveAntiRepetitionConfig } from './config.js'
 
 test('uses centralized defaults and does not share mutable objects', () => {
-  expect(resolveAntiRepetitionConfig()).toEqual({ enabled: false,
+  expect(resolveAntiRepetitionConfig()).toEqual({ enabled: true,
     autoResume: true, maxRecoveries: 2, maxCyclePeriod: 512, cycleMinChars: 512,
     lineRepeatedMinChars: 2048, lineCoverageMin: 0.6, lineConcentrationMin: 4 })
   expect(resolveAntiRepetitionConfig({ enabled: true, autoResume: false, maxRecoveries: 0 }))
     .toMatchObject({ enabled: true, autoResume: false, maxRecoveries: 0 })
   const config = resolveAntiRepetitionConfig({ enabled: undefined })
   config.enabled = true
-  expect(ANTI_REPETITION_DEFAULTS.enabled).toBe(false)
-  expect(resolveAntiRepetitionConfig().enabled).toBe(false)
+  expect(ANTI_REPETITION_DEFAULTS.enabled).toBe(true)
+  expect(resolveAntiRepetitionConfig().enabled).toBe(true)
 })
 
 test('bounds resource limits and rejects non-finite inputs in the TypeScript resolver', () => {
