@@ -456,6 +456,7 @@ export function useTextInput({
       if (!cursor.equals(currentCursor)) {
         if (cursor.text !== currentCursor.text) {
           onChange(currentCursor.text)
+          onHistoryReset?.()
         }
         setOffset(currentCursor.offset)
       }
@@ -479,6 +480,7 @@ export function useTextInput({
       if (!cursor.equals(nextCursor)) {
         if (cursor.text !== nextCursor.text) {
           onChange(nextCursor.text)
+          onHistoryReset?.()
         }
         setOffset(nextCursor.offset)
       }
