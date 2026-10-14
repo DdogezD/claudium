@@ -97,19 +97,16 @@ class ChannelState {
 export class StreamRepetitionGuard {
   private readonly config: AntiRepetitionConfig
   private thinking: ChannelState
-  private text: ChannelState
   private toolTouched = false
   private hit: RepetitionHit | undefined
 
   constructor(config: AntiRepetitionConfig) {
     this.config = resolveAntiRepetitionConfig(config)
     this.thinking = new ChannelState(this.config.maxCyclePeriod)
-    this.text = new ChannelState(this.config.maxCyclePeriod)
   }
 
   resetForRequest(): void {
     this.thinking = new ChannelState(this.config.maxCyclePeriod)
-    this.text = new ChannelState(this.config.maxCyclePeriod)
     this.toolTouched = false
     this.hit = undefined
   }
@@ -126,13 +123,11 @@ export class StreamRepetitionGuard {
     if (this.hit) return this.hit
     if (event.type !== 'content_block_delta') return undefined
     const delta = event.delta
-    const channel = delta?.type === 'thinking_delta' ? 'thinking' :
-      delta?.type === 'text_delta' ? 'text' : undefined
-    if (!channel || !(channel === 'thinking' ? this.config.reasoning : this.config.text)) return undefined
-    const value = channel === 'thinking' ? delta?.thinking : delta?.text
+    if (delta?.type !== 'thinking_delta') return undefined
+    const value = delta.thinking
     if (typeof value !== 'string') return undefined
-    const state = channel === 'thinking' ? this.thinking : this.text
-    const minChars = channel === 'thinking' ? this.config.reasoningCycleMinChars : this.config.textCycleMinChars
+    const state = this.thinking
+    const minChars = this.config.cycleMinChars
     for (let i = 0; i < value.length; i++) {
       const char = value[i]!
       state.observed++
@@ -158,7 +153,7 @@ export class StreamRepetitionGuard {
           const span = state.runs[period]! + period
           if (span >= minChars && state.runs[period]! >= 2 * period &&
               state.lastMeaningful >= state.position - period + 1) {
-            this.hit = this.makeHit(channel, state, 'trailing-cycle', span, { period })
+            this.hit = this.makeHit(state, 'trailing-cycle', span, { period })
             return this.hit
           }
         }
@@ -173,7 +168,7 @@ export class StreamRepetitionGuard {
         const concentration = state.counts.size ? state.lines.length / state.counts.size : 0
         if (state.lines.length >= 8 && state.repeatedChars >= this.config.lineRepeatedMinChars &&
             coverage >= this.config.lineCoverageMin && concentration >= this.config.lineConcentrationMin) {
-          this.hit = this.makeHit(channel, state, 'phrase-pool', state.repeatedChars, {
+          this.hit = this.makeHit(state, 'phrase-pool', state.repeatedChars, {
             eligibleLines: state.lines.length, uniqueLines: state.counts.size, coverage, concentration,
             uniqueRatio: state.counts.size / state.lines.length,
           })
@@ -184,9 +179,8 @@ export class StreamRepetitionGuard {
     return undefined
   }
 
-  private makeHit(channel: RepetitionHit['channel'], state: ChannelState,
-    rule: RepetitionHit['rule'], repeatedChars: number, stats: RepetitionHit['stats']): RepetitionHit {
-    return { code: channel === 'thinking' ? 'REASONING_LOOP' : 'TEXT_LOOP',
-      channel, rule, observedChars: state.observed, repeatedChars, stats }
+  private makeHit(state: ChannelState, rule: RepetitionHit['rule'],
+    repeatedChars: number, stats: RepetitionHit['stats']): RepetitionHit {
+    return { code: 'REASONING_LOOP', rule, observedChars: state.observed, repeatedChars, stats }
   }
 }

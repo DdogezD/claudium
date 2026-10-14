@@ -20,18 +20,14 @@ function start(id = 'response-1') {
   return sse({ type: 'message_start', message: { id, usage: { input_tokens: 12, output_tokens: 0 } } })
 }
 
-function delta(text: string, channel: 'thinking' | 'text' = 'thinking') {
-  return sse({ type: 'content_block_delta', index: 0, delta: channel === 'thinking'
-    ? { type: 'thinking_delta', thinking: text }
-    : { type: 'text_delta', text } })
+function delta(text: string) {
+  return sse({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: text } })
 }
 
-async function* repetition(channel: 'thinking' | 'text' = 'thinking') {
+async function* repetition() {
   yield start()
-  yield sse({ type: 'content_block_start', index: 0, content_block: channel === 'thinking'
-    ? { type: 'thinking', thinking: '', signature: '' }
-    : { type: 'text', text: '' } })
-  for (let i = 0; i < 1000; i++) yield delta('Let me reconsider. ', channel)
+  yield sse({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } })
+  for (let i = 0; i < 1000; i++) yield delta('Let me reconsider. ')
 }
 
 function setup(callModel: QueryDeps['callModel'], settings: Record<string, unknown> = {}) {
@@ -209,17 +205,16 @@ describe('AntiRep in the existing Query Loop', () => {
     expect(result.output.some(m => m.type === 'user' && m.isMeta)).toBe(false)
   })
 
-  test('text is independent and opt-in', async () => {
-    for (const text of [false, true]) {
-      const { params } = setup(async function* () {
-        yield* repetition('text')
-        yield createAssistantMessage({ content: 'Done.' })
-      } as any, { text, autoResume: false })
-      const { output, terminal } = await drain(query(params))
-      expect(output.some(m => m.type === 'stream_reset')).toBe(text)
-      expect(terminal.reason).toBe(text ? 'repetition_loop' : 'completed')
-      if (text) expect(terminal.code).toBe('TEXT_LOOP')
-    }
+  test('text deltas are not inspected by AntiRep', async () => {
+    const { params } = setup(async function* () {
+      yield start()
+      yield sse({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } })
+      for (let i = 0; i < 1000; i++) yield sse({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Let me reconsider. ' } })
+      yield createAssistantMessage({ content: 'Done.' })
+    } as any, { autoResume: false })
+    const { output, terminal } = await drain(query(params))
+    expect(output.some(m => m.type === 'stream_reset')).toBe(false)
+    expect(terminal.reason).toBe('completed')
   })
 
   test('disabled Guard and auxiliary query sources leave generation untouched', async () => {

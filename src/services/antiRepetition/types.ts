@@ -1,20 +1,16 @@
 export type AntiRepetitionConfig = {
   enabled: boolean
-  reasoning: boolean
-  text: boolean
   autoResume: boolean
   maxRecoveries: number
   maxCyclePeriod: number
-  reasoningCycleMinChars: number
-  textCycleMinChars: number
+  cycleMinChars: number
   lineRepeatedMinChars: number
   lineCoverageMin: number
   lineConcentrationMin: number
 }
 
 export type RepetitionHit = {
-  code: 'REASONING_LOOP' | 'TEXT_LOOP'
-  channel: 'thinking' | 'text'
+  code: 'REASONING_LOOP'
   rule: 'trailing-cycle' | 'phrase-pool'
   observedChars: number
   repeatedChars: number
@@ -32,5 +28,5 @@ export type RepetitionSseEvent = {
   type: string
   index?: number
   content_block?: { type: string }
-  delta?: { type: string; thinking?: string; text?: string }
+  delta?: { type: string; thinking?: string }
 }

@@ -237,7 +237,7 @@ describe('QueryEngine stream withdrawal consumer', () => {
     expect(result.output.filter(m => m.subtype === 'stream_reset')).toHaveLength(2)
   })
 
-  for (const reason of ['REASONING_LOOP', 'TEXT_LOOP'] as const) {
+  for (const reason of ['REASONING_LOOP'] as const) {
     it(`settles a stopped snapshot once and reports exhausted ${reason}`, async () => {
       const bad = createAssistantMessage({ content: 'withdraw me' })
       const error = createAssistantAPIErrorMessage({

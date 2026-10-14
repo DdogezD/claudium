@@ -3,13 +3,10 @@ export type { AntiRepetitionConfig } from './types.js'
 
 export const ANTI_REPETITION_DEFAULTS: Readonly<AntiRepetitionConfig> = Object.freeze({
   enabled: false,
-  reasoning: true,
-  text: false,
   autoResume: true,
   maxRecoveries: 2,
   maxCyclePeriod: 512,
-  reasoningCycleMinChars: 512,
-  textCycleMinChars: 256,
+  cycleMinChars: 512,
   lineRepeatedMinChars: 2048,
   lineCoverageMin: 0.6,
   lineConcentrationMin: 4,
@@ -19,14 +16,13 @@ export function resolveAntiRepetitionConfig(
   input?: Partial<AntiRepetitionConfig>,
 ): AntiRepetitionConfig {
   const result = { ...ANTI_REPETITION_DEFAULTS }
-  for (const key of ['enabled', 'reasoning', 'text', 'autoResume'] as const) {
+  for (const key of ['enabled', 'autoResume'] as const) {
     if (typeof input?.[key] === 'boolean') result[key] = input[key]
   }
   const bounds = {
     maxRecoveries: [0, 10],
     maxCyclePeriod: [1, 512],
-    reasoningCycleMinChars: [3, 65536],
-    textCycleMinChars: [3, 65536],
+    cycleMinChars: [3, 65536],
     lineRepeatedMinChars: [1, 65536],
     lineCoverageMin: [0, 1],
     lineConcentrationMin: [1, 256],

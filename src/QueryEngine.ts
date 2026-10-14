@@ -822,8 +822,7 @@ export class QueryEngine {
           // the real value arrives via message_delta (handled below).
           if (
             message.message.stop_reason != null &&
-            message.apiError !== 'REASONING_LOOP' &&
-            message.apiError !== 'TEXT_LOOP'
+            message.apiError !== 'REASONING_LOOP'
           ) {
             lastStopReason = message.message.stop_reason
           }
@@ -1176,8 +1175,7 @@ export class QueryEngine {
       }
       isApiError =
         Boolean(result.isApiErrorMessage) ||
-        result.apiError === 'REASONING_LOOP' ||
-        result.apiError === 'TEXT_LOOP'
+        result.apiError === 'REASONING_LOOP'
     }
 
     yield {

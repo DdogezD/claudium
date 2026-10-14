@@ -2,11 +2,11 @@ import { expect, test } from 'bun:test'
 import { ANTI_REPETITION_DEFAULTS, isAntiRepetitionQuerySource, resolveAntiRepetitionConfig } from './config.js'
 
 test('uses centralized defaults and does not share mutable objects', () => {
-  expect(resolveAntiRepetitionConfig()).toEqual({ enabled: false, reasoning: true, text: false,
-    autoResume: true, maxRecoveries: 2, maxCyclePeriod: 512, reasoningCycleMinChars: 512,
-    textCycleMinChars: 256, lineRepeatedMinChars: 2048, lineCoverageMin: 0.6, lineConcentrationMin: 4 })
-  expect(resolveAntiRepetitionConfig({ enabled: true, reasoning: false, maxRecoveries: 0 }))
-    .toMatchObject({ enabled: true, reasoning: false, maxRecoveries: 0, text: false })
+  expect(resolveAntiRepetitionConfig()).toEqual({ enabled: false,
+    autoResume: true, maxRecoveries: 2, maxCyclePeriod: 512, cycleMinChars: 512,
+    lineRepeatedMinChars: 2048, lineCoverageMin: 0.6, lineConcentrationMin: 4 })
+  expect(resolveAntiRepetitionConfig({ enabled: true, autoResume: false, maxRecoveries: 0 }))
+    .toMatchObject({ enabled: true, autoResume: false, maxRecoveries: 0 })
   const config = resolveAntiRepetitionConfig({ enabled: undefined })
   config.enabled = true
   expect(ANTI_REPETITION_DEFAULTS.enabled).toBe(false)
@@ -15,10 +15,10 @@ test('uses centralized defaults and does not share mutable objects', () => {
 
 test('bounds resource limits and rejects non-finite inputs in the TypeScript resolver', () => {
   expect(resolveAntiRepetitionConfig({ maxCyclePeriod: 999999, maxRecoveries: -1,
-    reasoningCycleMinChars: Infinity, textCycleMinChars: NaN,
-    lineRepeatedMinChars: 999999, lineCoverageMin: -1, lineConcentrationMin: 999 }))
-    .toMatchObject({ maxCyclePeriod: 512, maxRecoveries: 0, reasoningCycleMinChars: 512,
-      textCycleMinChars: 256, lineRepeatedMinChars: 65536, lineCoverageMin: 0, lineConcentrationMin: 256 })
+    cycleMinChars: Infinity, lineRepeatedMinChars: 999999,
+    lineCoverageMin: -1, lineConcentrationMin: 999 }))
+    .toMatchObject({ maxCyclePeriod: 512, maxRecoveries: 0, cycleMinChars: 512,
+      lineRepeatedMinChars: 65536, lineCoverageMin: 0, lineConcentrationMin: 256 })
 })
 
 test('allows only primary loop sources and skips auxiliary requests', () => {

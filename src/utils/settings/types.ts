@@ -217,13 +217,10 @@ export const ModelProfileSchema = lazySchema(() =>
 export const AntiRepetitionSettingsSchema = lazySchema(() =>
   z.object({
     enabled: z.boolean().optional(),
-    reasoning: z.boolean().optional(),
-    text: z.boolean().optional(),
     autoResume: z.boolean().optional(),
     maxRecoveries: z.number().int().min(0).max(10).optional(),
     maxCyclePeriod: z.number().int().min(1).max(512).optional(),
-    reasoningCycleMinChars: z.number().int().min(3).max(65536).optional(),
-    textCycleMinChars: z.number().int().min(3).max(65536).optional(),
+    cycleMinChars: z.number().int().min(3).max(65536).optional(),
     lineRepeatedMinChars: z.number().int().min(1).max(65536).optional(),
     lineCoverageMin: z.number().min(0).max(1).optional(),
     lineConcentrationMin: z.number().min(1).max(256).optional(),
@@ -478,7 +475,7 @@ export const SettingsSchema = lazySchema(() =>
         .describe('Prompt suggestion generation settings'),
       antiRepetition: AntiRepetitionSettingsSchema()
         .optional()
-        .describe('Anti-repetition guard settings; disabled by default, with experimental text detection'),
+        .describe('Anti-repetition reasoning guard settings; disabled by default'),
       modelProfiles: ModelProfilesSchema()
         .optional()
         .describe(

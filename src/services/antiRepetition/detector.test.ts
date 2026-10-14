@@ -3,17 +3,15 @@ import { resolveAntiRepetitionConfig } from './config.js'
 import { StreamRepetitionGuard } from './detector.js'
 import type { AntiRepetitionConfig, RepetitionHit, RepetitionSseEvent } from './types.js'
 
-function delta(value: string, channel: 'thinking' | 'text' = 'thinking'): RepetitionSseEvent {
-  return { type: 'content_block_delta', delta: channel === 'thinking'
-    ? { type: 'thinking_delta', thinking: value } : { type: 'text_delta', text: value } }
+function delta(value: string): RepetitionSseEvent {
+  return { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: value } }
 }
-function run(value: string, sizes: number[] = [value.length], input: Partial<AntiRepetitionConfig> = {},
-  channel: 'thinking' | 'text' = 'thinking') {
+function run(value: string, sizes: number[] = [value.length], input: Partial<AntiRepetitionConfig> = {}) {
   const guard = new StreamRepetitionGuard(resolveAntiRepetitionConfig({ enabled: true, ...input }))
   let hit: RepetitionHit | undefined
   for (let offset = 0, index = 0; offset < value.length;) {
     const size = sizes[index++ % sizes.length]!
-    hit = guard.observeSseEvent(delta(value.slice(offset, offset + size), channel))
+    hit = guard.observeSseEvent(delta(value.slice(offset, offset + size)))
     offset += size
     if (hit) break
   }
@@ -53,10 +51,10 @@ describe('StreamRepetitionGuard', () => {
 
   test('requires at least three repetitions and matches only at the threshold', () => {
     const phrase = 'This sentence reviews the next useful step. '
-    const config = { reasoningCycleMinChars: phrase.length * 3 }
+    const config = { cycleMinChars: phrase.length * 3 }
     expect(run(phrase.repeat(3).slice(0, -1), [1], config).hit).toBeUndefined()
     expect(run(phrase.repeat(3), [1], config).hit?.observedChars).toBe(phrase.length * 3)
-    expect(run(phrase.repeat(2), [1], { reasoningCycleMinChars: 3 }).hit).toBeUndefined()
+    expect(run(phrase.repeat(2), [1], { cycleMinChars: 3 }).hit).toBeUndefined()
   })
 
   test('does not match periods above the maximum', () => {
@@ -105,15 +103,13 @@ describe('StreamRepetitionGuard', () => {
     expect(run((phrase + '\n').repeat(8), [1], config).hit?.rule).toBe('phrase-pool')
   })
 
-  test('isolates settings and channels', () => {
+  test('uses one switch for reasoning and ignores text deltas', () => {
     expect(run('a'.repeat(600), [1], { enabled: false }).hit).toBeUndefined()
-    expect(run('a'.repeat(600), [1], { reasoning: false }).hit).toBeUndefined()
-    expect(run('a'.repeat(600), [1], {}, 'text').hit).toBeUndefined()
-    expect(run('a'.repeat(600), [1], { text: true }, 'text').hit).toMatchObject({
-      code: 'TEXT_LOOP', channel: 'text', observedChars: 256,
+    expect(run('a'.repeat(600), [1]).hit).toMatchObject({
+      code: 'REASONING_LOOP', observedChars: 512,
     })
     const guard = run('a'.repeat(300)).guard
-    expect(guard.observeSseEvent(delta('a'.repeat(300), 'text'))).toBeUndefined()
+    expect(guard.observeSseEvent({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'a'.repeat(1000) } })).toBeUndefined()
     expect(guard.observeSseEvent(delta('a'.repeat(212)))?.observedChars).toBe(512)
   })
 
@@ -199,7 +195,7 @@ describe('StreamRepetitionGuard', () => {
     const phrase = 'The available evidence suggests checking another distinct hypothesis.'
     const unique = 'A'.repeat(phrase.length)
     const value = (phrase + '\n').repeat(8) + unique + '\n'
-    const base = { maxCyclePeriod: 1, reasoningCycleMinChars: 65536, lineRepeatedMinChars: 1, lineConcentrationMin: 8, lineCoverageMin: 1 }
+    const base = { maxCyclePeriod: 1, cycleMinChars: 65536, lineRepeatedMinChars: 1, lineConcentrationMin: 8, lineCoverageMin: 1 }
     expect(run(value, [1], base).hit?.rule).toBe('phrase-pool')
     const mixed = unique + '\n' + (phrase + '\n').repeat(8)
     expect(run(mixed, [1], { ...base, lineConcentrationMin: 4.5, lineCoverageMin: 8 / 9 }).hit?.rule).toBe('phrase-pool')

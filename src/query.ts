@@ -120,7 +120,7 @@ import type { RepetitionHit } from './services/antiRepetition/types.js'
 export type StreamResetEvent = {
   type: 'stream_reset'
   requestId: string | undefined
-  reason: 'REASONING_LOOP' | 'TEXT_LOOP'
+  reason: 'REASONING_LOOP'
   withdrawnMessageIds: string[]
   recovering: boolean
 }
@@ -1103,7 +1103,6 @@ async function* queryLoop(
         !toolUseContext.abortController.signal.aborted
       logEvent('claudium_anti_repetition_hit', {
         code: antiRepHit.code,
-        channel: antiRepHit.channel,
         rule: antiRepHit.rule,
         observedChars: antiRepHit.observedChars,
         repeatedChars: antiRepHit.repeatedChars,
@@ -1124,14 +1123,14 @@ async function* queryLoop(
       }
       if (!recovering) {
         yield createAssistantAPIErrorMessage({
-          content: `${antiRepHit.code}: Pathological ${antiRepHit.channel === 'thinking' ? 'reasoning' : 'text'} repetition detected. Generation stopped; automatic recovery is disabled or its limit was reached.`,
+          content: `${antiRepHit.code}: Pathological reasoning repetition detected. Generation stopped; automatic recovery is disabled or its limit was reached.`,
           apiError: antiRepHit.code,
           error: 'unknown',
         })
         return { reason: 'repetition_loop', code: antiRepHit.code }
       }
       yield createSystemMessage(
-        `Repetitive ${antiRepHit.channel === 'thinking' ? 'reasoning' : 'text'} detected. Stopped this generation and continuing the task (${antiRepRecoveryCount + 1}/${config.antiRepetition.maxRecoveries}).`,
+        `Repetitive reasoning detected. Stopped this generation and continuing the task (${antiRepRecoveryCount + 1}/${config.antiRepetition.maxRecoveries}).`,
         'warning',
       )
       if (toolUseContext.abortController.signal.aborted) {
