@@ -6,11 +6,11 @@ import type { SDKStreamResetMessage } from '../entrypoints/agentSdkTypes.js'
 import { createStreamlinedTransformer, shouldIncludeInStreamlined } from './streamlinedTransform.js'
 
 const reset: StreamResetEvent = {
-  type: 'stream_reset', requestId: undefined, reason: 'TEXT_LOOP',
+  type: 'stream_reset', requestId: undefined, reason: 'REASONING_LOOP',
   withdrawnMessageIds: ['bad-uuid'], recovering: true,
 }
 const sdkReset: SDKStreamResetMessage = {
-  type: 'system', subtype: 'stream_reset', reason: 'TEXT_LOOP',
+  type: 'system', subtype: 'stream_reset', reason: 'REASONING_LOOP',
   withdrawn_message_ids: ['bad-uuid'], recovering: true,
   session_id: 'session', uuid: 'reset-uuid',
 }
@@ -52,11 +52,10 @@ describe('stream reset consumers', () => {
     expect(history).toEqual([])
   })
 
-  it('validates reset in the SDK union with optional request correlation and both reasons', () => {
-    for (const reason of ['REASONING_LOOP', 'TEXT_LOOP'] as const) {
-      expect(SDKMessageSchema().parse({ ...sdkReset, reason })).toEqual({ ...sdkReset, reason })
-      expect(SDKStreamResetMessageSchema().parse({ ...sdkReset, reason, request_id: 'request' }).request_id).toBe('request')
-    }
+  it('validates the reasoning reset in the SDK union with optional request correlation', () => {
+    expect(SDKMessageSchema().parse(sdkReset)).toEqual(sdkReset)
+    expect(SDKStreamResetMessageSchema().parse({ ...sdkReset, request_id: 'request' }).request_id).toBe('request')
+    expect(SDKStreamResetMessageSchema().safeParse({ ...sdkReset, reason: 'TEXT_LOOP' }).success).toBe(false)
     expect(SDKStreamResetMessageSchema().safeParse({ ...sdkReset, reason: 'OTHER' }).success).toBe(false)
   })
 

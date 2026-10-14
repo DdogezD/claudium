@@ -1081,8 +1081,6 @@ export function Config({
       antiRepetition: iu?.antiRepetition === undefined ? undefined : {
         ...iu.antiRepetition,
         enabled: iu.antiRepetition.enabled,
-        reasoning: iu.antiRepetition.reasoning,
-        text: iu.antiRepetition.text,
         autoResume: iu.antiRepetition.autoResume,
         maxRecoveries: iu.antiRepetition.maxRecoveries
       },
@@ -1634,7 +1632,6 @@ export function Config({
       }} />
         </>;
     })() : showSubmenu === 'AntiRepetitionSettings' ? (() => {
-      const userSettings = getSettingsForSource('userSettings');
       const effectiveAntiRepetition = settingsData?.antiRepetition;
       return <AntiRepetitionSettingsDialog
         initial={effectiveAntiRepetition}

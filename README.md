@@ -98,13 +98,10 @@ AntiRep 在消费 Anthropic Messages SSE 时实时检测病态复读。该功能
 {
   "antiRepetition": {
     "enabled": true,
-    "reasoning": true,
-    "text": false,
     "autoResume": true,
     "maxRecoveries": 2,
     "maxCyclePeriod": 512,
-    "reasoningCycleMinChars": 512,
-    "textCycleMinChars": 256,
+    "cycleMinChars": 512,
     "lineRepeatedMinChars": 2048,
     "lineCoverageMin": 0.6,
     "lineConcentrationMin": 4
@@ -112,13 +109,13 @@ AntiRep 在消费 Anthropic Messages SSE 时实时检测病态复读。该功能
 }
 ```
 
-- reasoning 与 text 使用独立检测器。尾部字符周期至少重复三次才会命中；有界短语池还可识别顺序不断变化的重复行。对代码、JSON、XML 和 Markdown 表格等结构化内容采取保守排除。
-- 命中后关闭当前上游流，报告 `REASONING_LOOP` 或 `TEXT_LOOP`，不会误标为 token 用尽或用户取消。本次失败的 assistant 内容会从有效历史撤销，不回放残缺 thinking 或无效签名。
-- `/config` 的 `AntiRep settings` 子菜单提供总开关、reasoning/text 检测、Auto-resume 与恢复次数设置；修改在下一条 query 生效。Auto-resume 对应 **`antiRepetition.autoResume`**，不是全局自动续跑开关，不影响 `max_output_tokens` 或 token budget。检测阈值可在 `settings.json` 中调整。
+- AntiRep 只检测 thinking/reasoning 输出。尾部字符周期至少重复三次才会命中；有界短语池还可识别顺序不断变化的重复行。对代码、JSON、XML 和 Markdown 表格等结构化内容采取保守排除。
+- 命中后关闭当前上游流，报告 `REASONING_LOOP`，不会误标为 token 用尽或用户取消。本次失败的 assistant 内容会从有效历史撤销，不回放残缺 thinking 或无效签名。
+- `/config` 的 `AntiRep settings` 子菜单提供总开关、Auto-resume 与恢复次数设置；修改在下一条 query 生效。Auto-resume 对应 **`antiRepetition.autoResume`**，不是全局自动续跑开关，不影响 `max_output_tokens` 或 token budget。检测阈值可在 `settings.json` 中调整。
 - 恢复通过一条 meta 指令继续**原本未完成的任务**，不从头重做。默认最多连续自动恢复两次；成功且配对的工具结果会重置连续恢复计数。设置 `autoResume: false` 或 `maxRecoveries: 0` 可仅检测、不恢复。
 - 本请求一旦出现工具调用起始事件、流式工具 JSON 或完整工具调用，就禁用 Guard。这优先保障工具安全，代价是无法熔断工具启动后出现的复读。用户取消始终优先于自动恢复。
 - 适用于交互 CLI、`-p`、SDK 与 agent 请求；不作用于压缩、标题、建议等辅助请求。每条 query/subagent 独立维护检测状态与恢复配额。
-- **正文恢复仍属实验性。** SDK 与 `--output-format stream-json` 消费者需要处理新增的 `system` / `stream_reset` 消息：清除被中断的 partial response，并撤销 `withdrawn_message_ids`。无法处理撤销的旧客户端应保持 AntiRep 关闭，尤其不要开启 `text`。
+- SDK 与 `--output-format stream-json` 消费者需要处理新增的 `system` / `stream_reset` 消息：清除被中断的 partial response，并撤销 `withdrawn_message_ids`。无法处理撤销的旧客户端应保持 AntiRep 关闭。
 - 中断请求可能收不到最终 usage。SDK 仅累计实际收到的 usage，不虚构剩余 token。诊断只包含规则与计数，不记录原始 reasoning。
 
 该功能只监测流式输出，不扫描或中断非流式 fallback 响应。阈值需要在检测延迟与误判之间取舍；保守的结构化排除也可能漏掉结构内部的复读。

@@ -6,7 +6,7 @@ import TextInput from '../TextInput.js'
 import { ANTI_REPETITION_DEFAULTS } from '../../services/antiRepetition/config.js'
 import type { AntiRepetitionConfig } from '../../services/antiRepetition/types.js'
 
-export type AntiRepetitionChanges = Partial<Pick<AntiRepetitionConfig, 'enabled' | 'reasoning' | 'text' | 'autoResume' | 'maxRecoveries'>>
+export type AntiRepetitionChanges = Partial<Pick<AntiRepetitionConfig, 'enabled' | 'autoResume' | 'maxRecoveries'>>
 
 type Props = {
   initial?: Partial<AntiRepetitionConfig>
@@ -14,15 +14,13 @@ type Props = {
   onCancel: () => void
 }
 
-const FIELDS = ['Enabled', 'Reasoning', 'Text (experimental)', 'Auto-resume', 'Max recoveries'] as const
-type BooleanField = 'enabled' | 'reasoning' | 'text' | 'autoResume'
-const BOOLEAN_FIELDS: BooleanField[] = ['enabled', 'reasoning', 'text', 'autoResume']
+const FIELDS = ['Enabled', 'Auto-resume', 'Max recoveries'] as const
+type BooleanField = 'enabled' | 'autoResume'
+const BOOLEAN_FIELDS: BooleanField[] = ['enabled', 'autoResume']
 
 export function AntiRepetitionSettingsDialog({ initial, onComplete, onCancel }: Props): React.ReactNode {
   const initialValues = {
     enabled: initial?.enabled ?? ANTI_REPETITION_DEFAULTS.enabled,
-    reasoning: initial?.reasoning ?? ANTI_REPETITION_DEFAULTS.reasoning,
-    text: initial?.text ?? ANTI_REPETITION_DEFAULTS.text,
     autoResume: initial?.autoResume ?? ANTI_REPETITION_DEFAULTS.autoResume,
     maxRecoveries: initial?.maxRecoveries ?? ANTI_REPETITION_DEFAULTS.maxRecoveries,
   }

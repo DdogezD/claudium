@@ -1491,7 +1491,7 @@ export const SDKStreamResetMessageSchema = lazySchema(() =>
     type: z.literal('system'),
     subtype: z.literal('stream_reset'),
     request_id: z.string().optional(),
-    reason: z.enum(['REASONING_LOOP', 'TEXT_LOOP']),
+    reason: z.literal('REASONING_LOOP'),
     withdrawn_message_ids: z.array(z.string()),
     recovering: z.boolean(),
     session_id: z.string(),

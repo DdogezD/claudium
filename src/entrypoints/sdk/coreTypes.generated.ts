@@ -101,7 +101,7 @@ export type SDKStreamResetMessage = {
   type: 'system'
   subtype: 'stream_reset'
   request_id?: string
-  reason: 'REASONING_LOOP' | 'TEXT_LOOP'
+  reason: 'REASONING_LOOP'
   withdrawn_message_ids: string[]
   recovering: boolean
   session_id: string
