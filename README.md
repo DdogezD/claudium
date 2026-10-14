@@ -90,9 +90,13 @@ sessionTitle.effort 用于会话标题生成；
 
 全局 `CLAUDE_CODE_EFFORT_LEVEL` 环境变量仍将覆盖这些配置。
 
-## AntiRep / Reasoning Loop Guard
+## Anti-Rep / 思考循环保护
 
-AntiRep 在消费 Anthropic Messages SSE 时实时检测病态复读。该功能**默认关闭**，不会修改模型采样参数。可在 `settings.json` 中启用：
+Anti-Rep 用来检测模型在思考过程中反复重复同一段内容、无法继续任务的情况。
+
+检测到这种情况后，Claudium 会丢弃这次无效的思考内容，并提示模型从原任务继续。它不会把重复内容当作正常回答，也不会重复执行已经完成的工具操作。
+
+该功能默认关闭，可在 `/config` 的 `Anti-Rep` 中调整，也可以在 `settings.json` 中配置：
 
 ```json
 {
@@ -109,16 +113,30 @@ AntiRep 在消费 Anthropic Messages SSE 时实时检测病态复读。该功能
 }
 ```
 
-- AntiRep 只检测 thinking/reasoning 输出。尾部字符周期至少重复三次才会命中；有界短语池还可识别顺序不断变化的重复行。对代码、JSON、XML 和 Markdown 表格等结构化内容采取保守排除。
-- 命中后关闭当前上游流，报告 `REASONING_LOOP`，不会误标为 token 用尽或用户取消。本次失败的 assistant 内容会从有效历史撤销，不回放残缺 thinking 或无效签名。
-- `/config` 的 `AntiRep settings` 子菜单提供总开关、Auto-resume 与恢复次数设置；修改在下一条 query 生效。Auto-resume 对应 **`antiRepetition.autoResume`**，不是全局自动续跑开关，不影响 `max_output_tokens` 或 token budget。检测阈值可在 `settings.json` 中调整。
-- 恢复通过一条 meta 指令继续**原本未完成的任务**，不从头重做。默认最多连续自动恢复两次；成功且配对的工具结果会重置连续恢复计数。设置 `autoResume: false` 或 `maxRecoveries: 0` 可仅检测、不恢复。
-- 本请求一旦出现工具调用起始事件、流式工具 JSON 或完整工具调用，就禁用 Guard。这优先保障工具安全，代价是无法熔断工具启动后出现的复读。用户取消始终优先于自动恢复。
-- 适用于交互 CLI、`-p`、SDK 与 agent 请求；不作用于压缩、标题、建议等辅助请求。每条 query/subagent 独立维护检测状态与恢复配额。
-- SDK 与 `--output-format stream-json` 消费者需要处理新增的 `system` / `stream_reset` 消息：清除被中断的 partial response，并撤销 `withdrawn_message_ids`。无法处理撤销的旧客户端应保持 AntiRep 关闭。
-- 中断请求可能收不到最终 usage。SDK 仅累计实际收到的 usage，不虚构剩余 token。诊断只包含规则与计数，不记录原始 reasoning。
+- `enabled`：是否启用 Anti-Rep。
+- `autoResume`：检测到重复后，是否自动继续原任务。
+- `maxRecoveries`：最多自动恢复次数，默认是 2 次。
+- 其余参数用于调整重复检测的敏感度，通常保持默认值即可。
 
-该功能只监测流式输出，不扫描或中断非流式 fallback 响应。阈值需要在检测延迟与误判之间取舍；保守的结构化排除也可能漏掉结构内部的复读。
+## Anti-Loop / 重复工具调用提醒
+
+Anti-Loop 用来提醒模型注意重复执行同一个工具的情况。当模型反复使用相同方式调用工具时，它会提示模型检查已有结果，换一种方法继续，或在任务已经完成时直接结束。
+
+它只是提醒，不会阻止工具执行，也不会修改工具返回的结果。该功能默认启用，可在 `/config` 的 `Anti-Loop` 中调整，也可以在 `settings.json` 中配置：
+
+```json
+{
+  "antiLoop": {
+    "enabled": true,
+    "thresholds": [3, 5, 8],
+    "argumentsPreviewChars": 500
+  }
+}
+```
+
+- `enabled`：是否启用 Anti-Loop。
+- `thresholds`：在连续重复调用达到第几次时提醒模型。默认在第 3、5、8 次提醒。
+- `argumentsPreviewChars`：提醒中展示的工具参数最大字符数，用来帮助模型确认自己重复了什么；只影响提示内容，不影响重复调用的判断。
 
 ## Advisor
 

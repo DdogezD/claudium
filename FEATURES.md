@@ -22,15 +22,15 @@ externalized `@ant/*` packages.
 - `bun run dev`
   Runs the CLI directly from source.
 
-## Runtime AntiRep / Reasoning Loop Guard
+## Runtime Anti-Rep / Reasoning Loop Guard
 
-AntiRep is built into the normal Query Loop and configured through the independent
+Anti-Rep is built into the normal Query Loop and configured through the independent
 `antiRepetition` settings object, **not** a `feature()` compile-time flag. It is
 disabled by default. When enabled, it detects repeated thinking/reasoning output,
 and automatic recovery is limited to two consecutive attempts by default.
-`/config` groups the controls under `AntiRep settings`; auto-resume is scoped to
+`/config` groups the controls under `Anti-Rep`; auto-resume is scoped to
 `antiRepetition.autoResume`, not a global continuation switch.
-See [README.md](README.md#antirep--reasoning-loop-guard) for the full configuration.
+See [README.md](README.md#anti-rep--reasoning-loop-guard) for the full configuration.
 
 The Guard consumes only `thinking_delta`, closes the upstream
 iterator on a hit, retracts the failed attempt and appends a meta continuation.
