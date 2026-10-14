@@ -3,6 +3,7 @@ import {
   buildModelDiscoveryUrls,
   createModelDiscoveryService,
   parseDiscoveredModel,
+  resolveClaudeProxyModelId,
   type ModelDiscoveryConnection,
 } from './modelDiscovery.js'
 
@@ -70,6 +71,17 @@ describe('model discovery URL and response parsing', () => {
       'https://api.anthropic.com', 'http://API.ANTHROPIC.COM:1234/v1',
       'https://api.anthropic.com./', 'https://api-staging.anthropic.com/v1',
     ]) expect(buildModelDiscoveryUrls(value)).toBeNull()
+  })
+
+  test('resolves CLIProxyAPI Claude IDs before exposing models', () => {
+    expect(resolveClaudeProxyModelId('claude-fable-5-dd-hsalf-newq/lacol'))
+      .toBe('local/qwen-flash')
+    expect(resolveClaudeProxyModelId('claude-fable-5-dd-2k-imik(max)'))
+      .toBe('kimi-k2(max)')
+    expect(parseDiscoveredModel({
+      id: 'claude-fable-5-dd-hsalf-newq/lacol',
+      display_name: 'qwen-flash',
+    })).toEqual({ id: 'local/qwen-flash', displayName: 'qwen-flash' })
   })
 
   test('keeps raw ID case and separators; sanitizes display names only', () => {

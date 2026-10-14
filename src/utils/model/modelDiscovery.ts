@@ -9,6 +9,22 @@ const MAX_BYTES = 1024 * 1024
 const MAX_ITEMS = 1000
 const MAX_PAGES = 3
 const CONTROL = /[\p{Cc}\p{Cf}]/u
+const CLAUDE_PROXY_MODEL_PREFIX = 'claude-fable-5-dd-'
+
+function reverseModelId(value: string): string {
+  return [...value].reverse().join('')
+}
+
+export function resolveClaudeProxyModelId(id: string): string {
+  const suffixStart = id.lastIndexOf('(')
+  const hasSuffix = suffixStart > 0 && id.endsWith(')')
+  const base = hasSuffix ? id.slice(0, suffixStart) : id
+  if (!base.startsWith(CLAUDE_PROXY_MODEL_PREFIX)) return id
+  const encoded = base.slice(CLAUDE_PROXY_MODEL_PREFIX.length)
+  if (!encoded) return id
+  const resolved = reverseModelId(encoded)
+  return hasSuffix ? `${resolved}${id.slice(suffixStart)}` : resolved
+}
 
 export function buildModelDiscoveryUrls(baseURL: string | undefined): {
   endpoint: string
@@ -54,10 +70,11 @@ export function parseDiscoveredModel(value: unknown): DiscoveredModel | null {
   if (!value || typeof value !== 'object') return null
   const { id, display_name } = value as Record<string, unknown>
   if (!validId(id)) return null
+  const resolvedId = resolveClaudeProxyModelId(id)
   const displayName = typeof display_name === 'string'
     ? display_name.replace(/[\p{Cc}\p{Cf}]/gu, '').trim().slice(0, 200)
     : undefined
-  return displayName ? { id, displayName } : { id }
+  return displayName ? { id: resolvedId, displayName } : { id: resolvedId }
 }
 
 export type ModelDiscoveryConnection = {

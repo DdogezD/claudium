@@ -7,7 +7,11 @@ import {
 
 const options = [
   { value: null, label: 'Default', description: 'Configured provider model' },
-  { value: 'provider/Model-A:latest', label: 'Model A', description: 'Endpoint model' },
+  {
+    value: 'kimi-k2',
+    label: 'Kimi K2',
+    description: 'Endpoint model',
+  },
   { value: 'other-model', label: 'Other', description: 'Configured model' },
 ]
 
@@ -81,18 +85,19 @@ describe('applying model candidates', () => {
 })
 
 describe('model candidate filtering', () => {
-  test('uses exact provider IDs and default command semantics', () => {
+  test('uses completion values and hides the default action', () => {
     const suggestions = generateModelSuggestions(options, '')
-    expect(suggestions.map(option => option.id)).toEqual(['default', 'provider/Model-A:latest', 'other-model'])
-    expect(suggestions[1]?.displayText).toBe('provider/Model-A:latest')
-    expect(suggestions[0]?.description).toContain('Reset')
+    expect(suggestions.map(option => option.id)).toEqual(['kimi-k2', 'other-model'])
+    expect(suggestions[0]?.displayText).toBe('kimi-k2')
+    expect(suggestions.some(option => option.displayText === 'Default')).toBe(false)
   })
 
-  test('matches IDs and display names without changing inserted casing', () => {
-    expect(generateModelSuggestions(options, 'MODEL A').map(option => option.id))
-      .toEqual(['provider/Model-A:latest'])
-    expect(generateModelSuggestions(options, 'PROVIDER/').map(option => option.id))
-      .toEqual(['provider/Model-A:latest'])
+  test('matches provider model IDs without display-name heuristics', () => {
+    expect(generateModelSuggestions(options, 'KIMI').map(option => option.id))
+      .toEqual(['kimi-k2'])
+    expect(generateModelSuggestions(options, 'K2').map(option => option.id))
+      .toEqual(['kimi-k2'])
+    expect(generateModelSuggestions(options, 'CLAUDE-FABLE')).toEqual([])
   })
 
   test('prefers ID prefix matches to substring matches', () => {
@@ -126,9 +131,10 @@ describe('model candidate filtering', () => {
       .toEqual([])
   })
 
-  test('sanitizes display descriptions and leaves manual IDs unvalidated', () => {
-    expect(generateModelSuggestions([{ value: 'safe', label: 'safe', description: 'hello\u001b\nworld' }], '')[0]?.description)
-      .toBe('hello  world')
+  test('does not expose internal model descriptions and leaves manual IDs unvalidated', () => {
+    expect(generateModelSuggestions([
+      { value: 'safe', label: 'safe', description: 'internal endpoint description' },
+    ], '')[0]?.description).toBeUndefined()
     expect(generateModelSuggestions(options, 'unknown/manual-model')).toEqual([])
     expect(applyModelSuggestion('/model old', 10, 'unknown/manual-model')?.newInput)
       .toBe('/model unknown/manual-model ')

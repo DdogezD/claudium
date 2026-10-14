@@ -88,12 +88,12 @@ export function getModelOptions(sessionModel?: ModelSetting): ModelOption[] {
 
   for (const model of getDiscoveredModels()) {
     const existing = byId.get(model.id)
-    if (existing) {
-      if (model.displayName) existing.label = model.displayName
-    } else {
-      const option = {
+    const displayName = model.displayName?.trim()
+    if (existing && displayName) existing.label = displayName
+    if (!existing) {
+      const option: ModelOption = {
         value: model.id,
-        label: model.displayName ?? model.id,
+        label: displayName ?? model.id,
         description: 'Model available from the current endpoint',
       }
       options.push(option)

@@ -27,17 +27,14 @@ export function generateModelSuggestions(
   const suggestions: SuggestionItem[] = []
   const seen = new Set<string>()
   for (const option of options) {
-    const id = option.value ?? 'default'
+    if (option.value === null) continue
+    const id = option.value
     if (!id || id.length > 512 || /[\s\p{Cc}\p{Cf}]/u.test(id) || seen.has(id)) continue
+    if (!id.toLowerCase().includes(search)) continue
     seen.add(id)
-    if (!id.toLowerCase().includes(search) && !option.label.toLowerCase().includes(search)) continue
-    const description = option.value === null
-      ? 'Reset the main model, preserving context and effort'
-      : option.label === id ? option.description : option.label
     suggestions.push({
       id,
       displayText: id,
-      description: description.replace(/[\p{Cc}\p{Cf}]/gu, ' ').slice(0, 256),
     })
   }
   return suggestions.sort((a, b) =>
