@@ -1,6 +1,8 @@
 import { getSessionId } from '../bootstrap/state.js'
 import { resolveAntiRepetitionConfig } from '../services/antiRepetition/config.js'
+import { resolveAntiLoopConfig } from '../services/antiLoop/config.js'
 import type { AntiRepetitionConfig } from '../services/antiRepetition/types.js'
+import type { AntiLoopConfig } from '../services/antiLoop/types.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../services/analytics-stub.js'
 import type { SessionId } from '../types/ids.js'
@@ -18,6 +20,7 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 export type QueryConfig = {
   sessionId: SessionId
   antiRepetition: AntiRepetitionConfig
+  antiLoop?: AntiLoopConfig
 
   // Runtime gates (env/statsig). NOT feature() gates — see above.
   gates: {
@@ -33,6 +36,7 @@ export function buildQueryConfig(): QueryConfig {
   return {
     sessionId: getSessionId(),
     antiRepetition: resolveAntiRepetitionConfig(getInitialSettings().antiRepetition),
+    antiLoop: resolveAntiLoopConfig(getInitialSettings().antiLoop),
     gates: {
       streamingToolExecution: checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
         'tengu_streaming_tool_execution2',

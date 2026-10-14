@@ -227,6 +227,16 @@ export const AntiRepetitionSettingsSchema = lazySchema(() =>
   }),
 )
 
+export const AntiLoopSettingsSchema = lazySchema(() =>
+  z.object({
+    enabled: z.boolean().optional(),
+    thresholds: z.array(z.number().int().min(2)).min(1).optional()
+      .refine(values => new Set(values).size === values.length, 'thresholds must not contain duplicates')
+      .refine(values => values.every((value, index) => index === 0 || value > values[index - 1]!), 'thresholds must be ascending'),
+    argumentsPreviewChars: z.number().int().positive().optional(),
+  }),
+)
+
 export const AdvisorProfileSchema = lazySchema(() =>
   ModelProfileSchema().extend({
     enabled: z.boolean().optional(),
@@ -476,6 +486,9 @@ export const SettingsSchema = lazySchema(() =>
       antiRepetition: AntiRepetitionSettingsSchema()
         .optional()
         .describe('Anti-repetition reasoning guard settings; disabled by default'),
+      antiLoop: AntiLoopSettingsSchema()
+        .optional()
+        .describe('Repeated tool call reminder settings; enabled by default'),
       modelProfiles: ModelProfilesSchema()
         .optional()
         .describe(

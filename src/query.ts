@@ -116,6 +116,8 @@ import { StreamRepetitionGuard } from './services/antiRepetition/detector.js'
 import { isAntiRepetitionQuerySource } from './services/antiRepetition/config.js'
 import { createAntiRepetitionPrompt } from './services/antiRepetition/prompt.js'
 import type { RepetitionHit } from './services/antiRepetition/types.js'
+import { RepeatToolReminderTracker } from './services/antiLoop/repeatToolReminder.js'
+import { createAntiLoopReminder } from './services/antiLoop/antiLoopMessages.js'
 
 export type StreamResetEvent = {
   type: 'stream_reset'
@@ -311,6 +313,9 @@ async function* queryLoop(
   // Snapshot immutable env/statsig/session state once at entry. See QueryConfig
   // for what's included and why feature() gates are intentionally excluded.
   const config = deps.config ?? buildQueryConfig()
+  const antiLoopTracker = config.antiLoop?.enabled
+    ? new RepeatToolReminderTracker(config.antiLoop)
+    : undefined
 
   // Fired once per user turn — the prompt is invariant across loop iterations,
   // so per-iteration firing would ask sideQuery the same question N times.
@@ -1898,9 +1903,26 @@ async function* queryLoop(
       return { reason: 'max_turns', turnCount: nextTurnCount }
     }
 
+    const antiLoopReminders: UserMessage[] = []
+    const completedToolUseIds = new Set<string>()
+    for (const result of toolResults) {
+      if (result.type !== 'user' || !Array.isArray(result.message.content)) continue
+      for (const block of result.message.content) {
+        if (block.type === 'tool_result' && !completedToolUseIds.has(block.tool_use_id)) {
+          completedToolUseIds.add(block.tool_use_id)
+        }
+      }
+    }
+    for (const tool of toolUseBlocks) {
+      if (!completedToolUseIds.has(tool.id)) continue
+      const reminder = antiLoopTracker?.observe({ toolName: tool.name, input: tool.input })
+      if (reminder) antiLoopReminders.push(createAntiLoopReminder(reminder))
+    }
+    for (const reminder of antiLoopReminders) yield reminder
+
     queryCheckpoint('query_recursive_call')
     const next: State = {
-      messages: [...messagesForQuery, ...assistantMessages, ...toolResults],
+      messages: [...messagesForQuery, ...assistantMessages, ...toolResults, ...antiLoopReminders],
       toolUseContext: toolUseContextWithQueryTracking,
       autoCompactTracking: tracking,
       turnCount: nextTurnCount,
