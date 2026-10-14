@@ -27,6 +27,7 @@ import { ModelProfileDialog } from './ModelProfileDialog.js';
 import { DomainRulesDialog, deriveDomainRules, type DomainRuleLists, type DomainRulesResult } from './DomainRulesDialog.js';
 import { DetailedEffortSettingsDialog } from './DetailedEffortSettingsDialog.js';
 import { AntiRepetitionSettingsDialog } from './AntiRepetitionSettingsDialog.js';
+import { AntiLoopSettingsDialog } from './AntiLoopSettingsDialog.js';
 import { getAdvisorModel } from '../../utils/advisor.js';
 import { formatProfileSummary, getModelProfile, type ModelScope } from '../../utils/model/modelProfiles.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
@@ -38,6 +39,7 @@ import { useIsInsideModal } from '../../context/modalContext.js';
 import { SearchBox } from '../SearchBox.js';
 import { getInitialSettings, getSettingsForSource, updateSettingsForSource } from '../../utils/settings/settings.js';
 import { ANTI_REPETITION_DEFAULTS } from '../../services/antiRepetition/config.js';
+import { ANTI_LOOP_DEFAULTS } from '../../services/antiLoop/config.js';
 import { bumpSettingsVersion } from '../../utils/settingsVersion.js';
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js';
 import { DEFAULT_OUTPUT_STYLE_NAME, OUTPUT_STYLE_CONFIG } from 'src/constants/outputStyles.js';
@@ -120,7 +122,7 @@ type Setting = (SettingBase & {
   onChange(value: string): void;
   type: 'managedEnum';
 });
-type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile' | 'DomainRules' | 'DetailedEffortSettings' | 'AntiRepetitionSettings';
+type SubMenu = 'Theme' | 'TeammateModel' | 'ExternalIncludes' | 'OutputStyle' | 'AdvisorPreference' | 'Language' | 'ModelProfile' | 'DomainRules' | 'DetailedEffortSettings' | 'AntiRepetitionSettings' | 'AntiLoopSettings';
 export function Config({
   onClose,
   context,
@@ -390,8 +392,14 @@ export function Config({
     }
   }, {
     id: 'antiRepetitionSettings',
-    label: 'AntiRep settings',
-    value: `enabled: ${settingsData?.antiRepetition?.enabled ?? ANTI_REPETITION_DEFAULTS.enabled} · max recoveries: ${settingsData?.antiRepetition?.maxRecoveries ?? ANTI_REPETITION_DEFAULTS.maxRecoveries}`,
+    label: 'Anti-Rep',
+    value: `${settingsData?.antiRepetition?.enabled ?? ANTI_REPETITION_DEFAULTS.enabled} · max recoveries: ${settingsData?.antiRepetition?.maxRecoveries ?? ANTI_REPETITION_DEFAULTS.maxRecoveries}`,
+    type: 'managedEnum' as const,
+    onChange: () => {}
+  }, {
+    id: 'antiLoopSettings',
+    label: 'Anti-Loop',
+    value: `${settingsData?.antiLoop?.enabled ?? ANTI_LOOP_DEFAULTS.enabled} · thresholds: ${(settingsData?.antiLoop?.thresholds ?? ANTI_LOOP_DEFAULTS.thresholds).join(',')}`,
     type: 'managedEnum' as const,
     onChange: () => {}
   },
@@ -1084,6 +1092,12 @@ export function Config({
         autoResume: iu.antiRepetition.autoResume,
         maxRecoveries: iu.antiRepetition.maxRecoveries
       },
+      antiLoop: iu?.antiLoop === undefined ? undefined : {
+        ...iu.antiLoop,
+        enabled: iu.antiLoop.enabled,
+        thresholds: iu.antiLoop.thresholds,
+        argumentsPreviewChars: iu.antiLoop.argumentsPreviewChars,
+      },
       minimumVersion: iu?.minimumVersion,
       advisorPreference: iu?.advisorPreference,
       language: iu?.language,
@@ -1200,7 +1214,7 @@ export function Config({
       }
       return;
     }
-    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language' || setting_0.id === 'domainRules' || setting_0.id === 'detailedEffortSettings' || setting_0.id === 'antiRepetitionSettings') {
+    if (setting_0.id === 'theme' || setting_0.id === 'modelProfileMain' || setting_0.id === 'modelProfileSubagent' || setting_0.id === 'modelProfileAdvisor' || setting_0.id === 'teammateDefaultModel' || setting_0.id === 'showExternalIncludesDialog' || setting_0.id === 'outputStyle' || setting_0.id === 'advisorPreference' || setting_0.id === 'language' || setting_0.id === 'domainRules' || setting_0.id === 'detailedEffortSettings' || setting_0.id === 'antiRepetitionSettings' || setting_0.id === 'antiLoopSettings') {
       // managedEnum items open a submenu — isDirty is set by the submenu's
       // completion callback, not here (submenu may be cancelled).
       switch (setting_0.id) {
@@ -1253,6 +1267,10 @@ export function Config({
           return;
         case 'antiRepetitionSettings':
           setShowSubmenu('AntiRepetitionSettings');
+          setTabsHidden(true);
+          return;
+        case 'antiLoopSettings':
+          setShowSubmenu('AntiLoopSettings');
           setTabsHidden(true);
           return;
       }
@@ -1650,7 +1668,35 @@ export function Config({
           const effectiveAfterSave = getInitialSettings()?.antiRepetition;
           setChanges(prev => ({
             ...prev,
-            'AntiRep settings': `enabled: ${effectiveAfterSave?.enabled ?? ANTI_REPETITION_DEFAULTS.enabled} · max recoveries: ${effectiveAfterSave?.maxRecoveries ?? ANTI_REPETITION_DEFAULTS.maxRecoveries}`
+            'Anti-Rep': `${effectiveAfterSave?.enabled ?? ANTI_REPETITION_DEFAULTS.enabled} · max recoveries: ${effectiveAfterSave?.maxRecoveries ?? ANTI_REPETITION_DEFAULTS.maxRecoveries}`
+          }));
+          setShowSubmenu(null);
+          setTabsHidden(false);
+          return null;
+        }}
+        onCancel={() => {
+          setShowSubmenu(null);
+          setTabsHidden(false);
+        }}
+      />;
+    })() : showSubmenu === 'AntiLoopSettings' ? (() => {
+      const effectiveAntiLoop = settingsData?.antiLoop;
+      return <AntiLoopSettingsDialog
+        initial={effectiveAntiLoop}
+        onComplete={changes => {
+          if (Object.keys(changes).length === 0) {
+            setShowSubmenu(null);
+            setTabsHidden(false);
+            return null;
+          }
+          const result = updateSettingsForSource('userSettings', { antiLoop: changes });
+          if (result.error) return result.error;
+          isDirty.current = true;
+          setSettingsData(getInitialSettings());
+          const effectiveAfterSave = getInitialSettings()?.antiLoop;
+          setChanges(prev => ({
+            ...prev,
+            'Anti-Loop': `${effectiveAfterSave?.enabled ?? ANTI_LOOP_DEFAULTS.enabled} · thresholds: ${(effectiveAfterSave?.thresholds ?? ANTI_LOOP_DEFAULTS.thresholds).join(',')}`
           }));
           setShowSubmenu(null);
           setTabsHidden(false);
