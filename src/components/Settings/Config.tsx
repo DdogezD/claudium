@@ -403,7 +403,7 @@ export function Config({
     type: 'managedEnum' as const,
     onChange: () => {}
   },
-  ...(getFeatureValue_CACHED_MAY_BE_STALE('tengu_chomp_inflection', false) ? [{
+  ...([{
 
     id: 'promptSuggestionEnabled',
     label: 'Prompt suggestions',
@@ -418,7 +418,7 @@ export function Config({
         promptSuggestionEnabled: enabled_1 ? undefined : false
       });
     }
-  }] : []),
+  }]),
   // Speculation toggle (ant-only)
   ...("external" === 'ant' ? [{
     id: 'speculationEnabled',
