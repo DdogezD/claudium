@@ -171,11 +171,7 @@ type ContextType = 'main' | 'subagent' | 'advisor'
 function getContextType(querySource?: string): ContextType {
   if (!querySource) return 'main'
   if (querySource === 'advisor') return 'advisor'
-  if (
-    querySource.startsWith('agent:') ||
-    querySource === 'supervisor' ||
-    querySource === 'speculation'
-  ) {
+  if (querySource.startsWith('agent:') || querySource === 'supervisor') {
     return 'subagent'
   }
   return 'main'

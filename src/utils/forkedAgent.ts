@@ -68,7 +68,7 @@ export type CacheSafeParams = {
 }
 
 // Slot written by handleStopHooks after each turn so post-turn forks
-// (promptSuggestion, postTurnSummary, /btw) can share the main loop's
+// (postTurnSummary, /btw) can share the main loop's
 // prompt cache without each caller threading params through.
 let lastCacheSafeParams: CacheSafeParams | null = null
 
@@ -105,7 +105,7 @@ export type ForkedAgentParams = {
   maxTurns?: number
   /** Optional callback invoked for each message as it arrives (for streaming UI) */
   onMessage?: (message: Message) => void
-  /** Skip sidechain transcript recording (e.g., for ephemeral work like speculation) */
+  /** Skip sidechain transcript recording (e.g., for ephemeral forks) */
   skipTranscript?: boolean
   /** Skip writing new prompt cache entries on the last message. For
    *  fire-and-forget forks where no future request will read from this prefix. */
@@ -294,8 +294,7 @@ export type SubagentContextOverrides = {
   shareAbortController?: boolean
   /** Critical system reminder to re-inject at every user turn */
   criticalSystemReminder_EXPERIMENTAL?: string
-  /** When true, canUseTool must always be called even when hooks auto-approve.
-   *  Used by speculation for overlay file path rewriting. */
+  /** When true, canUseTool must always be called even when hooks auto-approve. */
   requireCanUseTool?: boolean
   /** Override replacement state — used by resumeAgentBackground to thread
    * state reconstructed from the resumed sidechain so the same results

@@ -140,7 +140,7 @@ function isExcludedModel(model: string): boolean {
  * notifications when multiple instances of the same agent type run
  * concurrently.
  *
- * Untracked sources (speculation, session_memory, prompt_suggestion, etc.)
+ * Untracked sources (session_memory, etc.)
  * are short-lived forked agents where cache break detection provides no
  * value — they run 1-3 turns with a fresh agentId each time, so there's
  * nothing meaningful to compare against. Their cache metrics are still

@@ -270,7 +270,7 @@ export async function microcompactMessages(
   }
 
   // Only run cached MC for the main thread to prevent forked agents
-  // (session_memory, prompt_suggestion, etc.) from registering their
+  // (session_memory, etc.) from registering their
   // tool_results in the global cachedMCState, which would cause the main
   // thread to try deleting tools that don't exist in its own conversation.
   if (feature('CACHED_MICROCOMPACT')) {

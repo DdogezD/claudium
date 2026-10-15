@@ -25,6 +25,6 @@ test('allows only primary loop sources and skips auxiliary requests', () => {
   for (const source of ['sdk', 'repl_main_thread', 'repl_main_thread:outputStyle:custom',
     'agent:default', 'agent:custom', 'agent:builtin:Explore']) expect(isAntiRepetitionQuerySource(source)).toBe(true)
   for (const source of ['', 'sdk_extra', 'repl_main_thread_fake', 'agent:builtin:', 'agent:unknown',
-    'advisor', 'session_memory', 'web_search_tool', 'prompt_suggestion', 'speculation',
+    'advisor', 'session_memory', 'web_search_tool',
     'tool_use_summary_generation', 'auto_dream', 'rename_generate_name']) expect(isAntiRepetitionQuerySource(source)).toBe(false)
 })
