@@ -166,8 +166,7 @@ import { resetAutoModeOptInForDefaultOffer } from './migrations/resetAutoModeOpt
 /* eslint-enable @typescript-eslint/no-require-imports */
 // teleportWithProgress dynamically imported at call site
 import { initializeLspServerManager } from './services/lsp/manager.js';
-import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/promptSuggestion.js';
-import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
+import { type AppState, getDefaultAppState } from './state/AppStateStore.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { createStore } from './state/store.js';
 import { asSessionId } from './types/ids.js';
@@ -2534,20 +2533,10 @@ async function run(): Promise<CommanderCommand> {
       },
       attribution: createEmptyAttributionState(),
       thinkingEnabled,
-      promptSuggestionEnabled: shouldEnablePromptSuggestion(),
       sessionHooks: new Map(),
       inbox: {
         messages: []
       },
-      promptSuggestion: {
-        text: null,
-        promptId: null,
-        shownAt: 0,
-        acceptedAt: 0,
-        generationRequestId: null
-      },
-      speculation: IDLE_SPECULATION_STATE,
-      speculationSessionTimeSavedMs: 0,
       skillImprovement: {
         suggestion: null
       },

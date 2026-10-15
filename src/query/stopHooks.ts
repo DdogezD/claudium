@@ -50,8 +50,7 @@ const jobClassifierModule = feature('TEMPLATES')
 
 import type { QuerySource } from '../constants/querySource.js'
 import { executeAutoDream } from '../services/autoDream/autoDream.js'
-import { executePromptSuggestion } from '../services/PromptSuggestion/promptSuggestion.js'
-import { isBareMode, isEnvDefinedFalsy } from '../utils/envUtils.js'
+import { isBareMode } from '../utils/envUtils.js'
 import {
   createCacheSafeParams,
   saveCacheSafeParams,
@@ -130,14 +129,10 @@ export async function* handleStopHooks(
       new Promise<void>(r => setTimeout(r, 60_000).unref()),
     ])
   }
-  // --bare / SIMPLE: skip background bookkeeping (prompt suggestion,
-  // memory extraction, auto-dream). Scripted -p calls don't want auto-memory
-  // or forked agents contending for resources during shutdown.
+  // --bare / SIMPLE: skip background bookkeeping (memory extraction,
+  // auto-dream). Scripted -p calls don't want auto-memory or forked agents
+  // contending for resources during shutdown.
   if (!isBareMode()) {
-    // Inline env check for dead code elimination in external builds
-    if (!isEnvDefinedFalsy(process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION)) {
-      void executePromptSuggestion(stopHookContext)
-    }
     if (
       feature('EXTRACT_MEMORIES') &&
       !toolUseContext.agentId &&

@@ -23,7 +23,7 @@ import { type AppState, type AppStateStore, getDefaultAppState } from './AppStat
 // TODO: Remove these re-exports once all callers import directly from
 // ./AppStateStore.js. Kept for back-compat during migration so .ts callers
 // can incrementally move off the .tsx import and stop pulling React.
-export { type AppState, type AppStateStore, type CompletionBoundary, getDefaultAppState, IDLE_SPECULATION_STATE, type SpeculationResult, type SpeculationState } from './AppStateStore.js';
+export { type AppState, type AppStateStore, getDefaultAppState } from './AppStateStore.js';
 export const AppStoreContext = React.createContext<AppStateStore | null>(null);
 type Props = {
   children: React.ReactNode;
@@ -136,7 +136,7 @@ function useAppStore(): AppStateStore {
  * Do NOT return new objects from the selector -- Object.is will always see
  * them as changed. Instead, select an existing sub-object reference:
  * ```
- * const { text, promptId } = useAppState(s => s.promptSuggestion) // good
+ * const { resources, clients } = useAppState(s => s.mcp) // good
  * ```
  */
 export function useAppState(selector) {
