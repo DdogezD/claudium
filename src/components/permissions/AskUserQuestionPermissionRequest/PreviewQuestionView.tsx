@@ -136,7 +136,14 @@ export function PreviewQuestionView({
 
   // Re-submit the answer (plain label) when exiting notes input.
   // Notes are stored in questionStates and collected at submit time via annotations.
+  // Guarded by a ref: Enter/Escape reach us via BOTH the TextInput's useInput
+  // (raw input emit) and the container's DOM onKeyDown in the same batch —
+  // without the guard, onAnswer would fire twice (double-advance / double
+  // submitAnswers for single-question dialogs).
+  const notesOpenRef = useRef(false);
   const handleNotesExit = useCallback(() => {
+    if (!notesOpenRef.current) return;
+    notesOpenRef.current = false;
     setIsInNotesInput(false);
     onTextInputFocus(false);
     if (selectedValue) {
@@ -186,8 +193,10 @@ export function PreviewQuestionView({
       return;
     }
     if (isInNotesInput) {
-      // In notes input mode, handle escape to exit back to option navigation
-      if (e.key === 'escape') {
+      // Handle Enter/Escape here in the DOM handler: the notes TextInput
+      // mounts late (on 'n'), so its useInput listener is last on the event
+      // emitter and any earlier handler consuming Enter would starve it.
+      if (e.key === 'escape' || e.key === 'return') {
         e.preventDefault();
         handleNotesExit();
       }
@@ -214,6 +223,7 @@ export function PreviewQuestionView({
     } else if (e.key === 'n' && !e.ctrl && !e.meta) {
       // Press 'n' to focus the notes input
       e.preventDefault();
+      notesOpenRef.current = true;
       setIsInNotesInput(true);
       onTextInputFocus(true);
     } else if (e.key === 'escape') {
@@ -314,11 +324,12 @@ export function PreviewQuestionView({
           </Box>
           <Box marginTop={1}>
             <Text color="inactive" dimColor>
-              Enter to select · {figures.arrowUp}/{figures.arrowDown} to
-              navigate · n to add notes
-              {questions.length > 1 && <> · Tab to switch questions</>}
-              {isInNotesInput && editorName && <> · ctrl+g to edit in {editorName}</>}{' '}
-              · Esc to cancel
+              {isInNotesInput ? <>Enter to save note · Esc to cancel edit{editorName && <> · ctrl+g to edit in {editorName}</>}</> : <>
+                  Enter to select · {figures.arrowUp}/{figures.arrowDown} to
+                  navigate · n to add notes
+                  {questions.length > 1 && <> · Tab to switch questions</>}
+                  {' '}· Esc to cancel
+                </>}
             </Text>
           </Box>
         </Box>
