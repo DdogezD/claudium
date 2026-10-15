@@ -51,8 +51,8 @@ Three independent mechanisms, all editable here:
 \`\`\`json
 {
   "webSearch": {
-    "allowedDomains": ["example.com", "*://docs.example.com/guides/*"],
-    "blockedDomains": ["*://*.example.net/*", "example.org/blog/article/*"]
+    "allowedDomains": ["example.com", "docs.example.com/guides"],
+    "blockedDomains": ["example.net", "example.org/blog/article"]
   },
   "permissions": {
     "allow": ["WebFetch(domain:example.com)", "WebFetch(domain:*.example.org)"],
@@ -66,12 +66,12 @@ Three independent mechanisms, all editable here:
 }
 \`\`\`
 
-- \`webSearch.allowedDomains\` — HARD CEILING for WebSearch results. The model's per-call \`allowed_domains\` can only narrow within it; an empty array \`[]\` denies ALL web searches. Entries: plain domain (subdomains included) or uBlacklist match pattern \`*://*.host/path/*\`.
+- \`webSearch.allowedDomains\` — HARD CEILING for WebSearch results. The model's per-call \`allowed_domains\` can only narrow within it; an empty array \`[]\` denies ALL web searches. Entries are scheme-free: plain domain \`example.com\` (subdomains included) or path-root rule \`example.com/path\` (matches the path itself and everything under it). Only https URLs can match.
 - \`webSearch.blockedDomains\` — union with per-call \`blocked_domains\`. Same entry syntax.
 
 Web search has two modes, decided by which keys are set:
 - **Blocklist mode** — only \`blockedDomains\` set: everything allowed except these. Do NOT add \`allowedDomains\` in this mode.
-- **Allowlist mode** — \`allowedDomains\` set: only these are allowed, and \`blockedDomains\` may additionally be set as exceptions carved out of the allowlist (a result must match the allowlist AND no blocked entry). Example: allow \`*://cloud.tencent.com/document/*\` but block \`developer.cloud.tencent.com\`.
+- **Allowlist mode** — \`allowedDomains\` set: only these are allowed, and \`blockedDomains\` may additionally be set as exceptions carved out of the allowlist (a result must match the allowlist AND no blocked entry). Example: allow \`cloud.tencent.com/document\` but block \`developer.cloud.tencent.com\`.
 
 The /config → "Domain rules" editor follows the same model: blocklist mode edits one list; allowlist mode edits the allowlist plus an Exceptions section.
 - \`WebFetch(domain:X)\` — permission rules controlling which hosts WebFetch may fetch. \`X\` is exact host or \`*.suffix\` (matches suffix host + subdomains).
