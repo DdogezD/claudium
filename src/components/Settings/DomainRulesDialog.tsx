@@ -3,7 +3,7 @@ import React, { useCallback, useState } from 'react'
 import { Box, Text, useInput, useTerminalFocus } from '../../ink.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { useKeybinding } from '../../keybindings/useKeybinding.js'
-import { compileMatchPattern } from '../../tools/WebSearchTool/matchPattern.js'
+import { parseRuleEntry } from '../../tools/WebSearchTool/matchPattern.js'
 import TextInput from '../TextInput.js'
 
 // Raw settings-shaped lists, as read from settings.json.
@@ -71,7 +71,7 @@ const GROUPS: Group[] = [
   {
     key: 'websearch',
     title: 'Web Search',
-    placeholder: 'example.com or *://*.example.com/path/*',
+    placeholder: 'example.com or example.com/path',
     modeLabel: {
       blocklist: 'Allow all except blocked',
       allowlist: 'Allow only listed domains',
@@ -79,13 +79,9 @@ const GROUPS: Group[] = [
     validate(rule, existing) {
       const base = baseRuleError(rule, existing)
       if (base) return base
-      const trimmed = rule.trim()
-      if (trimmed.includes('://')) {
-        return compileMatchPattern(trimmed) === null
-          ? 'Invalid match pattern (expected e.g. *://*.example.com/path/*)'
-          : null
-      }
-      return DOMAIN_RE.test(trimmed) ? null : 'Invalid domain'
+      return parseRuleEntry(rule.trim()) === null
+        ? 'Invalid rule (expected e.g. example.com or example.com/path)'
+        : null
     },
   },
   {

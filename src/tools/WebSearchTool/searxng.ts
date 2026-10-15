@@ -20,7 +20,7 @@ const SNIPPET_MAX_LENGTH = 500
 
 export type SearxngWebSearchRequest = {
   query: string
-  /** Allow entries (plain domains or match patterns) for display/filtering. */
+  /** Allow entries (plain domains or path rules) for display/filtering. */
   allowedDomains?: string[]
   blockedDomains?: string[]
   /**

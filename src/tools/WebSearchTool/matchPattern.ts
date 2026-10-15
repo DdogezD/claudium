@@ -1,72 +1,57 @@
 /**
  * URL rule matching for WebSearch domain restrictions.
  *
- * Each settings/per-call entry is one of:
+ * Rule entries are scheme-free by design — URL authorization is about
+ * host + path, and only https URLs can ever match (search results are
+ * https in practice; the restriction is a system invariant, not
+ * per-entry configuration):
  *
- * - Plain domain: `csdn.net` — matches that host and its subdomains
- *   (backward-compatible with the original allowed_domains semantics).
- * - uBlacklist-style match pattern: `*://*.csdn.net/*` —
- *   `<scheme>://<host><path>` where scheme is `*` (http+https), `http` or
- *   `https`; host is `*` (any), `*.example.com` (domain + subdomains) or an
- *   exact host; path starts with `/` and `*` matches any character sequence.
- *   This covers host+path-prefix rules such as
- *   `*://cloud.tencent.com/developer/article/*`.
+ * - `example.com` — host suffix match (subdomains included)
+ * - `example.com/path` — host suffix match AND path root match:
+ *   pathname == "/path" or starts with "/path/". A trailing `/*` is
+ *   accepted and ignored (`example.com/path/*` ≡ `example.com/path`).
  */
 
-const patternCache = new Map<string, RegExp | null>()
+const HOST_RE = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+export type RuleEntry = {
+  host: string
+  pathRoot?: string
 }
 
 /**
- * Compile a uBlacklist-style match pattern to a RegExp, or return null for
- * invalid patterns. Results are cached; patterns are few and long-lived.
+ * Parse a rule entry into host + optional path root, or null if invalid.
+ * `example.com/` and `example.com/*` degenerate to the plain-host form.
  */
-export function compileMatchPattern(pattern: string): RegExp | null {
-  const cached = patternCache.get(pattern)
-  if (cached !== undefined) {
-    return cached
+export function parseRuleEntry(entry: string): RuleEntry | null {
+  const trimmed = entry.trim()
+  if (!trimmed || trimmed.includes('://')) {
+    return null
   }
-
-  const match = pattern.match(/^(\*|https?):\/\/([^/]*)(\/.*)?$/i)
-  let regex: RegExp | null = null
-  if (match) {
-    const [, schemeRaw, hostRaw, pathRaw = '/*'] = match
-    const scheme = schemeRaw!.toLowerCase()
-    const host = hostRaw!.toLowerCase()
-
-    const schemeRe = scheme === '*' ? 'https?' : escapeRegExp(scheme)
-
-    let hostRe: string | null = null
-    if (host === '*') {
-      hostRe = '[^/]+'
-    } else if (host.startsWith('*.')) {
-      // *.example.com matches example.com itself and any subdomain
-      hostRe = `([^/]+\\.)?${escapeRegExp(host.slice(2))}`
-    } else if (!host.includes('*')) {
-      hostRe = escapeRegExp(host)
-    }
-    // Partial host wildcards (e.g. "ex*ample.com") are unsupported,
-    // matching uBlacklist.
-
-    if (hostRe !== null) {
-      const pathRe = pathRaw!.split('*').map(escapeRegExp).join('.*')
-      regex = new RegExp(`^${schemeRe}://${hostRe}${pathRe}$`)
-    }
+  const slash = trimmed.indexOf('/')
+  const host = (slash === -1 ? trimmed : trimmed.slice(0, slash)).toLowerCase()
+  if (!HOST_RE.test(host)) {
+    return null
   }
-
-  patternCache.set(pattern, regex)
-  return regex
+  if (slash === -1) {
+    return { host }
+  }
+  let pathRoot = trimmed.slice(slash)
+  if (pathRoot.endsWith('*')) {
+    pathRoot = pathRoot.slice(0, -1)
+  }
+  if (pathRoot.endsWith('/')) {
+    pathRoot = pathRoot.slice(0, -1)
+  }
+  if (pathRoot.length <= 1) {
+    return { host }
+  }
+  return { host, pathRoot }
 }
 
-export function isMatchPattern(entry: string): boolean {
-  return entry.includes('://')
-}
-
-/** Lowercase scheme and host so patterns match URLs case-insensitively. */
-function normalizeUrlForMatching(url: string): string {
-  return url.replace(/^([a-zA-Z]+:\/\/[^/]+)/, prefix => prefix.toLowerCase())
+/** A path rule carries a `/` and is meaningless to provider search APIs. */
+export function isPathRule(entry: string): boolean {
+  return entry.includes('/')
 }
 
 function hostMatchesDomain(hostname: string, domain: string): boolean {
@@ -78,22 +63,31 @@ function hostMatchesDomain(hostname: string, domain: string): boolean {
 }
 
 /**
- * Match a URL against a single rule entry (plain domain or match pattern).
- * Invalid patterns never match.
+ * Match a URL against a single rule entry. Invalid entries never match;
+ * non-https URLs never match.
  */
 export function matchesWebSearchRule(entry: string, url: string): boolean {
-  if (isMatchPattern(entry)) {
-    const regex = compileMatchPattern(entry)
-    return regex !== null && regex.test(normalizeUrlForMatching(url))
+  const rule = parseRuleEntry(entry)
+  if (!rule) {
+    return false
   }
-
-  let hostname: string
+  let parsed: URL
   try {
-    hostname = new URL(url).hostname.toLowerCase()
+    parsed = new URL(url)
   } catch {
     return false
   }
-  return hostMatchesDomain(hostname, entry)
+  if (parsed.protocol !== 'https:') {
+    return false
+  }
+  if (!hostMatchesDomain(parsed.hostname.toLowerCase(), rule.host)) {
+    return false
+  }
+  if (rule.pathRoot === undefined) {
+    return true
+  }
+  const pathname = parsed.pathname
+  return pathname === rule.pathRoot || pathname.startsWith(rule.pathRoot + '/')
 }
 
 export type WebSearchRuleConstraint = {
@@ -120,7 +114,5 @@ export function matchesWebSearchRules(
 
 /** Extract plain-domain entries (the only kind a provider API accepts). */
 export function toProviderDomains(entries: string[] | undefined): string[] {
-  return (entries ?? []).filter(
-    entry => !isMatchPattern(entry) && !entry.includes('/'),
-  )
+  return (entries ?? []).filter(entry => !isPathRule(entry))
 }

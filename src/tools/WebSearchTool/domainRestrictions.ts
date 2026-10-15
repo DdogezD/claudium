@@ -5,14 +5,15 @@
  *
  * Rule syntax (both lists, model parameters and settings alike):
  * - Plain domain: `csdn.net` — host suffix match (subdomains included)
- * - uBlacklist-style match pattern: `*://*.csdn.net/*`,
- *   `*://cloud.tencent.com/developer/article/*` — see matchPattern.ts
+ * - Path root rule: `cloud.tencent.com/document` — host match plus
+ *   pathname == root or under it — see matchPattern.ts. Rules are
+ *   scheme-free; only https URLs can match.
  *
  * Semantics:
  * - settings.allowedDomains is a hard ceiling. If the model also passes
  *   allowed_domains, both become allow rule sets that are ANDed: a URL must
  *   match at least one rule in the settings set AND one in the model set.
- *   (AND-of-sets replaces syntactic intersection so match patterns compose.)
+ *   (AND-of-sets replaces syntactic intersection so path rules compose.)
  * - settings.allowedDomains present as an empty array is deny-all
  *   (same convention as availableModels).
  * - blockedDomains from settings and from the call are unioned (OR).

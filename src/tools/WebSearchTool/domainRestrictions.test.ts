@@ -62,14 +62,14 @@ describe('resolveWebSearchDomains', () => {
     })
   })
 
-  test('match patterns pass through unchanged', () => {
+  test('path rules pass through unchanged', () => {
     expect(
       resolveWebSearchDomains({}, {
-        blockedDomains: ['*://cloud.tencent.com/developer/article/*'],
+        blockedDomains: ['cloud.tencent.com/developer/article'],
       }),
     ).toEqual({
       denyAll: false,
-      blockedDomains: ['*://cloud.tencent.com/developer/article/*'],
+      blockedDomains: ['cloud.tencent.com/developer/article'],
     })
   })
 

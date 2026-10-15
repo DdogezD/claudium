@@ -103,8 +103,8 @@ import type { WebSearchProgress } from '../../types/tools.js'
 function makeToolSchema(
   domains: ResolvedWebSearchDomains,
 ): BetaWebSearchTool20250305 {
-  // Provider APIs only understand plain domains — match patterns and
-  // host/path rules are enforced client-side in makeOutputFromSearchResponse.
+  // Provider APIs only understand plain domains — path rules are enforced
+  // client-side in makeOutputFromSearchResponse.
   // The API also rejects requests that carry both lists, so the allowlist
   // takes precedence (it already subsumes blocking outside its domains).
   const allowed = toProviderDomains(domains.allowedDomains)
@@ -176,7 +176,7 @@ function makeOutputFromSearchResponse(
         continue
       }
       // Success case - add results to our collection. Apply client-side
-      // rules so match patterns / host+path rules are enforced even on the
+      // rules so host+path rules are enforced even on the
       // provider-side search path (the API only understands plain domains).
       const hits = block.content
         .filter(r => !constraint || matchesWebSearchRules(r.url, constraint))
