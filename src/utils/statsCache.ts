@@ -68,8 +68,6 @@ export type PersistedStatsCache = {
   firstSessionDate: string | null
   // Hour counts for peak hour calculation (bounded to 24 entries)
   hourCounts: { [hour: number]: number }
-  // Speculation time saved across all sessions
-  totalSpeculationTimeSavedMs: number
   // Shot distribution: map of shot count → number of sessions (ant-only)
   shotDistribution?: { [shotCount: number]: number }
 }
@@ -90,7 +88,6 @@ function getEmptyCache(): PersistedStatsCache {
     longestSession: null,
     firstSessionDate: null,
     hourCounts: {},
-    totalSpeculationTimeSavedMs: 0,
     shotDistribution: {},
   }
 }
@@ -133,7 +130,6 @@ function migrateStatsCache(
     longestSession: parsed.longestSession ?? null,
     firstSessionDate: parsed.firstSessionDate ?? null,
     hourCounts: parsed.hourCounts ?? {},
-    totalSpeculationTimeSavedMs: parsed.totalSpeculationTimeSavedMs ?? 0,
     // Preserve undefined (don't default to {}) so the SHOT_STATS recompute
     // check in loadStatsCache fires for v1/v2 caches that lacked this field.
     shotDistribution: parsed.shotDistribution,
@@ -265,7 +261,6 @@ export function mergeCacheWithNewStats(
     modelUsage: { [modelName: string]: ModelUsage }
     sessionStats: SessionStats[]
     hourCounts: { [hour: number]: number }
-    totalSpeculationTimeSavedMs: number
     shotDistribution?: { [shotCount: number]: number }
   },
   newLastComputedDate: string,
@@ -376,9 +371,6 @@ export function mergeCacheWithNewStats(
     longestSession,
     firstSessionDate,
     hourCounts,
-    totalSpeculationTimeSavedMs:
-      existingCache.totalSpeculationTimeSavedMs +
-      newStats.totalSpeculationTimeSavedMs,
   }
 
   if (feature('SHOT_STATS')) {

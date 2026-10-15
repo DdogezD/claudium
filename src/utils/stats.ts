@@ -78,9 +78,6 @@ export type ClaudeCodeStats = {
   peakActivityDay: string | null
   peakActivityHour: number | null
 
-  // Speculation time saved
-  totalSpeculationTimeSavedMs: number
-
   // Shot stats (ant-only, gated by SHOT_STATS feature flag)
   shotDistribution?: { [shotCount: number]: number }
   oneShotRate?: number
@@ -96,7 +93,6 @@ type ProcessedStats = {
   sessionStats: SessionStats[]
   hourCounts: { [hour: number]: number }
   totalMessages: number
-  totalSpeculationTimeSavedMs: number
   shotDistribution?: { [shotCount: number]: number }
 }
 
@@ -126,7 +122,6 @@ async function processSessionFiles(
   const sessions: SessionStats[] = []
   const hourCounts = new Map<number, number>()
   let totalMessages = 0
-  let totalSpeculationTimeSavedMs = 0
   const modelUsageAgg: { [modelName: string]: ModelUsage } = {}
   const shotDistributionMap = feature('SHOT_STATS')
     ? new Map<number, number>()
@@ -197,8 +192,6 @@ async function processSessionFiles(
       for (const entry of entries) {
         if (isTranscriptMessage(entry)) {
           messages.push(entry)
-        } else if (entry.type === 'speculation-accept') {
-          totalSpeculationTimeSavedMs += entry.timeSavedMs
         }
       }
 
@@ -360,7 +353,6 @@ async function processSessionFiles(
     sessionStats: sessions,
     hourCounts: Object.fromEntries(hourCounts),
     totalMessages,
-    totalSpeculationTimeSavedMs,
     ...(feature('SHOT_STATS') && shotDistributionMap
       ? { shotDistribution: Object.fromEntries(shotDistributionMap) }
       : {}),
@@ -586,10 +578,6 @@ function cacheToStats(
         ) + 1
       : 0
 
-  const totalSpeculationTimeSavedMs =
-    cache.totalSpeculationTimeSavedMs +
-    (todayStats?.totalSpeculationTimeSavedMs || 0)
-
   const result: ClaudeCodeStats = {
     totalSessions,
     totalMessages,
@@ -604,7 +592,6 @@ function cacheToStats(
     lastSessionDate,
     peakActivityDay,
     peakActivityHour,
-    totalSpeculationTimeSavedMs,
   }
 
   if (feature('SHOT_STATS')) {
@@ -823,7 +810,6 @@ function processedStatsToClaudeCodeStats(
     lastSessionDate,
     peakActivityDay,
     peakActivityHour,
-    totalSpeculationTimeSavedMs: stats.totalSpeculationTimeSavedMs,
   }
 
   if (feature('SHOT_STATS') && stats.shotDistribution) {
@@ -1056,6 +1042,5 @@ function getEmptyStats(): ClaudeCodeStats {
     lastSessionDate: null,
     peakActivityDay: null,
     peakActivityHour: null,
-    totalSpeculationTimeSavedMs: 0,
   }
 }

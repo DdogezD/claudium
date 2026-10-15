@@ -230,12 +230,6 @@ export type TranscriptMessage = SerializedMessage & {
   promptId?: string // Correlates with OTel prompt.id for user prompt messages
 }
 
-export type SpeculationAcceptMessage = {
-  type: 'speculation-accept'
-  timestamp: string
-  timeSavedMs: number
-}
-
 /**
  * Persisted context-collapse commit. The archived messages themselves are
  * NOT persisted — they're already in the transcript as ordinary user/
@@ -309,7 +303,6 @@ export type Entry =
   | FileHistorySnapshotMessage
   | AttributionSnapshotMessage
   | QueueOperationMessage
-  | SpeculationAcceptMessage
   | ModeEntry
   | WorktreeStateEntry
   | ContentReplacementEntry
