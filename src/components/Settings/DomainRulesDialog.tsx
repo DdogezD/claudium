@@ -1,6 +1,7 @@
 import figures from 'figures'
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { Box, Text, useInput, useTerminalFocus } from '../../ink.js'
+import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { useKeybinding } from '../../keybindings/useKeybinding.js'
 import { compileMatchPattern } from '../../tools/WebSearchTool/matchPattern.js'
 import TextInput from '../TextInput.js'
@@ -193,6 +194,32 @@ export function DomainRulesDialog({
   const clampedSelected = clampRow(selectedRow)
   const currentRow = rows[clampedSelected]
 
+  // Scroll window, same pattern as the Config main menu: render a fixed
+  // number of rows and keep the selection inside the window.
+  const { rows: terminalRows } = useTerminalSize()
+  const maxVisible = Math.max(5, Math.min(Math.floor(terminalRows * 0.8), 30) - 12)
+  const [scrollOffset, setScrollOffset] = useState(0)
+  const adjustScrollOffset = useCallback(
+    (newIndex: number) => {
+      setScrollOffset(prev => {
+        if (newIndex < prev) return newIndex
+        if (newIndex >= prev + maxVisible) return newIndex - maxVisible + 1
+        return prev
+      })
+    },
+    [maxVisible],
+  )
+  // Keep the selection visible when the list shrinks (deletes) or the
+  // window resizes.
+  React.useEffect(() => {
+    setScrollOffset(prev => {
+      if (clampedSelected < prev) return clampedSelected
+      if (clampedSelected >= prev + maxVisible) return clampedSelected - maxVisible + 1
+      return prev
+    })
+  }, [rows.length, clampedSelected, maxVisible])
+  const visibleRows = rows.slice(scrollOffset, scrollOffset + maxVisible)
+
   // Esc closes the dialog (discards) — only when not editing a rule.
   useKeybinding('confirm:no', onCancel, {
     context: 'Settings',
@@ -233,6 +260,7 @@ export function DomainRulesDialog({
   function switchGroup(delta: -1 | 1): void {
     setGroupIndex(prev => (prev + delta + GROUPS.length) % GROUPS.length)
     setSelectedRow(0)
+    setScrollOffset(0)
   }
 
   function toggleMode(): void {
@@ -262,11 +290,13 @@ export function DomainRulesDialog({
     } else if (key.tab) {
       toggleMode()
     } else if (key.upArrow) {
-      setSelectedRow(prev =>
-        clampRow((prev - 1 + rows.length) % rows.length, -1),
-      )
+      const next = clampRow((clampedSelected - 1 + rows.length) % rows.length, -1)
+      setSelectedRow(next)
+      adjustScrollOffset(next)
     } else if (key.downArrow) {
-      setSelectedRow(prev => clampRow((prev + 1) % rows.length, 1))
+      const next = clampRow((clampedSelected + 1) % rows.length, 1)
+      setSelectedRow(next)
+      adjustScrollOffset(next)
     } else if (
       input === 'd' &&
       (currentRow?.type === 'entry' || currentRow?.type === 'exception')
@@ -365,7 +395,13 @@ export function DomainRulesDialog({
       <Box flexDirection="column">
         <Text dimColor>Rules</Text>
         {entries.length === 0 && <Text dimColor>  (none)</Text>}
-        {rows.map((row, rowIndex) => {
+        {scrollOffset > 0 && (
+          <Text dimColor>
+            {figures.arrowUp} {scrollOffset} more above
+          </Text>
+        )}
+        {visibleRows.map((row, visibleIndex) => {
+          const rowIndex = scrollOffset + visibleIndex
           const isSelected = rowIndex === clampedSelected && editing === null
           switch (row.type) {
             case 'header':
@@ -430,6 +466,12 @@ export function DomainRulesDialog({
               )
           }
         })}
+        {scrollOffset + maxVisible < rows.length && (
+          <Text dimColor>
+            {figures.arrowDown} {rows.length - scrollOffset - maxVisible} more
+            below
+          </Text>
+        )}
       </Box>
       <Text dimColor>
         {editing
