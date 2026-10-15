@@ -73,6 +73,37 @@ Three independent mechanisms, all editable here:
 
 Users can also manage all three interactively via /config → "Domain rules".
 
+### Auxiliary Effort
+
+Auxiliary queries get their own effort, independent of the model profile's \`reasoningEffort\` (defaults to \`none\`, which disables thinking for that query):
+
+\`\`\`json
+{
+  "webSearch": { "effort": "low" },
+  "sessionTitle": { "effort": "none" }
+}
+\`\`\`
+
+### Anti-Repetition & Anti-Loop (both enabled by default)
+
+\`\`\`json
+{
+  "antiRepetition": {
+    "enabled": true,
+    "autoResume": true,
+    "maxRecoveries": 2
+  },
+  "antiLoop": {
+    "enabled": true,
+    "thresholds": [3, 5, 8],
+    "argumentsPreviewChars": 500
+  }
+}
+\`\`\`
+
+- \`antiRepetition\` — stops reasoning repetition loops mid-stream and resumes the task, up to \`maxRecoveries\` times.
+- \`antiLoop\` — reminds the model when the same tool call repeats; \`thresholds\` must be unique ascending integers ≥ 2.
+
 ### Environment Variables
 \`\`\`json
 {
@@ -168,7 +199,7 @@ Hooks run commands at specific points in Claudium's lifecycle.
 | Event | Matcher | Purpose |
 |-------|---------|---------|
 | PermissionRequest | Tool name | Run before permission prompt |
-| PreToolUse | Tool name | Run before tool, can block |
+| PreToolUse | Tool name | Run before tool, can block or modify input |
 | PostToolUse | Tool name | Run after successful tool |
 | PostToolUseFailure | Tool name | Run after tool fails |
 | Notification | Notification type | Run on notifications |
@@ -178,7 +209,16 @@ Hooks run commands at specific points in Claudium's lifecycle.
 | UserPromptSubmit | - | When user submits |
 | SessionStart | - | When session starts |
 
+Less common: PermissionDenied, StopFailure, SessionEnd, SubagentStart/Stop, Setup, ConfigChange, FileChanged, CwdChanged, InstructionsLoaded, TaskCreated/Completed, TeammateIdle, Elicitation/ElicitationResult, WorktreeCreate/Remove — see the generated schema for the full enum.
+
 **Common tool matchers:** \`Bash\`, \`Write\`, \`Edit\`, \`Read\`, \`Glob\`, \`Grep\`
+
+**Optional fields on any hook:**
+- \`if\`: permission-rule filter (e.g. \`"Bash(git *)"\`) — hook only runs when the tool call matches
+- \`timeout\`: per-hook timeout in seconds
+- \`once\`: run once, then remove
+- \`async\`: run in background without blocking (command hooks only)
+- \`shell\`: \`"bash"\` (default) or \`"powershell"\` (command hooks only)
 
 ### Hook Types
 
@@ -198,6 +238,17 @@ Only available for tool events: PreToolUse, PostToolUse, PermissionRequest.
 { "type": "agent", "prompt": "Verify tests pass: $ARGUMENTS" }
 \`\`\`
 Only available for tool events: PreToolUse, PostToolUse, PermissionRequest.
+
+**4. HTTP Hook** - POSTs the hook input JSON to a URL:
+\`\`\`json
+{
+  "type": "http",
+  "url": "https://hooks.example.com/endpoint",
+  "headers": { "Authorization": "Bearer $MY_TOKEN" },
+  "allowedEnvVars": ["MY_TOKEN"]
+}
+\`\`\`
+\`$VAR\`/\`\${VAR}\` in header values are interpolated only for variables listed in \`allowedEnvVars\`.
 
 ### Hook Input (stdin JSON)
 \`\`\`json
@@ -349,7 +400,7 @@ If the user wants something to happen automatically in response to an EVENT, the
 - "When I run bash commands, log them" → PreToolUse hook with Bash matcher
 - "Always run tests after code changes" → PostToolUse hook
 
-**Hook events:** PreToolUse, PostToolUse, PreCompact, PostCompact, Stop, Notification, SessionStart
+**Hook events:** PreToolUse, PostToolUse, PostToolUseFailure, PreCompact, PostCompact, Stop, SubagentStop, Notification, SessionStart, UserPromptSubmit, ConfigChange — full list in the Hook Events table below.
 
 ## CRITICAL: Read Before Write
 
@@ -476,8 +527,10 @@ If a hook isn't running:
 export function registerUpdateConfigSkill(): void {
   registerBundledSkill({
     name: 'update-config',
+    // NOTE: skill listings truncate descriptions to MAX_LISTING_DESC_CHARS
+    // (250) — keep every trigger keyword within that budget.
     description:
-      'Use this skill to configure the Claudium harness via settings.json. Automated behaviors ("from now on when X", "each time X", "whenever X", "before/after X") require hooks configured in settings.json - the harness executes these, not the assistant, so memory/preferences cannot fulfill them. Also use for: permissions ("allow X", "add permission", "move permission to"), domain rules ("block websites from web search", "only allow searching X", "block fetching X", domain allowlist/blocklist), env vars ("set X=Y"), hook troubleshooting, or any changes to settings.json/settings.local.json files. Examples: "allow npm commands", "add bq permission to global settings", "move permission to user settings", "set DEBUG=true", "block a website from web search results", "when the session stops show X". For simple settings like theme/model, use Config tool.',
+      'Configure the Claudium harness via settings.json: hooks ("when X, do Y" automated behaviors), permissions, domain rules for web search/fetch/sandbox ("only allow searching X", "block site X"), env vars, models/effort, MCP, plugins.',
     allowedTools: ['Read'],
     userInvocable: true,
     async getPromptForCommand(args) {
