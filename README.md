@@ -70,9 +70,6 @@ Claudium 不提供 claude.ai OAuth 登录。
   },
   "sessionTitle": {
     "effort": "none"
-  },
-  "promptSuggestion": {
-    "effort": "low"
   }
 }
 ```
@@ -83,11 +80,10 @@ Claudium 不提供 claude.ai OAuth 登录。
 
 ```
 webSearch.effort 用于搜索摘要和结果重排；
-sessionTitle.effort 用于会话标题生成；
-promptSuggestion.effort 用于每轮结束后预测下一条输入。
+sessionTitle.effort 用于会话标题生成。
 ```
 
-这些辅助任务未配置独立 effort 时继承当前主请求的 effort/thinking 配置；显式配置后才使用自己的 thinking block 配置。三者均可在 `/config` 编辑；显式配置 Prompt suggestion 后，可能不再复用主请求缓存。
+这些辅助任务未配置独立 effort 时继承当前主请求的 effort/thinking 配置；显式配置后才使用自己的 thinking block 配置。两者均可在 `/config` 编辑。
 
 全局 `CLAUDE_CODE_EFFORT_LEVEL` 环境变量仍将覆盖这些配置。
 
