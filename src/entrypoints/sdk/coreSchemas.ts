@@ -1777,20 +1777,6 @@ export const SDKElicitationCompleteMessageSchema = lazySchema(() =>
     ),
 )
 
-/** @internal */
-export const SDKPromptSuggestionMessageSchema = lazySchema(() =>
-  z
-    .object({
-      type: z.literal('prompt_suggestion'),
-      suggestion: z.string(),
-      uuid: UUIDPlaceholder(),
-      session_id: z.string(),
-    })
-    .describe(
-      'Predicted next user prompt, emitted after each turn when promptSuggestions is enabled.',
-    ),
-)
-
 // ============================================================================
 // Session Listing Types
 // ============================================================================
@@ -1862,6 +1848,5 @@ export const SDKMessageSchema = lazySchema(() =>
     SDKToolUseSummaryMessageSchema(),
     SDKRateLimitEventSchema(),
     SDKElicitationCompleteMessageSchema(),
-    SDKPromptSuggestionMessageSchema(),
   ]),
 )

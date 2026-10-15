@@ -158,12 +158,6 @@ import {
   isBypassPermissionsModeDisabled,
   transitionPermissionMode,
 } from 'src/utils/permissions/permissionSetup.js'
-import {
-  tryGenerateSuggestion,
-  logSuggestionOutcome,
-  logSuggestionSuppressed,
-  type PromptVariant,
-} from 'src/services/PromptSuggestion/promptSuggestion.js'
 import { getLastCacheSafeParams } from 'src/utils/forkedAgent.js'
 import { getAccountInformation } from 'src/utils/auth.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
@@ -294,7 +288,6 @@ import { getCommands, clearCommandsCache } from '../commands.js'
 import {
   isBareMode,
   isEnvTruthy,
-  isEnvDefinedFalsy,
 } from '../utils/envUtils.js'
 import { installPluginsForHeadless } from '../utils/plugins/headlessPluginInstall.js'
 import { refreshActivePlugins } from '../utils/plugins/refresh.js'
@@ -856,8 +849,7 @@ export async function runHeadless(
       message.type !== 'stream_event' &&
       message.type !== 'keep_alive' &&
       message.type !== 'streamlined_text' &&
-      message.type !== 'streamlined_tool_use_summary' &&
-      message.type !== 'prompt_suggestion'
+      message.type !== 'streamlined_tool_use_summary'
     ) {
       if (needsFullArray) {
         messages.push(message)
@@ -954,7 +946,6 @@ function runHeadlessStreaming(
     enableAuthStatus?: boolean | undefined
     agent?: string | undefined
     setSDKStatus?: (status: SDKStatus) => void
-    promptSuggestions?: boolean | undefined
     workload?: string | undefined
   },
   turnInterruptionState?: TurnInterruptionState,
@@ -1029,35 +1020,6 @@ function runHeadlessStreaming(
       })
     }
   })
-
-  // Prompt suggestion tracking (push model)
-  const suggestionState: {
-    abortController: AbortController | null
-    inflightPromise: Promise<void> | null
-    lastEmitted: {
-      text: string
-      emittedAt: number
-      promptId: PromptVariant
-      generationRequestId: string | null
-    } | null
-    pendingSuggestion: {
-      type: 'prompt_suggestion'
-      suggestion: string
-      uuid: UUID
-      session_id: string
-    } | null
-    pendingLastEmittedEntry: {
-      text: string
-      promptId: PromptVariant
-      generationRequestId: string | null
-    } | null
-  } = {
-    abortController: null,
-    inflightPromise: null,
-    lastEmitted: null,
-    pendingSuggestion: null,
-    pendingLastEmittedEntry: null,
-  }
 
   // Set up AWS auth status listener if enabled
   let unsubscribeAuthStatus: (() => void) | undefined
@@ -1989,35 +1951,6 @@ function runHeadlessStreaming(
 
           const input = command.value
 
-          // Abort any in-flight suggestion generation and track acceptance
-          suggestionState.abortController?.abort()
-          suggestionState.abortController = null
-          suggestionState.pendingSuggestion = null
-          suggestionState.pendingLastEmittedEntry = null
-          if (suggestionState.lastEmitted) {
-            if (command.mode === 'prompt') {
-              // SDK user messages enqueue ContentBlockParam[], not a plain string
-              const inputText =
-                typeof input === 'string'
-                  ? input
-                  : (
-                      input.find(b => b.type === 'text') as
-                        | { type: 'text'; text: string }
-                        | undefined
-                    )?.text
-              if (typeof inputText === 'string') {
-                logSuggestionOutcome(
-                  suggestionState.lastEmitted.text,
-                  inputText,
-                  suggestionState.lastEmitted.emittedAt,
-                  suggestionState.lastEmitted.promptId,
-                  suggestionState.lastEmitted.generationRequestId,
-                )
-              }
-              suggestionState.lastEmitted = null
-            }
-          }
-
           abortController = createAbortController()
 
           headlessProfilerCheckpoint('before_ask')
@@ -2129,94 +2062,6 @@ function runHeadlessStreaming(
             notifyCommandLifecycle(uuid, 'completed')
           }
 
-
-          // Generate and emit prompt suggestion for SDK consumers
-          if (
-            options.promptSuggestions &&
-            !isEnvDefinedFalsy(process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION)
-          ) {
-            // TS narrows suggestionState to never in the while loop body;
-            // cast via unknown to reset narrowing.
-            const state = suggestionState as unknown as typeof suggestionState
-            state.abortController?.abort()
-            const localAbort = new AbortController()
-            suggestionState.abortController = localAbort
-
-            const cacheSafeParams = getLastCacheSafeParams()
-            if (!cacheSafeParams) {
-              logSuggestionSuppressed(
-                'sdk_no_params',
-                undefined,
-                undefined,
-                'sdk',
-              )
-            } else {
-              // Use a ref object so the IIFE's finally can compare against its own
-              // promise without a self-reference (which upsets TypeScript's flow analysis).
-              const ref: { promise: Promise<void> | null } = { promise: null }
-              ref.promise = (async () => {
-                try {
-                  const result = await tryGenerateSuggestion(
-                    localAbort,
-                    mutableMessages,
-                    getAppState,
-                    cacheSafeParams,
-                    'sdk',
-                  )
-                  if (!result || localAbort.signal.aborted) return
-                  const suggestionMsg = {
-                    type: 'prompt_suggestion' as const,
-                    suggestion: result.suggestion,
-                    uuid: randomUUID(),
-                    session_id: getSessionId(),
-                  }
-                  const lastEmittedEntry = {
-                    text: result.suggestion,
-                    emittedAt: Date.now(),
-                    promptId: result.promptId,
-                    generationRequestId: result.generationRequestId,
-                  }
-                  // Defer emission if the result is being held for background agents,
-                  // so that prompt_suggestion always arrives after result.
-                  // Only set lastEmitted when the suggestion is actually delivered
-                  // to the consumer; deferred suggestions may be discarded before
-                  // delivery if a new command arrives first.
-                  if (heldBackResult) {
-                    suggestionState.pendingSuggestion = suggestionMsg
-                    suggestionState.pendingLastEmittedEntry = {
-                      text: lastEmittedEntry.text,
-                      promptId: lastEmittedEntry.promptId,
-                      generationRequestId: lastEmittedEntry.generationRequestId,
-                    }
-                  } else {
-                    suggestionState.lastEmitted = lastEmittedEntry
-                    output.enqueue(suggestionMsg)
-                  }
-                } catch (error) {
-                  if (
-                    error instanceof Error &&
-                    (error.name === 'AbortError' ||
-                      error.name === 'APIUserAbortError')
-                  ) {
-                    logSuggestionSuppressed(
-                      'aborted',
-                      undefined,
-                      undefined,
-                      'sdk',
-                    )
-                    return
-                  }
-                  logError(toError(error))
-                } finally {
-                  if (suggestionState.inflightPromise === ref.promise) {
-                    suggestionState.inflightPromise = null
-                  }
-                }
-              })()
-              suggestionState.inflightPromise = ref.promise
-            }
-          }
-
           // Log headless profiler metrics for this turn and start next turn
           logHeadlessProfilerTurn()
           logQueryProfileReport()
@@ -2267,18 +2112,6 @@ function runHeadlessStreaming(
       if (heldBackResult) {
         output.enqueue(heldBackResult)
         heldBackResult = null
-        if (suggestionState.pendingSuggestion) {
-          output.enqueue(suggestionState.pendingSuggestion)
-          // Now that the suggestion is actually delivered, record it for acceptance tracking
-          if (suggestionState.pendingLastEmittedEntry) {
-            suggestionState.lastEmitted = {
-              ...suggestionState.pendingLastEmittedEntry,
-              emittedAt: Date.now(),
-            }
-            suggestionState.pendingLastEmittedEntry = null
-          }
-          suggestionState.pendingSuggestion = null
-        }
       }
     } catch (error) {
       // Emit error result message before shutting down
@@ -2306,7 +2139,6 @@ function runHeadlessStreaming(
       } catch {
         // If we can't emit the error result, continue with shutdown anyway
       }
-      suggestionState.abortController?.abort()
       gracefulShutdownSync(1)
       return
     } finally {
@@ -2524,12 +2356,6 @@ function runHeadlessStreaming(
         })
         void run()
       } else {
-        // Wait for any in-flight push suggestion before closing the output stream.
-        if (suggestionState.inflightPromise) {
-          await Promise.race([suggestionState.inflightPromise, sleep(5000)])
-        }
-        suggestionState.abortController?.abort()
-        suggestionState.abortController = null
         await finalizePendingAsyncHooks()
         unsubscribeSkillChanges()
         unsubscribeAuthStatus?.()
@@ -2692,10 +2518,6 @@ function runHeadlessStreaming(
           if (abortController) {
             abortController.abort()
           }
-          suggestionState.abortController?.abort()
-          suggestionState.abortController = null
-          suggestionState.lastEmitted = null
-          suggestionState.pendingSuggestion = null
           sendControlResponseSuccess(message)
         } else if (message.request.subtype === 'end_session') {
           logForDebugging(
@@ -2704,10 +2526,6 @@ function runHeadlessStreaming(
           if (abortController) {
             abortController.abort()
           }
-          suggestionState.abortController?.abort()
-          suggestionState.abortController = null
-          suggestionState.lastEmitted = null
-          suggestionState.pendingSuggestion = null
           sendControlResponseSuccess(message)
           break // exits for-await → falls through to inputClosed=true drain below
         } else if (message.request.subtype === 'initialize') {
@@ -2740,16 +2558,6 @@ function runHeadlessStreaming(
             agents,
             getAppState,
           )
-
-          // Enable prompt suggestions in AppState when SDK consumer opts in.
-          // shouldEnablePromptSuggestion() returns false for non-interactive
-          // sessions, but the SDK consumer explicitly requested suggestions.
-          if (message.request.promptSuggestions) {
-            setAppState(prev => {
-              if (prev.promptSuggestionEnabled) return prev
-              return { ...prev, promptSuggestionEnabled: true }
-            })
-          }
 
           if (
             message.request.agentProgressSummaries &&
@@ -3706,13 +3514,6 @@ function runHeadlessStreaming(
     inputClosed = true
     cronScheduler?.stop()
     if (!running) {
-      // If a push-suggestion is in-flight, wait for it to emit before closing
-      // the output stream (5 s safety timeout to prevent hanging).
-      if (suggestionState.inflightPromise) {
-        await Promise.race([suggestionState.inflightPromise, sleep(5000)])
-      }
-      suggestionState.abortController?.abort()
-      suggestionState.abortController = null
       await finalizePendingAsyncHooks()
       unsubscribeSkillChanges()
       unsubscribeAuthStatus?.()
@@ -3954,9 +3755,6 @@ async function handleInitializeRequest(
   }
   if (request.appendSystemPrompt !== undefined) {
     options.appendSystemPrompt = request.appendSystemPrompt
-  }
-  if (request.promptSuggestions !== undefined) {
-    options.promptSuggestions = request.promptSuggestions
   }
 
   // Merge agents from stdin to avoid ARG_MAX limits

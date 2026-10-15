@@ -65,7 +65,6 @@ export const SDKControlInitializeRequestSchema = lazySchema(() =>
       systemPrompt: z.string().optional(),
       appendSystemPrompt: z.string().optional(),
       agents: z.record(z.string(), AgentDefinitionSchema()).optional(),
-      promptSuggestions: z.boolean().optional(),
       agentProgressSummaries: z.boolean().optional(),
     })
     .describe(
