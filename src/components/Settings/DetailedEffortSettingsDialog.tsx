@@ -7,13 +7,11 @@ import TextInput from '../TextInput.js'
 export type DetailedEffortChanges = {
   webSearch?: string | null
   sessionTitle?: string | null
-  promptSuggestion?: string | null
 }
 
 type Props = {
   initialWebSearchEffort?: string
   initialTitleEffort?: string
-  initialPromptSuggestionEffort?: string
   // undefined means unchanged; null clears the user override. Draft values stay
   // visible when saving fails.
   onComplete: (changes: DetailedEffortChanges) => Error | null
@@ -23,23 +21,20 @@ type Props = {
 const FIELDS = [
   'WebSearch (summary + rerank)',
   'Title generation',
-  'Prompt suggestion',
 ] as const
 
 export function DetailedEffortSettingsDialog({
   initialWebSearchEffort,
   initialTitleEffort,
-  initialPromptSuggestionEffort,
   onComplete,
   onCancel,
 }: Props): React.ReactNode {
   const initialValues = [
     initialWebSearchEffort ?? '',
     initialTitleEffort ?? '',
-    initialPromptSuggestionEffort ?? '',
   ]
   const [values, setValues] = useState(initialValues)
-  const [changed, setChanged] = useState([false, false, false])
+  const [changed, setChanged] = useState([false, false])
   const [offsets, setOffsets] = useState(values.map(value => value.length))
   const [focusedField, setFocusedField] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -53,11 +48,7 @@ export function DetailedEffortSettingsDialog({
       return
     }
     const changes: DetailedEffortChanges = {}
-    for (const [index, field] of [
-      'webSearch',
-      'sessionTitle',
-      'promptSuggestion',
-    ].entries()) {
+    for (const [index, field] of ['webSearch', 'sessionTitle'].entries()) {
       const value = values[index]!.trim() || null
       if (
         changed[index] &&

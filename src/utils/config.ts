@@ -538,9 +538,6 @@ export type GlobalConfig = {
   // Auto permissions notification tracking (ant-only)
   autoPermissionsNotificationCount?: number // Number of times the auto permissions notification has been shown
 
-  // Speculation configuration (ant-only)
-  speculationEnabled?: boolean // Whether speculation is enabled (default: true)
-
 
   // Client data for server-side experiments (fetched during bootstrap).
   clientDataCache?: Record<string, unknown> | null

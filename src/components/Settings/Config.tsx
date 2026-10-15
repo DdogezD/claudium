@@ -171,7 +171,6 @@ export function Config({
   const verbose = useAppState(s_0 => s_0.verbose);
   const thinkingEnabled = useAppState(s_1 => s_1.thinkingEnabled);
   const [currentModelProfileScope, setCurrentModelProfileScope] = useState<ModelScope>('main');
-  const promptSuggestionEnabled = useAppState(s_3 => s_3.promptSuggestionEnabled);
   // Show auto in the default-mode dropdown when the user has opted in OR the
   // config is fully 'enabled' — even if currently circuit-broken ('disabled'),
   // an opted-in user should still see it in settings (it's a temporary state).
@@ -207,7 +206,6 @@ export function Config({
       mainLoopModelForSession: s_4.mainLoopModelForSession,
       verbose: s_4.verbose,
       thinkingEnabled: s_4.thinkingEnabled,
-      promptSuggestionEnabled: s_4.promptSuggestionEnabled,
       isBriefOnly: s_4.isBriefOnly,
       settings: s_4.settings
     };
@@ -403,45 +401,7 @@ export function Config({
     type: 'managedEnum' as const,
     onChange: () => {}
   },
-  ...([{
-
-    id: 'promptSuggestionEnabled',
-    label: 'Prompt suggestions',
-    value: promptSuggestionEnabled,
-    type: 'boolean' as const,
-    onChange(enabled_1: boolean) {
-      setAppState(prev_11 => ({
-        ...prev_11,
-        promptSuggestionEnabled: enabled_1
-      }));
-      updateSettingsForSource('userSettings', {
-        promptSuggestionEnabled: enabled_1 ? undefined : false
-      });
-    }
-  }]),
-  // Speculation toggle (ant-only)
-  ...("external" === 'ant' ? [{
-    id: 'speculationEnabled',
-    label: 'Speculative execution',
-    value: globalConfig.speculationEnabled ?? true,
-    type: 'boolean' as const,
-    onChange(enabled_2: boolean) {
-      saveGlobalConfig(current_1 => {
-        if (current_1.speculationEnabled === enabled_2) return current_1;
-        return {
-          ...current_1,
-          speculationEnabled: enabled_2
-        };
-      });
-      setGlobalConfig({
-        ...getGlobalConfig(),
-        speculationEnabled: enabled_2
-      });
-      logEvent('tengu_speculation_setting_changed', {
-        enabled: enabled_2
-      });
-    }
-  }] : []), ...(isFileCheckpointingAvailable ? [{
+  ...(isFileCheckpointingAvailable ? [{
     id: 'fileCheckpointingEnabled',
     label: 'Rewind code (checkpoints)',
     value: globalConfig.fileCheckpointingEnabled,
@@ -753,7 +713,7 @@ export function Config({
   }, {
     id: 'detailedEffortSettings',
     label: 'Detailed effort settings',
-    value: `search: ${settingsData?.webSearch?.effort ?? 'inherit'} · title: ${settingsData?.sessionTitle?.effort ?? 'inherit'} · suggestion: ${settingsData?.promptSuggestion?.effort ?? 'inherit'}`,
+    value: `search: ${settingsData?.webSearch?.effort ?? 'inherit'} · title: ${settingsData?.sessionTitle?.effort ?? 'inherit'}`,
     type: 'managedEnum' as const,
     onChange: () => {} // handled by DetailedEffortSettingsDialog submenu
   }, ...(showDefaultViewPicker ? [{
@@ -1085,7 +1045,6 @@ export function Config({
     }
     updateSettingsForSource('userSettings', {
       alwaysThinkingEnabled: iu?.alwaysThinkingEnabled,
-      promptSuggestionEnabled: iu?.promptSuggestionEnabled,
       antiRepetition: iu?.antiRepetition === undefined ? undefined : {
         ...iu.antiRepetition,
         enabled: iu.antiRepetition.enabled,
@@ -1109,9 +1068,6 @@ export function Config({
       },
       sessionTitle: iu?.sessionTitle === undefined ? undefined : {
         effort: iu.sessionTitle.effort
-      },
-      promptSuggestion: iu?.promptSuggestion === undefined ? undefined : {
-        effort: iu.promptSuggestion.effort
       },
       ...(feature('TRANSCRIPT_CLASSIFIER') ? {
         useAutoModeDuringPlan: (iu as {
@@ -1151,7 +1107,6 @@ export function Config({
       mainLoopModelForSession: ia.mainLoopModelForSession,
       verbose: ia.verbose,
       thinkingEnabled: ia.thinkingEnabled,
-      promptSuggestionEnabled: ia.promptSuggestionEnabled,
       isBriefOnly: ia.isBriefOnly,
       settings: ia.settings,
       // Reconcile auto-mode state after useAutoModeDuringPlan revert above —
@@ -1713,7 +1668,6 @@ export function Config({
           <DetailedEffortSettingsDialog
             initialWebSearchEffort={userSettings?.webSearch?.effort}
             initialTitleEffort={userSettings?.sessionTitle?.effort}
-            initialPromptSuggestionEffort={userSettings?.promptSuggestion?.effort}
             onComplete={changes => {
           const settings: Parameters<typeof updateSettingsForSource>[1] = {};
           if (changes.webSearch !== undefined) {
@@ -1724,11 +1678,6 @@ export function Config({
           if (changes.sessionTitle !== undefined) {
             settings.sessionTitle = {
               effort: changes.sessionTitle ?? undefined
-            };
-          }
-          if (changes.promptSuggestion !== undefined) {
-            settings.promptSuggestion = {
-              effort: changes.promptSuggestion ?? undefined
             };
           }
           if (Object.keys(settings).length === 0) {
@@ -1747,9 +1696,6 @@ export function Config({
               : null,
             changes.sessionTitle !== undefined
               ? `Title: ${changes.sessionTitle ?? 'unset'}`
-              : null,
-            changes.promptSuggestion !== undefined
-              ? `Prompt suggestion: ${changes.promptSuggestion ?? 'inherit'}`
               : null
           ].filter(Boolean).join(', ');
           setChanges(prev => ({

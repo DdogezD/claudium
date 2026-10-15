@@ -156,7 +156,6 @@ export function resolveAppliedEffort(
 export type AuxiliaryEffortTask =
   | 'webSearch'
   | 'sessionTitle'
-  | 'promptSuggestion'
 
 export type AuxiliaryEffortResolution = {
   value: EffortValue | null | undefined

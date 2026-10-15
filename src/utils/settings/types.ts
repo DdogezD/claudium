@@ -470,19 +470,6 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Session title generation settings'),
-      promptSuggestion: z
-        .object({
-          effort: z
-            .string()
-            .optional()
-            .describe(
-              'Independent effort for prompt suggestion generation, passed through to the ' +
-                'provider. Inherits the main request when unset; provider-specific ' +
-                'values are passed through unchanged.',
-            ),
-        })
-        .optional()
-        .describe('Prompt suggestion generation settings'),
       antiRepetition: AntiRepetitionSettingsSchema()
         .optional()
         .describe('Anti-repetition reasoning guard settings; enabled by default'),
@@ -868,13 +855,6 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Override the summary output token reservation for advisor compaction.',
-        ),
-      promptSuggestionEnabled: z
-        .boolean()
-        .optional()
-        .describe(
-          'When false, prompt suggestions are disabled. When absent or true, ' +
-            'prompt suggestions are enabled.',
         ),
       showClearContextOnPlanAccept: z
         .boolean()
