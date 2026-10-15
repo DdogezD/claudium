@@ -129,7 +129,6 @@ type Props = {
     cursorOffset: number;
     pastedContents: Record<number, PastedContent>;
   } | undefined) => void;
-  submitCount: number;
   onShowMessageSelector: () => void;
   /** Fullscreen message actions: shift+↑ enters cursor. */
   onMessageActionsEnter?: () => void;
@@ -186,7 +185,6 @@ function PromptInput({
   onModeChange,
   stashedPrompt,
   setStashedPrompt,
-  submitCount,
   onShowMessageSelector,
   onMessageActionsEnter,
   mcpClients,
@@ -710,7 +708,6 @@ function PromptInput({
   });
   const defaultPlaceholder = usePromptInputPlaceholder({
     input,
-    submitCount,
     viewingAgentName
   });
   const onChange = useCallback((value: string) => {

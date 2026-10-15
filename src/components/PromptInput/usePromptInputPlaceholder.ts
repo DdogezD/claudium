@@ -1,20 +1,10 @@
-import { feature } from 'bun:bundle'
 import { useMemo } from 'react'
 import { useCommandQueue } from 'src/hooks/useCommandQueue.js'
 import { getGlobalConfig } from 'src/utils/config.js'
-import { getExampleCommandFromCache } from 'src/utils/exampleCommands.js'
 import { isQueuedCommandEditable } from 'src/utils/messageQueueManager.js'
-
-// Dead code elimination: conditional import for proactive mode
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =
-  feature('PROACTIVE') || feature('KAIROS')
-    ? require('../../proactive/index.js')
-    : null
 
 type Props = {
   input: string
-  submitCount: number
   viewingAgentName?: string
 }
 
@@ -23,7 +13,6 @@ const MAX_TEAMMATE_NAME_LENGTH = 20
 
 export function usePromptInputPlaceholder({
   input,
-  submitCount,
   viewingAgentName,
 }: Props): string | undefined {
   const queuedCommands = useCommandQueue()
@@ -51,14 +40,7 @@ export function usePromptInputPlaceholder({
     ) {
       return 'Press up to edit queued messages'
     }
-
-    // Show example command if user has not submitted yet.
-    // Skip in proactive mode — the model drives the conversation so onboarding
-    // examples are irrelevant.
-    if (submitCount < 1 && !proactiveModule?.isProactiveActive()) {
-      return getExampleCommandFromCache()
-    }
-  }, [input, queuedCommands, submitCount, viewingAgentName])
+  }, [input, queuedCommands, viewingAgentName])
 
   return placeholder
 }
