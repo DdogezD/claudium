@@ -17,7 +17,6 @@ const appState = {
   mainLoopModelForSession: 'local-beta',
   mainLoopModel: 'local-alpha',
   mcp: { resources: [], clients: [] },
-  promptSuggestion: { text: '', shownAt: 0 },
 }
 const store = { getState: () => appState, setState: noop }
 let inputHandler: (input: string, key: unknown, event: {
@@ -183,7 +182,7 @@ function Harness({ initialInput, initialCursor }: { initialInput: string; initia
   result = useTypeahead({
     input, cursorOffset: cursor, onInputChange: setInput, setCursorOffset: setCursor,
     onSubmit: submit, mode: 'prompt', commands, agents,
-    suggestionsState, setSuggestionsState, markAccepted: noop,
+    suggestionsState, setSuggestionsState,
   })
   return null
 }

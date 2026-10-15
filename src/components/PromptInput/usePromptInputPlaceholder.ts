@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle'
 import { useMemo } from 'react'
 import { useCommandQueue } from 'src/hooks/useCommandQueue.js'
-import { useAppState } from 'src/state/AppState.js'
 import { getGlobalConfig } from 'src/utils/config.js'
 import { getExampleCommandFromCache } from 'src/utils/exampleCommands.js'
 import { isQueuedCommandEditable } from 'src/utils/messageQueueManager.js'
@@ -28,7 +27,6 @@ export function usePromptInputPlaceholder({
   viewingAgentName,
 }: Props): string | undefined {
   const queuedCommands = useCommandQueue()
-  const promptSuggestionEnabled = useAppState(s => s.promptSuggestionEnabled)
   const placeholder = useMemo(() => {
     if (input !== '') {
       return
@@ -54,23 +52,13 @@ export function usePromptInputPlaceholder({
       return 'Press up to edit queued messages'
     }
 
-    // Show example command if user has not submitted yet and suggestions are enabled.
+    // Show example command if user has not submitted yet.
     // Skip in proactive mode — the model drives the conversation so onboarding
-    // examples are irrelevant and block prompt suggestions from showing.
-    if (
-      submitCount < 1 &&
-      promptSuggestionEnabled &&
-      !proactiveModule?.isProactiveActive()
-    ) {
+    // examples are irrelevant.
+    if (submitCount < 1 && !proactiveModule?.isProactiveActive()) {
       return getExampleCommandFromCache()
     }
-  }, [
-    input,
-    queuedCommands,
-    submitCount,
-    promptSuggestionEnabled,
-    viewingAgentName,
-  ])
+  }, [input, queuedCommands, submitCount, viewingAgentName])
 
   return placeholder
 }

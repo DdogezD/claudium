@@ -105,7 +105,6 @@ type Props = {
     commandArgumentHint?: string;
   };
   suppressSuggestions?: boolean;
-  markAccepted: () => void;
   onModeChange?: (mode: PromptInputMode) => void;
 };
 type UseTypeaheadResult = {
@@ -369,7 +368,6 @@ export function useTypeahead({
     commandArgumentHint
   },
   suppressSuggestions = false,
-  markAccepted,
   onModeChange
 }: Props): UseTypeaheadResult {
   const {
@@ -394,10 +392,6 @@ export function useTypeahead({
   const [maxColumnWidth, setMaxColumnWidth] = useState<number | undefined>(undefined);
   const mcpResources = useAppState(s => s.mcp.resources);
   const store = useAppStateStore();
-  const promptSuggestion = useAppState(s => s.promptSuggestion);
-  // PromptInput hides suggestion ghost text in teammate view — mirror that
-  // gate here so Tab/rightArrow can't accept what isn't displayed.
-  const isViewingTeammate = useAppState(s => !!s.viewingAgentTaskId);
 
   // Access keybinding context to check for pending chord sequences
   const keybindingContext = useOptionalKeybindingContext();
@@ -1332,47 +1326,13 @@ export function useTypeahead({
     context: 'Autocomplete',
     isActive: isAutocompleteActive && !isModalOverlayActive
   });
-  function acceptSuggestionText(text: string): void {
-    const detectedMode = getModeFromInput(text);
-    if (detectedMode !== 'prompt' && onModeChange) {
-      onModeChange(detectedMode);
-      const stripped = getValueFromInput(text);
-      onInputChange(stripped);
-      setCursorOffset(stripped.length);
-    } else {
-      onInputChange(text);
-      setCursorOffset(text.length);
-    }
-  }
-
   // Handle keyboard input for behaviors not covered by keybindings
   const handleKeyDown = (e: KeyboardEvent): void => {
-    // Handle right arrow to accept prompt suggestion ghost text
-    if (e.key === 'right' && !isViewingTeammate) {
-      const suggestionText = promptSuggestion.text;
-      const suggestionShownAt = promptSuggestion.shownAt;
-      if (suggestionText && suggestionShownAt > 0 && input === '') {
-        markAccepted();
-        acceptSuggestionText(suggestionText);
-        e.stopImmediatePropagation();
-        return;
-      }
-    }
-
     // Handle Tab key fallback behaviors when no autocomplete suggestions
     // Don't handle tab if shift is pressed (used for mode cycle)
     if (e.key === 'tab' && !e.shift) {
       // Skip if autocomplete is handling this (suggestions or ghost text exist)
       if (suggestions.length > 0 || effectiveGhostText) {
-        return;
-      }
-      // Accept prompt suggestion if it exists in AppState
-      const suggestionText = promptSuggestion.text;
-      const suggestionShownAt = promptSuggestion.shownAt;
-      if (suggestionText && suggestionShownAt > 0 && input === '' && !isViewingTeammate) {
-        e.preventDefault();
-        markAccepted();
-        acceptSuggestionText(suggestionText);
         return;
       }
       // Remind user about thinking toggle shortcut if empty input

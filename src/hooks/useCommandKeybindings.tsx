@@ -17,7 +17,7 @@ import type { PromptInputHelpers } from '../utils/handlePromptSubmit.js';
 type Props = {
   // onSubmit accepts additional parameters beyond what we pass here,
   // so we use a rest parameter to allow any additional args
-  onSubmit: (input: string, helpers: PromptInputHelpers, ...rest: [speculationAccept?: undefined, options?: {
+  onSubmit: (input: string, helpers: PromptInputHelpers, ...rest: [options?: {
     fromKeybinding?: boolean;
   }]) => void;
   /** Set to false to disable command keybindings (e.g., when a dialog is open) */

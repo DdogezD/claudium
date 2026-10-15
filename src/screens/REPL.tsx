@@ -206,7 +206,6 @@ import { SessionBackgroundHint } from '../components/SessionBackgroundHint.js';
 import { startBackgroundSession } from '../tasks/LocalMainSessionTask.js';
 import { useSessionBackgrounding } from '../hooks/useSessionBackgrounding.js';
 import { diagnosticTracker } from '../services/diagnosticTracking.js';
-import { handleSpeculationAccept, type ActiveSpeculationState } from '../services/PromptSuggestion/speculation.js';
 // import { IdeOnboardingDialog } from '../components/IdeOnboardingDialog.js'; // stripped
 import { EffortCallout, shouldShowEffortCallout } from '../components/EffortCallout.js';
 import type { EffortValue } from '../utils/effort.js';
@@ -1187,8 +1186,8 @@ export function REPL({
   // and the last write is correct because each call composes against the
   // already-updated ref.  This is the Zustand pattern: ref is source of
   // truth, React state is the render projection.  Without this, paths
-  // that queue functional updaters then synchronously read the ref
-  // (e.g. handleSpeculationAccept → onQuery) see stale data.
+  // that queue functional updaters then synchronously read the ref see
+  // stale data.
   const setMessages = useCallback((action: React.SetStateAction<MessageType[]>) => {
     const prev = messagesRef.current;
     const next = typeof action === 'function' ? action(messagesRef.current) : action;
@@ -3022,11 +3021,7 @@ export function REPL({
     }
     void processInitialMessage(pending);
   }, [initialMessage, isLoading, setMessages, setAppState, onQuery, mainLoopModel, tools]);
-  const onSubmit = useCallback(async (input: string, helpers: PromptInputHelpers, speculationAccept?: {
-    state: ActiveSpeculationState;
-    speculationSessionTimeSavedMs: number;
-    setAppState: SetAppState;
-  }, options?: {
+  const onSubmit = useCallback(async (input: string, helpers: PromptInputHelpers, options?: {
     fromKeybinding?: boolean;
   }) => {
     // Re-pin scroll to bottom on submit so the user always sees the new
@@ -3063,7 +3058,7 @@ export function REPL({
     // Handle immediate commands - these bypass the queue and execute right away
     // even while Claude is processing. Commands opt-in via `immediate: true`.
     // Commands triggered via keybindings are always treated as immediate.
-    if (!speculationAccept && input.trim().startsWith('/')) {
+    if (input.trim().startsWith('/')) {
       // Expand [Pasted text #N] refs so immediate commands (e.g. /btw) receive
       // the pasted content, not the placeholder. The non-immediate path gets
       // this expansion later in handlePromptSubmit.
@@ -3198,7 +3193,7 @@ export function REPL({
       const willowMode = getFeatureValue_CACHED_MAY_BE_STALE('tengu_willow_mode', 'off');
       const idleThresholdMin = Number(process.env.CLAUDE_CODE_IDLE_THRESHOLD_MINUTES ?? 75);
       const tokenThreshold = Number(process.env.CLAUDE_CODE_IDLE_TOKEN_THRESHOLD ?? 100_000);
-      if (willowMode !== 'off' && !getGlobalConfig().idleReturnDismissed && !skipIdleCheckRef.current && !speculationAccept && !input.trim().startsWith('/') && lastQueryCompletionTimeRef.current > 0 && getTotalInputTokens() >= tokenThreshold) {
+      if (willowMode !== 'off' && !getGlobalConfig().idleReturnDismissed && !skipIdleCheckRef.current && !input.trim().startsWith('/') && lastQueryCompletionTimeRef.current > 0 && getTotalInputTokens() >= tokenThreshold) {
         const idleMs = Date.now() - lastQueryCompletionTimeRef.current;
         const idleMinutes = idleMs / 60_000;
         if (idleMinutes >= idleThresholdMin && willowMode === 'dialog') {
@@ -3220,8 +3215,8 @@ export function REPL({
     // Skip history for keybinding-triggered commands (user didn't type the command).
     if (!options?.fromKeybinding) {
       addToHistory({
-        display: speculationAccept ? input : prependModeCharacterToInput(input, inputMode),
-        pastedContents: speculationAccept ? {} : pastedContents
+        display: prependModeCharacterToInput(input, inputMode),
+        pastedContents
       });
       // Add the just-submitted command to the front of the ghost-text
       // cache so it's suggested immediately (not after the 60s TTL).
@@ -3241,11 +3236,11 @@ export function REPL({
     //   Remote mode is exempt: it sends via WebSocket and returns early without
     //   calling handlePromptSubmit, so there's no clobbering risk — restore eagerly.
     // In both deferred cases, the stash is restored after await handlePromptSubmit.
-    const isSlashCommand = !speculationAccept && input.trim().startsWith('/');
-    // Submit runs "now" (not queued) when not already loading, or when
-    // accepting speculation, or in remote mode (which sends via WS and
-    // returns early without calling handlePromptSubmit).
-    const submitsNow = !isLoading || speculationAccept || activeRemote.isRemoteMode;
+    const isSlashCommand = input.trim().startsWith('/');
+    // Submit runs "now" (not queued) when not already loading or in remote
+    // mode (which sends via WS and returns early without calling
+    // handlePromptSubmit).
+    const submitsNow = !isLoading || activeRemote.isRemoteMode;
     if (stashedPrompt !== undefined && !isSlashCommand && submitsNow) {
       setInputValue(stashedPrompt.text);
       helpers.setCursorOffset(stashedPrompt.cursorOffset);
@@ -3253,7 +3248,7 @@ export function REPL({
       setStashedPrompt(undefined);
     } else if (submitsNow) {
       if (!options?.fromKeybinding) {
-        // Clear input when not loading or accepting speculation.
+        // Clear input when not loading.
         // Preserve input for keybinding-triggered commands.
         setInputValue('');
         helpers.setCursorOffset(0);
@@ -3268,9 +3263,9 @@ export function REPL({
       tipPickedThisTurnRef.current = false;
 
       // Show the placeholder in the same React batch as setInputValue('').
-      // Skip for slash/bash (they have their own echo), speculation and remote
-      // mode (both setMessages directly with no gap to bridge).
-      if (!isSlashCommand && inputMode === 'prompt' && !speculationAccept && !activeRemote.isRemoteMode) {
+      // Skip for slash/bash (they have their own echo) and remote mode
+      // (which sets messages directly with no gap to bridge).
+      if (!isSlashCommand && inputMode === 'prompt' && !activeRemote.isRemoteMode) {
         setUserInputOnProcessing(input);
         // showSpinner includes userInputOnProcessing, so the spinner appears
         // on this render. Reset timing refs now (before queryGuard.reserve()
@@ -3291,23 +3286,6 @@ export function REPL({
           })
         }));
       }
-    }
-
-    // Handle speculation acceptance
-    if (speculationAccept) {
-      const {
-        queryRequired
-      } = await handleSpeculationAccept(speculationAccept.state, speculationAccept.speculationSessionTimeSavedMs, speculationAccept.setAppState, input, {
-        setMessages,
-        readFileState,
-        cwd: getOriginalCwd()
-      });
-      if (queryRequired) {
-        const newAbortController = createAbortController();
-        setAbortController(newAbortController);
-        void onQuery([], newAbortController, true, [], mainLoopModel);
-      }
-      return;
     }
 
     // Remote mode: send input via stream-json instead of local query.
@@ -3600,15 +3578,7 @@ export function REPL({
       toolPermissionContext: message.permissionMode && prev.toolPermissionContext.mode !== message.permissionMode ? {
         ...prev.toolPermissionContext,
         mode: message.permissionMode
-      } : prev.toolPermissionContext,
-      // Clear stale prompt suggestion from previous conversation state
-      promptSuggestion: {
-        text: null,
-        promptId: null,
-        shownAt: 0,
-        acceptedAt: 0,
-        generationRequestId: null
-      }
+      } : prev.toolPermissionContext
     }));
   }, [setMessages, setAppState]);
 
