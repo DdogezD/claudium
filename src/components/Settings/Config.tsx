@@ -83,7 +83,10 @@ function mergeFetchDomains(existing: string[] | undefined, domains: string[]): s
 
 function domainRulesSummary(rules: DomainRulesResult): string {
   const parts: string[] = [];
-  if (rules.search.rules.length > 0) parts.push(`${rules.search.rules.length} search ${rules.search.mode === 'allowlist' ? 'allowed' : 'blocked'}`);
+  if (rules.search.rules.length > 0) {
+    const base = `${rules.search.rules.length} search ${rules.search.mode === 'allowlist' ? 'allowed' : 'blocked'}`;
+    parts.push(rules.search.mode === 'allowlist' && rules.search.exceptions.length > 0 ? `${base}, ${rules.search.exceptions.length} excepted` : base);
+  }
   if (rules.fetch.rules.length > 0) parts.push(`${rules.fetch.rules.length} fetch ${rules.fetch.mode === 'allowlist' ? 'allowed' : 'blocked'}`);
   if (rules.sandbox.rules.length > 0) parts.push(`${rules.sandbox.rules.length} sandbox`);
   return parts.length > 0 ? parts.join(' · ') : 'Not configured';
@@ -1570,9 +1573,12 @@ export function Config({
             blockedDomains: undefined,
             effort: userSettings.webSearch.effort
           } : undefined : result.search.mode === 'allowlist' ? {
+            // Allowlist mode: allowedDomains is the hard ceiling AND
+            // blockedDomains carves out exceptions within it.
             allowedDomains: result.search.rules,
-            blockedDomains: undefined
+            blockedDomains: result.search.exceptions.length > 0 ? result.search.exceptions : undefined
           } : {
+            // Blocklist mode: only blockedDomains — no allowlist.
             allowedDomains: undefined,
             blockedDomains: result.search.rules
           },

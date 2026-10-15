@@ -17,24 +17,26 @@ export type DomainRuleLists = {
 export type DomainRuleMode = 'blocklist' | 'allowlist'
 
 // What the dialog reports: ONE rule list per group plus the mode that
-// gives it meaning. Mapping mode+list to concrete settings keys is the
-// caller's job — the UI never exposes two parallel lists.
+// gives it meaning — except web search in allowlist mode, which also
+// carries `exceptions` (blocked carve-outs within the allowlist).
+// Mapping mode+lists to concrete settings keys is the caller's job.
 export type DomainRulesResult = {
-  search: { mode: DomainRuleMode; rules: string[] }
+  search: { mode: DomainRuleMode; rules: string[]; exceptions: string[] }
   fetch: { mode: DomainRuleMode; rules: string[] }
   sandbox: { rules: string[] }
 }
 
 // Collapse the raw settings lists into the single-list-per-group model.
-// When both sides are populated (hand-edited settings), the allowlist
-// wins for web search (it is the hard ceiling at runtime) and the
-// blocklist wins for web fetch (losing deny rules silently is worse).
+// For web search, a populated allowlist means allowlist mode (it is the
+// hard ceiling at runtime) and the blocklist becomes its exceptions.
+// For web fetch, the blocklist wins when both sides are populated
+// (losing deny rules silently is worse).
 export function deriveDomainRules(lists: DomainRuleLists): DomainRulesResult {
   return {
     search:
       lists.searchAllowed.length > 0
-        ? { mode: 'allowlist', rules: lists.searchAllowed }
-        : { mode: 'blocklist', rules: lists.searchBlocked },
+        ? { mode: 'allowlist', rules: lists.searchAllowed, exceptions: lists.searchBlocked }
+        : { mode: 'blocklist', rules: lists.searchBlocked, exceptions: [] },
     fetch:
       lists.fetchDeny.length > 0
         ? { mode: 'blocklist', rules: lists.fetchDeny }
@@ -123,6 +125,9 @@ const GROUPS: Group[] = [
 type Row =
   | { type: 'entry'; index: number }
   | { type: 'add' }
+  | { type: 'header' }
+  | { type: 'exception'; index: number }
+  | { type: 'addException' }
   | { type: 'done' }
 
 type Props = {
@@ -142,13 +147,19 @@ export function DomainRulesDialog({
     webfetch: derived.fetch.rules,
     sandbox: derived.sandbox.rules,
   })
+  const [searchExceptions, setSearchExceptions] = useState<string[]>(
+    derived.search.exceptions,
+  )
   const [modes, setModes] = useState<Record<'websearch' | 'webfetch', DomainRuleMode>>({
     websearch: derived.search.mode,
     webfetch: derived.fetch.mode,
   })
   const [groupIndex, setGroupIndex] = useState(0)
   const [selectedRow, setSelectedRow] = useState(0)
-  const [editing, setEditing] = useState<{ index: number | null } | null>(null)
+  const [editing, setEditing] = useState<{
+    index: number | null
+    list: 'rules' | 'exceptions'
+  } | null>(null)
   const [editText, setEditText] = useState('')
   const [editOffset, setEditOffset] = useState(0)
   const [editError, setEditError] = useState<string | null>(null)
@@ -156,13 +167,30 @@ export function DomainRulesDialog({
 
   const group = GROUPS[groupIndex]!
   const entries = rules[group.key]
+  // Exceptions only exist for web search in allowlist mode.
+  const showExceptions = group.key === 'websearch' && modes.websearch === 'allowlist'
 
-  const rows: Row[] = [
-    ...entries.map((_, index): Row => ({ type: 'entry', index })),
-    { type: 'add' },
-    { type: 'done' },
-  ]
-  const clampedSelected = Math.min(selectedRow, rows.length - 1)
+  const rows: Row[] = showExceptions
+    ? [
+        ...entries.map((_, index): Row => ({ type: 'entry', index })),
+        { type: 'add' },
+        { type: 'header' },
+        ...searchExceptions.map((_, index): Row => ({ type: 'exception', index })),
+        { type: 'addException' },
+        { type: 'done' },
+      ]
+    : [
+        ...entries.map((_, index): Row => ({ type: 'entry', index })),
+        { type: 'add' },
+        { type: 'done' },
+      ]
+  // Header rows are visual separators — skip them in the direction of travel.
+  const clampRow = (i: number, dir: 1 | -1 = 1): number => {
+    let j = Math.max(0, Math.min(i, rows.length - 1))
+    while (rows[j]?.type === 'header') j += dir
+    return Math.max(0, Math.min(j, rows.length - 1))
+  }
+  const clampedSelected = clampRow(selectedRow)
   const currentRow = rows[clampedSelected]
 
   // Esc closes the dialog (discards) — only when not editing a rule.
@@ -171,9 +199,10 @@ export function DomainRulesDialog({
     isActive: editing === null,
   })
 
-  function startEdit(index: number | null): void {
-    const initialText = index === null ? '' : entries[index]!
-    setEditing({ index })
+  function startEdit(list: 'rules' | 'exceptions', index: number | null): void {
+    const listEntries = list === 'rules' ? entries : searchExceptions
+    const initialText = index === null ? '' : listEntries[index]!
+    setEditing({ index, list })
     setEditText(initialText)
     setEditOffset(initialText.length)
     setEditError(null)
@@ -181,7 +210,8 @@ export function DomainRulesDialog({
 
   function commitEdit(): void {
     if (!editing) return
-    const existing = entries.filter((_, i) => i !== editing.index)
+    const listEntries = editing.list === 'rules' ? entries : searchExceptions
+    const existing = listEntries.filter((_, i) => i !== editing.index)
     const error = group.validate(editText, existing)
     if (error) {
       setEditError(error)
@@ -190,9 +220,13 @@ export function DomainRulesDialog({
     const trimmed = editText.trim()
     const next =
       editing.index === null
-        ? [...entries, trimmed]
-        : entries.map((e, i) => (i === editing.index ? trimmed : e))
-    setRules(prev => ({ ...prev, [group.key]: next }))
+        ? [...listEntries, trimmed]
+        : listEntries.map((e, i) => (i === editing.index ? trimmed : e))
+    if (editing.list === 'rules') {
+      setRules(prev => ({ ...prev, [group.key]: next }))
+    } else {
+      setSearchExceptions(next)
+    }
     setEditing(null)
   }
 
@@ -228,24 +262,37 @@ export function DomainRulesDialog({
     } else if (key.tab) {
       toggleMode()
     } else if (key.upArrow) {
-      setSelectedRow(prev => (prev - 1 + rows.length) % rows.length)
+      setSelectedRow(prev =>
+        clampRow((prev - 1 + rows.length) % rows.length, -1),
+      )
     } else if (key.downArrow) {
-      setSelectedRow(prev => (prev + 1) % rows.length)
-    } else if (input === 'd' && currentRow?.type === 'entry') {
-      setRules(prev => ({
-        ...prev,
-        [group.key]: entries.filter((_, i) => i !== currentRow.index),
-      }))
-      setSelectedRow(prev => Math.min(prev, rows.length - 2))
+      setSelectedRow(prev => clampRow((prev + 1) % rows.length, 1))
+    } else if (
+      input === 'd' &&
+      (currentRow?.type === 'entry' || currentRow?.type === 'exception')
+    ) {
+      if (currentRow.type === 'entry') {
+        setRules(prev => ({
+          ...prev,
+          [group.key]: entries.filter((_, i) => i !== currentRow.index),
+        }))
+      } else {
+        setSearchExceptions(prev => prev.filter((_, i) => i !== currentRow.index))
+      }
+      setSelectedRow(prev => clampRow(prev, -1))
     } else if (key.return) {
       if (!currentRow) return
       if (currentRow.type === 'entry') {
-        startEdit(currentRow.index)
+        startEdit('rules', currentRow.index)
       } else if (currentRow.type === 'add') {
-        startEdit(null)
-      } else {
+        startEdit('rules', null)
+      } else if (currentRow.type === 'exception') {
+        startEdit('exceptions', currentRow.index)
+      } else if (currentRow.type === 'addException') {
+        startEdit('exceptions', null)
+      } else if (currentRow.type === 'done') {
         onComplete({
-          search: { mode: modes.websearch, rules: rules.websearch },
+          search: { mode: modes.websearch, rules: rules.websearch, exceptions: searchExceptions },
           fetch: { mode: modes.webfetch, rules: rules.webfetch },
           sandbox: { rules: rules.sandbox },
         })
@@ -318,59 +365,71 @@ export function DomainRulesDialog({
       <Box flexDirection="column">
         <Text dimColor>Rules</Text>
         {entries.length === 0 && <Text dimColor>  (none)</Text>}
-        {entries.map((entry, index) => {
-          const isSelected = index === clampedSelected && editing === null
-          const isEditingThis = editing !== null && editing.index === index
-          return (
-            <Box key={index} gap={1}>
-              <Text>{isSelected ? figures.pointer : ' '}</Text>
-              {isEditingThis ? (
-                renderEditBox()
-              ) : (
-                <Text color={isSelected ? 'suggestion' : undefined}>
-                  {entry}
+        {rows.map((row, rowIndex) => {
+          const isSelected = rowIndex === clampedSelected && editing === null
+          switch (row.type) {
+            case 'header':
+              return (
+                <Text key="header" dimColor marginTop={1}>
+                  Exceptions
                 </Text>
-              )}
-            </Box>
-          )
-        })}
-        {(() => {
-          const addRow = entries.length
-          const isSelected = addRow === clampedSelected && editing === null
-          const isEditingThis = editing !== null && editing.index === null
-          return (
-            <Box gap={1}>
-              <Text>{isSelected ? figures.pointer : ' '}</Text>
-              {isEditingThis ? (
-                renderEditBox()
-              ) : (
-                <Text
-                  dimColor={!isSelected}
-                  color={isSelected ? 'suggestion' : undefined}
-                >
-                  + Add rule
-                </Text>
-              )}
-            </Box>
-          )
-        })()}
-        <Box gap={1} marginTop={1}>
-          <Text>
-            {clampedSelected === rows.length - 1 && editing === null
-              ? figures.pointer
-              : ' '}
-          </Text>
-          <Text
-            bold
-            color={
-              clampedSelected === rows.length - 1 && editing === null
-                ? 'suggestion'
-                : undefined
+              )
+            case 'entry':
+            case 'exception': {
+              const list = row.type === 'entry' ? 'rules' : 'exceptions'
+              const listEntries =
+                row.type === 'entry' ? entries : searchExceptions
+              const isEditingThis =
+                editing !== null &&
+                editing.list === list &&
+                editing.index === row.index
+              return (
+                <Box key={`${row.type}-${row.index}`} gap={1}>
+                  <Text>{isSelected ? figures.pointer : ' '}</Text>
+                  {isEditingThis ? (
+                    renderEditBox()
+                  ) : (
+                    <Text color={isSelected ? 'suggestion' : undefined}>
+                      {listEntries[row.index]}
+                    </Text>
+                  )}
+                </Box>
+              )
             }
-          >
-            Done
-          </Text>
-        </Box>
+            case 'add':
+            case 'addException': {
+              const list = row.type === 'add' ? 'rules' : 'exceptions'
+              const isEditingThis =
+                editing !== null &&
+                editing.list === list &&
+                editing.index === null
+              return (
+                <Box key={row.type} gap={1}>
+                  <Text>{isSelected ? figures.pointer : ' '}</Text>
+                  {isEditingThis ? (
+                    renderEditBox()
+                  ) : (
+                    <Text
+                      dimColor={!isSelected}
+                      color={isSelected ? 'suggestion' : undefined}
+                    >
+                      {row.type === 'add' ? '+ Add rule' : '+ Add exception'}
+                    </Text>
+                  )}
+                </Box>
+              )
+            }
+            case 'done':
+              return (
+                <Box key="done" gap={1} marginTop={1}>
+                  <Text>{isSelected ? figures.pointer : ' '}</Text>
+                  <Text bold color={isSelected ? 'suggestion' : undefined}>
+                    Done
+                  </Text>
+                </Box>
+              )
+          }
+        })}
       </Box>
       <Text dimColor>
         {editing
