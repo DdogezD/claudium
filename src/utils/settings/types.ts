@@ -410,13 +410,13 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Deprecated: Use attribution instead. ' +
-            "Whether to include Claude's co-authored by attribution in commits and PRs (defaults to true)",
+            "Whether to include the assistant's co-authored by attribution in commits and PRs (defaults to true)",
         ),
       includeGitInstructions: z
         .boolean()
         .optional()
         .describe(
-          "Include built-in commit and PR workflow instructions in Claude's system prompt (default: true)",
+          "Include built-in commit and PR workflow instructions in the assistant's system prompt (default: true)",
         ),
       permissions: PermissionsSchema()
         .optional()
@@ -665,7 +665,7 @@ export const SettingsSchema = lazySchema(() =>
         )
         .optional()
         .describe(
-          'Enabled plugins using plugin-id@marketplace-id format. Example: { "formatter@anthropic-tools": true }. Also supports extended format with version constraints.',
+          'Enabled plugins using plugin-id@marketplace-id format. Example: { "formatter@example-marketplace": true }. Also supports extended format with version constraints.',
         ),
       // Extra marketplaces for this repository (usually for project settings)
       extraKnownMarketplaces: z
@@ -755,7 +755,7 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Preferred language for Claude responses and voice dictation (e.g., "japanese", "spanish")',
+          'Preferred language for assistant responses and voice dictation (e.g., "japanese", "spanish")',
         ),
       skipWebFetchPreflight: z
         .boolean()
@@ -999,13 +999,13 @@ export const SettingsSchema = lazySchema(() =>
               .boolean()
               .optional()
               .describe(
-                'Start Claude in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
+                'Start the application in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
               ),
             assistantName: z
               .string()
               .optional()
               .describe(
-                'Display name for the assistant, shown in the claude.ai session list',
+                'Display name for the assistant, shown in the session list',
               ),
           }
         : {}),
@@ -1029,7 +1029,7 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe(
-          'Enable auto-memory for this project. When false, Claude will not read from or write to the auto-memory directory.',
+          'Enable auto-memory for this project. When false, the assistant will not read from or write to the auto-memory directory.',
         ),
       autoMemoryDirectory: z
         .string()
@@ -1130,7 +1130,7 @@ export const SettingsSchema = lazySchema(() =>
                 'Default working directory on the remote host. ' +
                   'Supports tilde expansion (e.g. ~/projects). ' +
                   'If not specified, defaults to the remote user home directory. ' +
-                  'Can be overridden by the [dir] positional argument in `claude ssh <config> [dir]`.',
+                  'Can be overridden by the [dir] positional argument in `claudium ssh <config> [dir]`.',
               ),
           }),
         )

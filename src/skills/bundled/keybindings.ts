@@ -113,7 +113,6 @@ function generateReservedShortcuts(): string {
 
 const FILE_FORMAT_EXAMPLE: KeybindingsSchemaType = {
   $schema: 'https://www.schemastore.org/claude-code-keybindings.json',
-  $docs: 'https://code.claude.com/docs/en/keybindings',
   bindings: [
     {
       context: 'Chat',
@@ -166,7 +165,7 @@ const SECTION_FILE_FORMAT = [
   jsonStringify(FILE_FORMAT_EXAMPLE, null, 2),
   '```',
   '',
-  'Always include the `$schema` and `$docs` fields.',
+  'Always include the `$schema` field.',
 ].join('\n')
 
 const SECTION_KEYSTROKE_SYNTAX = [

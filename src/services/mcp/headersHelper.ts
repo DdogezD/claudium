@@ -49,7 +49,7 @@ export async function getMcpHeadersFromHelper(
     const hasTrust = checkHasTrustDialogAccepted()
     if (!hasTrust) {
       const error = new Error(
-        `Security: headersHelper for MCP server '${serverName}' executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
+        `Security: headersHelper for MCP server '${serverName}' executed before workspace trust is confirmed. Report this issue to the project maintainers.`,
       )
       logAntError('MCP headersHelper invoked before trust check', error)
       logEvent('tengu_mcp_headersHelper_missing_trust', {})

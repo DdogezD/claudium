@@ -3,13 +3,13 @@ import { registerBundledSkill } from '../bundledSkills.js'
 // Prompt text contains `ps` commands as instructions for Claude to run,
 // not commands this file executes.
 // eslint-disable-next-line custom-rules/no-direct-ps-commands
-const STUCK_PROMPT = `# /stuck — diagnose frozen/slow Claude Code sessions
+const STUCK_PROMPT = `# /stuck — diagnose frozen/slow Claudium sessions
 
-The user thinks another Claude Code session on this machine is frozen, stuck, or very slow. Investigate and post a report to #claude-code-feedback.
+The user thinks another Claudium session on this machine is frozen, stuck, or very slow. Investigate and report findings in the current conversation.
 
 ## What to look for
 
-Scan for other Claude Code processes (excluding the current one — PID is in \`process.pid\` but for shell commands just exclude the PID you see running this prompt). Process names are typically \`claude\` (installed) or \`cli\` (native dev build).
+Scan for other Claudium processes (excluding the current one — PID is in \`process.pid\` but for shell commands just exclude the PID you see running this prompt). Process names may be \`claudium\`, \`claude\` (compatibility), or \`cli\` (native dev build).
 
 Signs of a stuck session:
 - **High CPU (≥90%) sustained** — likely an infinite loop. Sample twice, 1-2s apart, to confirm it's not a transient spike.
@@ -21,11 +21,11 @@ Signs of a stuck session:
 
 ## Investigation steps
 
-1. **List all Claude Code processes** (macOS/Linux):
+1. **List all Claudium processes** (macOS/Linux):
    \`\`\`
-   ps -axo pid=,pcpu=,rss=,etime=,state=,comm=,command= | grep -E '(claude|cli)' | grep -v grep
+   ps -axo pid=,pcpu=,rss=,etime=,state=,comm=,command= | grep -E '(claudium|claude|cli)' | grep -v grep
    \`\`\`
-   Filter to rows where \`comm\` is \`claude\` or (\`cli\` AND the command path contains "claude").
+   Filter to rows where \`comm\` is \`claudium\` or \`claude\`, or (\`comm\` is \`cli\` AND the command path contains either "claudium" or "claude").
 
 2. **For anything suspicious**, gather more context:
    - Child processes: \`pgrep -lP <pid>\`
@@ -39,19 +39,16 @@ Signs of a stuck session:
 
 ## Report
 
-**Only post to Slack if you actually found something stuck.** If every session looks healthy, tell the user that directly — do not post an all-clear to the channel.
+Report findings only in the current conversation. Do not send diagnostics to external services, post messages, or create issues unless the user explicitly requests external sharing and specifies the destination.
 
-If you did find a stuck/slow session, post to **#claude-code-feedback** (channel ID: \`C07VBSHV7EV\`) using the Slack MCP tool. Use ToolSearch to find \`slack_send_message\` if it's not already loaded.
+If every session looks healthy, tell the user that directly.
 
-**Use a two-message structure** to keep the channel scannable:
-
-1. **Top-level message** — one short line: hostname, Claude Code version, and a terse symptom (e.g. "session PID 12345 pegged at 100% CPU for 10min" or "git subprocess hung in D state"). No code blocks, no details.
-2. **Thread reply** — the full diagnostic dump. Pass the top-level message's \`ts\` as \`thread_ts\`. Include:
+If you found a stuck/slow session, present:
+1. **Summary** — hostname, Claudium version, and a terse symptom (e.g. "session PID 12345 pegged at 100% CPU for 10min" or "git subprocess hung in D state").
+2. **Diagnostic details**:
    - PID, CPU%, RSS, state, uptime, command line, child processes
    - Your diagnosis of what's likely wrong
    - Relevant debug log tail or \`sample\` output if you captured it
-
-If Slack MCP isn't available, format the report as a message the user can copy-paste into #claude-code-feedback (and let them know to thread the details themselves).
 
 ## Notes
 - Don't kill or signal any processes — this is diagnostic only.
@@ -66,7 +63,7 @@ export function registerStuckSkill(): void {
   registerBundledSkill({
     name: 'stuck',
     description:
-      '[ANT-ONLY] Investigate frozen/stuck/slow Claude Code sessions on this machine and post a diagnostic report to #claude-code-feedback.',
+      'Investigate frozen/stuck/slow Claudium sessions on this machine and report diagnostic findings in the current conversation.',
     userInvocable: true,
     async getPromptForCommand(args) {
       let prompt = STUCK_PROMPT

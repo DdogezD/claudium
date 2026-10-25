@@ -1043,9 +1043,7 @@ export function getAutoModeUnavailableNotification(
       base = 'auto mode unavailable for this model'
       break
   }
-  return process.env.USER_TYPE === 'ant'
-    ? `${base} · #claude-code-feedback`
-    : base
+  return base
 }
 
 /**

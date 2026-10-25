@@ -35,8 +35,6 @@ function getPromptContent(
   const username = process.env.USER || ''
 
   let prefix = ''
-  let reviewerArg = ' and `--reviewer anthropics/claude-code`'
-  let addReviewerArg = ' (and add `--add-reviewer anthropics/claude-code`)'
   let changelogSection = `
 
 ## Changelog
@@ -48,8 +46,6 @@ function getPromptContent(
 5. After creating/updating the PR, check if the user's CLAUDE.md mentions posting to Slack channels. If it does, use ToolSearch to search for "slack send message" tools. If ToolSearch finds a Slack tool, ask the user if they'd like you to post the PR URL to the relevant Slack channel. Only post if the user confirms. If ToolSearch returns no results or errors, skip this step silently—do not mention the failure, do not attempt workarounds, and do not try alternative approaches.`
   if (process.env.USER_TYPE === 'ant' && isUndercover()) {
     prefix = getUndercoverInstructions() + '\n'
-    reviewerArg = ''
-    addReviewerArg = ''
     changelogSection = ''
     slackStep = ''
   }
@@ -87,7 +83,8 @@ EOF
 )"
 \`\`\`
 3. Push the branch to origin
-4. If a PR already exists for this branch (check the gh pr view output above), update the PR title and body using \`gh pr edit\` to reflect the current diff${addReviewerArg}. Otherwise, create a pull request using \`gh pr create\` with heredoc syntax for the body${reviewerArg}.
+4. If a PR already exists for this branch (check the gh pr view output above), update the PR title and body using \`gh pr edit\` to reflect the current diff. Otherwise, create a pull request using \`gh pr create\` with heredoc syntax for the body.
+   - Follow the user's instructions and repository review conventions when requesting reviewers.
    - IMPORTANT: Keep PR titles short (under 70 characters). Use the body for details.
 \`\`\`
 gh pr create --title "Short, descriptive title" --body "$(cat <<'EOF'

@@ -22,7 +22,6 @@ import {
   createAssistantAPIErrorMessage,
   NO_RESPONSE_REQUESTED,
 } from 'src/utils/messages.js'
-import { getDefaultMainLoopModelSetting } from 'src/utils/model/model.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import {
@@ -653,10 +652,10 @@ export function getAssistantMessageFromError(
     }
 
     if (process.env.USER_TYPE === 'ant') {
-      const baseMessage = `API Error: 400 ${error.message}\n\nRun /share and post the JSON file to ${MACRO.FEEDBACK_CHANNEL}.`
+      const baseMessage = `API Error: 400 ${error.message}`
       const rewindInstruction = getIsNonInteractiveSession()
         ? ''
-        : ' Then, use /rewind to recover the conversation.'
+        : ' Run /rewind to recover the conversation.'
       return createAssistantAPIErrorMessage({
         content: baseMessage + rewindInstruction,
         error: 'invalid_request',
@@ -709,15 +708,8 @@ export function getAssistantMessageFromError(
     error instanceof Error &&
     error.message.toLowerCase().includes('invalid model name')
   ) {
-    // Get organization ID from config - only use OAuth account data when actively using OAuth
-    const orgId = getOauthAccountInfo()?.organizationUuid
-    const baseMsg = `[ANT-ONLY] Your org isn't gated into the \`${model}\` model. Either run \`claude\` with \`ANTHROPIC_MODEL=${getDefaultMainLoopModelSetting()}\``
-    const msg = orgId
-      ? `${baseMsg} or share your orgId (${orgId}) in ${MACRO.FEEDBACK_CHANNEL} for help getting access.`
-      : `${baseMsg} or reach out in ${MACRO.FEEDBACK_CHANNEL} for help getting access.`
-
     return createAssistantAPIErrorMessage({
-      content: msg,
+      content: `The configured model \`${model}\` is unavailable. Check the model ID and your provider's access settings, or choose an available model.`,
       error: 'invalid_request',
     })
   }
@@ -1040,7 +1032,6 @@ export function categorizeRetryableAPIError(
 
 export function getErrorMessageIfRefusal(
   stopReason: BetaStopReason | null,
-  model: string,
 ): AssistantMessage | undefined {
   if (stopReason !== 'refusal') {
     return
@@ -1048,17 +1039,12 @@ export function getErrorMessageIfRefusal(
 
   logEvent('tengu_refusal_api_response', {})
 
-  const baseMessage = getIsNonInteractiveSession()
-    ? `${API_ERROR_MESSAGE_PREFIX}: Claudium is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach.`
-    : `${API_ERROR_MESSAGE_PREFIX}: Claudium is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for Claudium to assist with a different task.`
-
-  const modelSuggestion =
-    model !== 'claude-sonnet-4-20250514'
-      ? ' If you are seeing this refusal repeatedly, try running /model claude-sonnet-4-20250514 to switch models.'
-      : ''
+  const content = getIsNonInteractiveSession()
+    ? `${API_ERROR_MESSAGE_PREFIX}: The model declined this request. Try rephrasing the request or attempting a different approach.`
+    : `${API_ERROR_MESSAGE_PREFIX}: The model declined this request. Press Esc twice to edit your last message, or start a new session with a different task.`
 
   return createAssistantAPIErrorMessage({
-    content: baseMessage + modelSuggestion,
+    content,
     error: 'invalid_request',
   })
 }

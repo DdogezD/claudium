@@ -226,7 +226,7 @@ async function _executeApiKeyHelper(
     const hasTrust = checkHasTrustDialogAccepted()
     if (!hasTrust && !isNonInteractiveSession) {
       const error = new Error(
-        `Security: apiKeyHelper executed before workspace trust is confirmed. If you see this message, post in ${MACRO.FEEDBACK_CHANNEL}.`,
+        'Security: apiKeyHelper executed before workspace trust is confirmed. Report this issue to the project maintainers.',
       )
       logAntError('apiKeyHelper invoked before trust check', error)
       logEvent('tengu_apiKeyHelper_missing_trust11', {})

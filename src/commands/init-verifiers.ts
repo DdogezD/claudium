@@ -162,7 +162,7 @@ Based on the areas detected in Phase 1, you may need to create multiple verifier
 
 ## Phase 4: Generate Verifier Skill
 
-**All verifier skills are created in the project root's \`.claude/skills/\` directory.** This ensures they are automatically loaded when Claude runs in the project.
+**All verifier skills are created in the project root's \`.claude/skills/\` directory.** This ensures they are automatically loaded when the assistant runs in the project.
 
 Write the skill file to \`.claude/skills/<verifier-name>/SKILL.md\`.
 

@@ -76,10 +76,6 @@ const defines = {
   'MACRO.BUILD_TIME': JSON.stringify(buildTime),
   'MACRO.PACKAGE_URL': JSON.stringify(pkg.name),
   'MACRO.NATIVE_PACKAGE_URL': 'undefined',
-  'MACRO.FEEDBACK_CHANNEL': JSON.stringify('github'),
-  'MACRO.ISSUES_EXPLAINER': JSON.stringify(
-    'This reconstructed source snapshot does not include Anthropic internal issue routing.',
-  ),
   'MACRO.VERSION_CHANGELOG': JSON.stringify('https://github.com/DdogezD/claudium'),
 } as const
 
