@@ -1,7 +1,6 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 let headers: Headers | null = new Headers({ 'x-api-key': 'fake-key' })
-let provider = 'firstParty'
 let privacy = false
 let bypass = false
 const readAuth = mock(() => headers)
@@ -15,18 +14,17 @@ mock.module('../proxy.js', () => ({
   getProxyFetchOptions: readProxy,
   shouldBypassProxy: () => bypass,
 }))
-mock.module('./providers.js', () => ({ getAPIProvider: () => provider }))
 mock.module('../privacyLevel.js', () => ({ isEssentialTrafficOnly: () => privacy }))
 
 const { getDiscoveredModels, refreshDiscoveredModels } = await import('./modelDiscovery.js')
-const keys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_UNIX_SOCKET', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] as const
+const legacyRoutingFlags = ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'] as const
+const keys = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_UNIX_SOCKET', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', ...legacyRoutingFlags] as const
 const original = Object.fromEntries(keys.map(key => [key, process.env[key]]))
 const originalFetch = globalThis.fetch
 let sequence = 0
 
 beforeEach(() => {
   headers = new Headers({ 'x-api-key': 'fake-key' })
-  provider = 'firstParty'
   privacy = false
   bypass = false
   readAuth.mockClear()
@@ -70,7 +68,7 @@ describe('runtime model discovery wiring', () => {
     expect(readProxy.mock.calls.every(args => args.length === 0)).toBe(true)
   })
 
-  test('does not resolve auth or fetch in privacy, tunnel or cloud-provider modes', async () => {
+  test('does not resolve auth or fetch in privacy or tunnel modes', async () => {
     privacy = true
     await refreshDiscoveredModels()
     privacy = false
@@ -80,10 +78,16 @@ describe('runtime model discovery wiring', () => {
     process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
     await refreshDiscoveredModels()
     delete process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
-    provider = 'bedrock'
-    await refreshDiscoveredModels()
     expect(readAuth).not.toHaveBeenCalled()
     expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  test.each([...legacyRoutingFlags])('ignores removed routing flag %s', async flag => {
+    process.env[flag] = '1'
+    await refreshDiscoveredModels()
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect(fetchFn.mock.calls[0]![0]).toBe(`${process.env.ANTHROPIC_BASE_URL}/v1/models`)
+    expect(getDiscoveredModels()).toEqual([{ id: 'runtime-model' }])
   })
 
   test('unready helper authentication does not issue an anonymous request or poison retry', async () => {

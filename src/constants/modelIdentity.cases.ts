@@ -23,11 +23,11 @@ const { getCLISyspromptPrefix, CLI_SYSPROMPT_PREFIXES } = await import('./system
 const { getSystemPrompt, SYSTEM_PROMPT_DYNAMIC_BOUNDARY } = await import('./prompts.js')
 const { clearSystemPromptSections } = await import('./systemPromptSections.js')
 const { splitSysPromptPrefix } = await import('../utils/api.js')
-const { setIsInteractive } = await import('../bootstrap/state.js')
+const { setIsInteractive, resetModelStringsForTestingOnly } = await import('../bootstrap/state.js')
 const { setSessionSettingsCache } = await import('../utils/settings/settingsCache.js')
 const { SettingsSchema } = await import('../utils/settings/types.js')
 const { syncHookResponseSchema } = await import('../types/hooks.js')
-const { ThinkingConfigSchema } = await import('../entrypoints/sdk/coreSchemas.js')
+const { ThinkingConfigSchema, AccountInfoSchema } = await import('../entrypoints/sdk/coreSchemas.js')
 const { getAutoModeUnavailableNotification } = await import('../utils/permissions/permissionSetup.js')
 const { toJSONSchema } = await import('zod/v4')
 const { getErrorMessageIfRefusal } = await import('../services/api/errors.js')
@@ -38,6 +38,11 @@ const { clearBundledSkills, getBundledSkills } = await import('../skills/bundled
 const { registerUpdateConfigSkill } = await import('../skills/bundled/updateConfig.js')
 const { registerDebugSkill } = await import('../skills/bundled/debug.js')
 const debug = await import('../utils/debug.js')
+const { getModelStrings, applyModelOverride, resolveOverriddenModel } = await import('../utils/model/modelStrings.js')
+const { ALL_MODEL_CONFIGS } = await import('../utils/model/configs.js')
+const { getAllModelBetas } = await import('../utils/betas.js')
+const { isProviderManagedEnvVar, DANGEROUS_SHELL_SETTINGS } = await import('../utils/managedEnvConstants.js')
+const { subprocessEnv } = await import('../utils/subprocessEnv.js')
 
 beforeEach(() => {
   for (const key of [
@@ -47,6 +52,8 @@ beforeEach(() => {
   process.env.USER_TYPE = 'external'
   setIsInteractive(true)
   setSessionSettingsCache({ settings: {}, errors: [] })
+  resetModelStringsForTestingOnly()
+  getAllModelBetas.cache.clear()
   clearSystemPromptSections()
   clearBundledSkills()
 })
@@ -63,12 +70,12 @@ afterAll(async () => {
   await rm(home, { recursive: true, force: true })
 })
 
-test('all provider and session prefixes identify the agent without upstream branding', () => {
-  for (const provider of [undefined, 'BEDROCK', 'VERTEX', 'FOUNDRY']) {
+test('session prefixes identify the agent and ignore removed cloud routing flags', () => {
+  for (const legacyFlag of [undefined, 'BEDROCK', 'VERTEX', 'FOUNDRY']) {
     for (const key of ['BEDROCK', 'VERTEX', 'FOUNDRY']) {
       delete process.env[`CLAUDE_CODE_USE_${key}`]
     }
-    if (provider) process.env[`CLAUDE_CODE_USE_${provider}`] = '1'
+    if (legacyFlag) process.env[`CLAUDE_CODE_USE_${legacyFlag}`] = '1'
     for (const options of [
       undefined,
       { isNonInteractive: false, hasAppendSystemPrompt: false },
@@ -80,10 +87,78 @@ test('all provider and session prefixes identify the agent without upstream bran
       expect(CLI_SYSPROMPT_PREFIXES.has(prefix)).toBe(true)
       expect(prefix).toContain('terminal-native AI coding agent')
       expect(prefix).not.toMatch(/Claude|Anthropic|SDK/)
-      if (!options?.isNonInteractive || options.hasAppendSystemPrompt || provider === 'VERTEX') {
+      if (!options?.isNonInteractive || options.hasAppendSystemPrompt) {
         expect(prefix).toContain(PRODUCT_NAME)
+      } else {
+        expect(prefix).toBe('You are a terminal-native AI coding agent.')
       }
     }
+  }
+})
+
+test('removed cloud flags do not change canonical models or API betas', () => {
+  const expectedModels = Object.fromEntries(
+    Object.entries(ALL_MODEL_CONFIGS).map(([key, config]) => [key, config.firstParty]),
+  )
+  const model = 'claude-sonnet-4-6'
+  const expectedBetas = getAllModelBetas(model)
+  for (const flag of ['BEDROCK', 'VERTEX', 'FOUNDRY']) {
+    process.env[`CLAUDE_CODE_USE_${flag}`] = '1'
+    resetModelStringsForTestingOnly()
+    getAllModelBetas.cache.clear()
+    expect<Record<string, string>>(getModelStrings()).toEqual(expectedModels)
+    expect(getAllModelBetas(model)).toEqual(expectedBetas)
+    delete process.env[`CLAUDE_CODE_USE_${flag}`]
+  }
+})
+
+test('custom model overrides preserve exact IDs and canonical resolution', () => {
+  const canonical = ALL_MODEL_CONFIGS.opus46.firstParty
+  const custom = 'Team/Custom-Model:V2'
+  setSessionSettingsCache({ settings: { modelOverrides: { [canonical]: custom } }, errors: [] })
+  expect(getModelStrings().opus46).toBe(custom)
+  expect(applyModelOverride(canonical)).toBe(custom)
+  expect(resolveOverriddenModel(custom)).toBe(canonical)
+  expect(applyModelOverride('Other/Model:V1')).toBe('Other/Model:V1')
+  expect(resolveOverriddenModel('Other/Model:V1')).toBe('Other/Model:V1')
+  setSessionSettingsCache({ settings: {}, errors: [] })
+  expect(getModelStrings().opus46).toBe(canonical)
+})
+
+test('settings and account schema no longer advertise removed cloud integrations', () => {
+  const schema = toJSONSchema(SettingsSchema(), { io: 'input', unrepresentable: 'any' })
+  for (const helper of ['awsAuthRefresh', 'awsCredentialExport', 'gcpAuthRefresh']) {
+    expect(schema.properties).not.toHaveProperty(helper)
+  }
+  expect(schema.properties).toHaveProperty('apiKeyHelper')
+  expect(schema.properties).toHaveProperty('otelHeadersHelper')
+  expect(AccountInfoSchema().safeParse({ apiProvider: 'firstParty' }).success).toBe(true)
+  for (const apiProvider of ['bedrock', 'vertex', 'foundry']) {
+    expect(AccountInfoSchema().safeParse({ apiProvider }).success).toBe(false)
+  }
+})
+
+test('cloud cleanup preserves host routing controls and subprocess secret scrubbing', () => {
+  for (const key of ['ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL']) {
+    expect(isProviderManagedEnvVar(key.toLowerCase())).toBe(true)
+  }
+  for (const key of ['CLAUDE_CODE_USE_VERTEX', 'ANTHROPIC_BEDROCK_BASE_URL', 'VERTEX_REGION_CLAUDE_HAIKU_4_5']) {
+    expect(isProviderManagedEnvVar(key)).toBe(false)
+  }
+  expect([...DANGEROUS_SHELL_SETTINGS]).toEqual(['apiKeyHelper', 'otelHeadersHelper', 'statusLine'])
+  const originalScrub = process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
+  process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = '1'
+  try {
+    const secrets = {
+      ANTHROPIC_API_KEY: 'fixture-secret', AWS_SECRET_ACCESS_KEY: 'fixture-secret',
+      AWS_BEARER_TOKEN_BEDROCK: 'fixture-secret', GOOGLE_APPLICATION_CREDENTIALS: 'fixture-path',
+      AZURE_CLIENT_SECRET: 'fixture-secret', ANTHROPIC_FOUNDRY_API_KEY: 'fixture-secret',
+    }
+    const child = subprocessEnv(secrets)
+    for (const key of Object.keys(secrets)) expect(child).not.toHaveProperty(key)
+  } finally {
+    if (originalScrub === undefined) delete process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
+    else process.env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = originalScrub
   }
 })
 

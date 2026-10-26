@@ -5,7 +5,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics-stub.js'
-import { getAPIProvider } from 'src/utils/model/providers.js'
 import {
   getIsNonInteractiveSession,
   preferThirdPartyAuthentication,
@@ -448,16 +447,6 @@ export function hasProfileScope(): boolean {
 }
 
 /**
- * Stub: Cloud provider auth has been stripped.
- */
-export function clearAwsCredentialsCache(): void {}
-
-/**
- * Stub: Cloud provider auth has been stripped.
- */
-export function clearGcpCredentialsCache(): void {}
-
-/**
  * Stub: OAuth token cache has been stripped.
  */
 export function clearOAuthTokenCache(): void {}
@@ -543,11 +532,6 @@ export function getRateLimitTier() {
 export function getSubscriptionName(): string {
   return 'API Key'
 }
-
-export function isUsing3PServices(): boolean {
-  return getAPIProvider() !== 'firstParty'
-}
-
 
 /**
  * Get the configured otelHeadersHelper from settings
@@ -664,11 +648,6 @@ export type UserAccountInfo = {
 }
 
 export function getAccountInformation() {
-  const apiProvider = getAPIProvider()
-  // Only provide account info for first-party Anthropic API
-  if (apiProvider !== 'firstParty') {
-    return undefined
-  }
   const accountInfo: UserAccountInfo = {}
   const { key: apiKey, source: apiKeySource } = getAnthropicApiKeyWithSource()
   if (apiKey) {

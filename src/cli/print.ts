@@ -160,9 +160,7 @@ import {
 } from 'src/utils/permissions/permissionSetup.js'
 import { getLastCacheSafeParams } from 'src/utils/forkedAgent.js'
 import { getAccountInformation } from 'src/utils/auth.js'
-import { getAPIProvider } from 'src/utils/model/providers.js'
 import type { HookCallbackMatcher } from 'src/types/hooks.js'
-import { AwsAuthStatusManager } from 'src/utils/awsAuthStatusManager.js'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
 import {
   registerHookCallbacks,
@@ -242,7 +240,6 @@ import {
 } from 'src/utils/effort.js'
 import { modelSupportsAdaptiveThinking } from 'src/utils/thinking.js'
 import { modelSupportsAutoMode } from 'src/utils/betas.js'
-import { ensureModelStringsInitialized } from 'src/utils/model/modelStrings.js'
 import {
   getSessionId,
   setMainLoopModelOverride,
@@ -443,7 +440,6 @@ export async function runHeadless(
     includePartialMessages: boolean | undefined
     forkSession: boolean | undefined
     rewindFiles: string | undefined
-    enableAuthStatus: boolean | undefined
     agent: string | undefined
     workload: string | undefined
     setupTrigger?: 'init' | 'maintenance' | undefined
@@ -770,11 +766,6 @@ export async function runHeadless(
 
   headlessProfilerCheckpoint('after_loadInitialMessages')
 
-  // Ensure model strings are initialized before generating model options.
-  // For Bedrock users, this waits for the profile fetch to get correct region strings.
-  await ensureModelStringsInitialized()
-  headlessProfilerCheckpoint('after_modelStrings')
-
   // UDS inbox store registration is deferred until after `run` is defined
   // so we can pass `run` as the onEnqueue callback (see below).
 
@@ -943,7 +934,6 @@ function runHeadlessStreaming(
     fallbackModel: string | undefined
     replayUserMessages?: boolean | undefined
     includePartialMessages?: boolean | undefined
-    enableAuthStatus?: boolean | undefined
     agent?: string | undefined
     setSDKStatus?: (status: SDKStatus) => void
     workload?: string | undefined
@@ -1020,22 +1010,6 @@ function runHeadlessStreaming(
       })
     }
   })
-
-  // Set up AWS auth status listener if enabled
-  let unsubscribeAuthStatus: (() => void) | undefined
-  if (options.enableAuthStatus) {
-    const authStatusManager = AwsAuthStatusManager.getInstance()
-    unsubscribeAuthStatus = authStatusManager.subscribe(status => {
-      output.enqueue({
-        type: 'auth_status',
-        isAuthenticating: status.isAuthenticating,
-        output: status.output,
-        error: status.error,
-        uuid: randomUUID(),
-        session_id: getSessionId(),
-      })
-    })
-  }
 
   // Set up rate limit status listener to emit SDKRateLimitEvent for all status changes.
   // Emitting for all statuses (including 'allowed') ensures consumers can clear warnings
@@ -2358,7 +2332,6 @@ function runHeadlessStreaming(
       } else {
         await finalizePendingAsyncHooks()
         unsubscribeSkillChanges()
-        unsubscribeAuthStatus?.()
         statusListeners.delete(rateLimitListener)
         output.done()
       }
@@ -2553,7 +2526,6 @@ function runHeadlessStreaming(
             commands,
             modelInfos,
             structuredIO,
-            !!options.enableAuthStatus,
             options,
             agents,
             getAppState,
@@ -3516,7 +3488,6 @@ function runHeadlessStreaming(
     if (!running) {
       await finalizePendingAsyncHooks()
       unsubscribeSkillChanges()
-      unsubscribeAuthStatus?.()
       statusListeners.delete(rateLimitListener)
       output.done()
     }
@@ -3724,7 +3695,6 @@ async function handleInitializeRequest(
   commands: Command[],
   modelInfos: ModelInfo[],
   structuredIO: StructuredIO,
-  enableAuthStatus: boolean,
   options: {
     systemPrompt: string | undefined
     appendSystemPrompt: string | undefined
@@ -3853,10 +3823,7 @@ async function handleInitializeRequest(
       subscriptionType: accountInfo?.subscription,
       tokenSource: accountInfo?.tokenSource,
       apiKeySource: accountInfo?.apiKeySource,
-      // getAccountInformation() returns undefined under 3P providers, so the
-      // other fields are all absent. apiProvider disambiguates "not logged
-      // in" (firstParty + tokenSource:none) from "3P, login not applicable".
-      apiProvider: getAPIProvider(),
+      apiProvider: 'firstParty',
     },
     pid: process.pid,
   }
@@ -3869,24 +3836,6 @@ async function handleInitializeRequest(
       response: initResponse,
     },
   })
-
-  // After the initialize message, check the auth status-
-  // This will get notified of changes, but we also want to send the
-  // initial state.
-  if (enableAuthStatus) {
-    const authStatusManager = AwsAuthStatusManager.getInstance()
-    const status = authStatusManager.getStatus()
-    if (status) {
-      output.enqueue({
-        type: 'auth_status',
-        isAuthenticating: status.isAuthenticating,
-        output: status.output,
-        error: status.error,
-        uuid: randomUUID(),
-        session_id: getSessionId(),
-      })
-    }
-  }
 }
 
 async function handleRewindFiles(

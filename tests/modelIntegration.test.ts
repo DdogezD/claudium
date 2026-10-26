@@ -5,6 +5,7 @@ const worktree = fileURLToPath(new URL('../', import.meta.url))
 const caseFiles = [
   'src/constants/modelIdentity.cases.ts',
   'src/services/api/client.cases.ts',
+  'src/services/tokenEstimation.cases.ts',
   'src/utils/model/modelOptions.cases.ts',
   'src/utils/model/modelDiscoveryRuntime.cases.ts',
   'src/hooks/useTypeahead.cases.tsx',

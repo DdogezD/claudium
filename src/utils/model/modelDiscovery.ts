@@ -79,7 +79,6 @@ export function parseDiscoveredModel(value: unknown): DiscoveredModel | null {
 
 export type ModelDiscoveryConnection = {
   baseURL?: string
-  provider: string
   essentialTrafficOnly?: boolean
   unixSocket?: string
   headers: HeadersInit
@@ -112,8 +111,7 @@ export function createModelDiscoveryService(deps: Dependencies) {
   function snapshot() {
     try {
       const connection = deps.getConnection()
-      if (!connection || connection.provider !== 'firstParty' ||
-        connection.essentialTrafficOnly || connection.unixSocket) return null
+      if (!connection || connection.essentialTrafficOnly || connection.unixSocket) return null
       const urls = buildModelDiscoveryUrls(connection.baseURL)
       if (!urls) return null
       const headers = new Headers(connection.headers)
@@ -304,12 +302,10 @@ export async function refreshDiscoveredModels(): Promise<void> {
     loading ??= Promise.all([
       import('../../services/api/client.js'),
       import('../proxy.js'),
-      import('./providers.js'),
       import('../privacyLevel.js'),
-    ]).then(([client, proxy, providers, privacy]) => {
+    ]).then(([client, proxy, privacy]) => {
       readConnection = () => {
-        const provider = providers.getAPIProvider()
-        if (!eligibleEnvironment() || provider !== 'firstParty' || privacy.isEssentialTrafficOnly()) {
+        if (!eligibleEnvironment() || privacy.isEssentialTrafficOnly()) {
           return null
         }
         const headers = client.getAnthropicRequestHeaders()
@@ -317,7 +313,7 @@ export async function refreshDiscoveredModels(): Promise<void> {
         const baseURL = process.env.ANTHROPIC_BASE_URL!
         const fetchOptions = proxy.getProxyFetchOptions()
         if (proxy.shouldBypassProxy(baseURL)) delete fetchOptions.proxy
-        return { baseURL, provider, headers, fetchOptions }
+        return { baseURL, headers, fetchOptions }
       }
     }).catch(() => {}).finally(() => { loading = undefined })
     await loading

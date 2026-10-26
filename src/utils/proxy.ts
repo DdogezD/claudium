@@ -1,5 +1,3 @@
-// @aws-sdk/credential-provider-node and @smithy/node-http-handler are imported
-// dynamically in getAWSClientProxyConfig() to defer ~929KB of AWS SDK.
 // undici is lazy-required inside getProxyAgent/configureGlobalAgents to defer
 // ~1.5MB when no HTTPS_PROXY/mTLS env vars are set (the common case).
 import axios, { type AxiosInstance } from 'axios'
@@ -384,36 +382,6 @@ export function configureGlobalAgents(): void {
         mtlsOptions.dispatcher,
       )
     }
-  }
-}
-
-/**
- * Get AWS SDK client configuration with proxy support
- * Returns configuration object that can be spread into AWS service client constructors
- */
-export async function getAWSClientProxyConfig(): Promise<object> {
-  const proxyUrl = getProxyUrl()
-
-  if (!proxyUrl) {
-    return {}
-  }
-
-  const [{ NodeHttpHandler }, { defaultProvider }] = await Promise.all([
-    import('@smithy/node-http-handler'),
-    import('@aws-sdk/credential-provider-node'),
-  ])
-
-  const agent = createHttpsProxyAgent(proxyUrl)
-  const requestHandler = new NodeHttpHandler({
-    httpAgent: agent,
-    httpsAgent: agent,
-  })
-
-  return {
-    requestHandler,
-    credentials: defaultProvider({
-      clientConfig: { requestHandler },
-    }),
   }
 }
 

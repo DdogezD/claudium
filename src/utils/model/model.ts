@@ -14,7 +14,6 @@ import {
   resolveOverriddenModel,
 } from './modelStrings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
-import { getAPIProvider } from './providers.js'
 import { isLegacyModelAlias } from './aliases.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { resolveModelProfileModel } from './modelProfiles.js'
@@ -111,9 +110,9 @@ export function getDefaultMainLoopModel(): ModelName | undefined {
 
 // @[MODEL LAUNCH]: Add a canonical name mapping for the new model below.
 /**
- * Pure string-match that strips date/provider suffixes from a first-party model
- * name. Input must already be a 1P-format ID (e.g. 'claude-3-7-sonnet-20250219',
- * 'us.anthropic.claude-opus-4-6-v1:0'). Does not touch settings, so safe at
+ * Pure string-match that strips date suffixes from a first-party model
+ * name. Input must already be a 1P-format ID (e.g. 'claude-3-7-sonnet-20250219').
+ * Does not touch settings, so safe at
  * module top-level (see MODEL_COSTS in modelCost.ts).
  */
 export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
@@ -172,15 +171,13 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
 }
 
 /**
- * Maps a full model string to a shorter canonical version that's unified across 1P and 3P providers.
- * For example, 'claude-3-5-haiku-20241022' and 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
- * would both be mapped to 'claude-3-5-haiku'.
+ * Maps a full model string or configured override to a shorter canonical version.
+ * For example, 'claude-3-5-haiku-20241022' maps to 'claude-3-5-haiku'.
  * @param fullModelName The full model name (e.g., 'claude-3-5-haiku-20241022')
  * @returns The short name (e.g., 'claude-3-5-haiku') if found, or the original name if no mapping exists
  */
 export function getCanonicalName(fullModelName: ModelName): ModelShortName {
-  // Resolve overridden model IDs (e.g. Bedrock ARNs) back to canonical names.
-  // resolved is always a 1P-format ID, so firstPartyNameToCanonical can handle it.
+  // Resolve configured model overrides before matching canonical names.
   if (!fullModelName) return '' as ModelShortName
   return firstPartyNameToCanonical(resolveOverriddenModel(fullModelName))
 }
@@ -192,11 +189,7 @@ export function renderDefaultModelSetting(
 }
 
 export function isOpus1mMergeEnabled(): boolean {
-  if (
-    is1mContextDisabled() ||
-    isProSubscriber() ||
-    getAPIProvider() !== 'firstParty'
-  ) {
+  if (is1mContextDisabled() || isProSubscriber()) {
     return false
   }
   // Fail closed when a subscriber's subscription type is unknown. The VS Code

@@ -176,7 +176,7 @@ export function memoizeWithTTLAsync<Args extends unknown[], Result>(
       // storing a newer entry while this refresh is in flight. .then
       // overwriting with the stale refresh's result is worse than .catch
       // deleting - wrong data persists for full TTL (e.g. credentials from
-      // the old awsAuthRefresh command after a settings change).
+      // an old helper command after a settings change).
       const staleEntry = cached
       f(...args)
         .then(newValue => {

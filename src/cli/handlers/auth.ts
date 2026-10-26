@@ -1,6 +1,5 @@
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handler intentionally exits */
 
-import { getAPIProvider } from '../../utils/model/providers.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 
 // Stubbed: all OAuth-based auth removed. Only ANTHROPIC_API_KEY supported.
@@ -45,7 +44,7 @@ export async function authStatus(opts: {
     const output: Record<string, string | boolean | null> = {
       loggedIn: hasApiKey,
       authMethod: hasApiKey ? 'api_key' : 'none',
-      apiProvider: getAPIProvider(),
+      apiProvider: 'firstParty',
     }
     process.stdout.write(jsonStringify(output, null, 2) + '\n')
   }

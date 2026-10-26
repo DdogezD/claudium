@@ -13,7 +13,6 @@ mock.module('src/utils/auth.js', () => ({
 }))
 mock.module('src/utils/http.js', () => ({ getUserAgent: () => 'Claudium/Test' }))
 mock.module('src/utils/model/providers.js', () => ({
-  getAPIProvider: () => 'firstParty',
   isFirstPartyAnthropicBaseUrl: () => false,
 }))
 mock.module('src/utils/proxy.js', () => ({ getProxyFetchOptions: () => ({}) }))
@@ -24,10 +23,12 @@ mock.module('../../utils/debug.js', () => ({
   isDebugToStdErr: () => false, logForDebugging: () => {},
 }))
 
-const { getAnthropicRequestHeaders } = await import('./client.js')
+const { getAnthropicRequestHeaders, getAnthropicClient } = await import('./client.js')
+const legacyRoutingFlags = ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY'] as const
 const keys = [
   'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_CUSTOM_HEADERS', 'CLAUDE_CODE_CONTAINER_ID',
   'CLAUDE_AGENT_SDK_CLIENT_APP', 'CLAUDE_CODE_ADDITIONAL_PROTECTION',
+  'ANTHROPIC_BASE_URL', ...legacyRoutingFlags,
 ] as const
 const original = Object.fromEntries(keys.map(key => [key, process.env[key]]))
 
@@ -45,6 +46,40 @@ afterAll(() => {
     else process.env[key] = original[key]
   }
   mock.restore()
+})
+
+describe('Messages API routing', () => {
+  test.each([...legacyRoutingFlags])('ignores removed routing flag %s for custom endpoints', async flag => {
+    apiKey = 'fixture-key'
+    process.env.ANTHROPIC_BASE_URL = 'https://gateway.test/prefix'
+    process.env[flag] = '1'
+    const requests: { url: string; headers: Headers; body: Record<string, unknown> }[] = []
+    const client = await getAnthropicClient({
+      maxRetries: 0,
+      fetchOverride: async (input, init) => {
+        requests.push({
+          url: input instanceof Request ? input.url : String(input),
+          headers: new Headers(init?.headers),
+          body: JSON.parse(String(init?.body)),
+        })
+        return Response.json({
+          id: 'fixture-message', type: 'message', role: 'assistant', model: 'Team/Model:V2',
+          content: [{ type: 'text', text: 'OK' }], stop_reason: 'end_turn', stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        })
+      },
+    })
+    await client.beta.messages.create({
+      model: 'Team/Model:V2', max_tokens: 1, messages: [{ role: 'user', content: 'test' }],
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.url).toBe('https://gateway.test/prefix/v1/messages?beta=true')
+    expect(requests[0]!.headers.get('x-api-key')).toBe('fixture-key')
+    expect(requests[0]!.headers.has('x-client-request-id')).toBe(false)
+    expect(requests[0]!.body.model).toBe('Team/Model:V2')
+    expect(requests[0]!.body).not.toHaveProperty('anthropic_version')
+    expect(requests[0]!.body).not.toHaveProperty('anthropic_beta')
+  })
 })
 
 describe('nonblocking discovery authentication', () => {

@@ -15,7 +15,6 @@ function harness(fetchFn: (url: string, init: RequestInit) => Promise<Response>)
   let time = 0
   let connection: ModelDiscoveryConnection | null = {
     baseURL: 'https://gateway.test/prefix',
-    provider: 'firstParty',
     headers: { 'x-api-key': 'fake-key' },
   }
   let timeout: (() => void) | undefined
@@ -137,8 +136,7 @@ describe('model discovery requests', () => {
     const base = h.getConnection()
     for (const connection of [
       null, { ...base, baseURL: undefined }, { ...base, baseURL: 'https://api.anthropic.com' },
-      { ...base, baseURL: 'invalid' }, { ...base, provider: 'bedrock' },
-      { ...base, provider: 'vertex' }, { ...base, provider: 'foundry' },
+      { ...base, baseURL: 'invalid' },
       { ...base, unixSocket: '/tmp/fake.sock' }, { ...base, essentialTrafficOnly: true },
     ]) {
       h.setConnection(connection)
