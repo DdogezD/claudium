@@ -17,7 +17,6 @@ export const EXTERNAL_PERMISSION_MODES = [
   'acceptEdits',
   'bypassPermissions',
   'default',
-  'dontAsk',
   'plan',
 ] as const
 

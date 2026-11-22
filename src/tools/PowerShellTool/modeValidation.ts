@@ -134,11 +134,8 @@ export function checkPermissionMode(
   parsed: ParsedPowerShellCommand,
   toolPermissionContext: ToolPermissionContext,
 ): PermissionResult {
-  // Skip bypass and dontAsk modes (handled elsewhere)
-  if (
-    toolPermissionContext.mode === 'bypassPermissions' ||
-    toolPermissionContext.mode === 'dontAsk'
-  ) {
+  // Skip bypass mode (handled elsewhere)
+  if (toolPermissionContext.mode === 'bypassPermissions') {
     return {
       behavior: 'passthrough',
       message: 'Mode is handled in main permission flow',

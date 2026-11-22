@@ -87,7 +87,6 @@ import {
   AUTO_REJECT_MESSAGE,
   buildClassifierUnavailableMessage,
   buildYoloRejectionMessage,
-  DONT_ASK_REJECT_MESSAGE,
 } from '../messages.js'
 import { calculateCostFromTokens } from '../modelCost.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -501,21 +500,9 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
     return result
   }
 
-  // Apply dontAsk mode transformation: convert 'ask' to 'deny'
-  // This is done at the end so it can't be bypassed by early returns
   if (result.behavior === 'ask') {
     const appState = context.getAppState()
 
-    if (appState.toolPermissionContext.mode === 'dontAsk') {
-      return {
-        behavior: 'deny',
-        decisionReason: {
-          type: 'mode',
-          mode: 'dontAsk',
-        },
-        message: DONT_ASK_REJECT_MESSAGE(tool.name),
-      }
-    }
     // Apply auto mode: use AI classifier instead of prompting user
     // Check this BEFORE shouldAvoidPermissionPrompts so classifiers work in headless mode
     if (
@@ -1064,7 +1051,7 @@ function handleDenialLimitExceeded(
  *
  * Returns a deny/ask decision if a rule blocks the tool, or null if no rule
  * objects. Unlike hasPermissionsToUseTool, this does NOT run the auto mode classifier,
- * mode-based transformations (dontAsk/auto/asyncAgent), PermissionRequest hooks,
+ * mode-based transformations (auto/asyncAgent), PermissionRequest hooks,
  * or bypassPermissions / always-allowed checks.
  *
  * Caller must pre-check tool.requiresUserInteraction() — step 1e is not replicated.

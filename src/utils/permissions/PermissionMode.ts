@@ -70,13 +70,6 @@ const PERMISSION_MODE_CONFIG: Partial<
     color: 'error',
     external: 'bypassPermissions',
   },
-  dontAsk: {
-    title: "Don't Ask",
-    shortTitle: 'DontAsk',
-    symbol: '⏵⏵',
-    color: 'error',
-    external: 'dontAsk',
-  },
   ...(feature('TRANSCRIPT_CLASSIFIER')
     ? {
         auto: {

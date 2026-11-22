@@ -81,14 +81,6 @@ export function checkPermissionMode(
     }
   }
 
-  // Skip if in dontAsk mode (handled in main permission flow)
-  if (toolPermissionContext.mode === 'dontAsk') {
-    return {
-      behavior: 'passthrough',
-      message: 'DontAsk mode is handled in main permission flow',
-    }
-  }
-
   const commands = splitCommand_DEPRECATED(input.command)
 
   // Check each subcommand
