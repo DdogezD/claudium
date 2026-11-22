@@ -20,7 +20,6 @@ curl -fsSL https://raw.githubusercontent.com/DdogezD/claudium/main/install.sh | 
 
 ```bash
 claudium                 # 交互式 REPL
-claudium-bypass          # bypassPermissions 模式
 claudium -p "..."        # 单次执行
 ```
 
