@@ -138,16 +138,14 @@ export function ExitPlanModePermissionRequest({
   const usage = toolUseConfirm.assistantMessage.message.usage;
   const {
     mode,
-    isAutoModeAvailable,
-    isBypassPermissionsModeAvailable
+    isAutoModeAvailable
   } = toolPermissionContext;
   const options = useMemo(() => buildPlanApprovalOptions({
     showClearContext,
     usedPercent: showClearContext ? getContextUsedPercent(usage, mode) : null,
     isAutoModeAvailable,
-    isBypassPermissionsModeAvailable,
     onFeedbackChange: setPlanFeedback
-  }), [showClearContext, usage, mode, isAutoModeAvailable, isBypassPermissionsModeAvailable]);
+  }), [showClearContext, usage, mode, isAutoModeAvailable]);
   function onImagePaste(base64Image: string, mediaType?: string, filename?: string, dimensions?: ImageDimensions, _sourcePath?: string) {
     const pasteId = nextPasteIdRef.current++;
     const newContent: PastedContent = {
@@ -394,7 +392,7 @@ export function ExitPlanModePermissionRequest({
     // Without this fallback the function would return without resolving the
     // dialog, leaving the query loop blocked and safety state corrupted.
     const keepContextModes: Record<string, PermissionMode> = {
-      'yes-accept-edits-keep-context': toolPermissionContext.isBypassPermissionsModeAvailable ? 'bypassPermissions' : 'acceptEdits',
+      'yes-accept-edits-keep-context': 'bypassPermissions',
       'yes-default-keep-context': 'default',
       ...(feature('TRANSCRIPT_CLASSIFIER') ? {
         'yes-resume-auto-mode': 'default' as const
@@ -641,13 +639,11 @@ export function buildPlanApprovalOptions({
   showClearContext,
   usedPercent,
   isAutoModeAvailable,
-  isBypassPermissionsModeAvailable,
   onFeedbackChange
 }: {
   showClearContext: boolean;
   usedPercent: number | null;
   isAutoModeAvailable: boolean | undefined;
-  isBypassPermissionsModeAvailable: boolean | undefined;
   onFeedbackChange: (v: string) => void;
 }): OptionWithDescription<ResponseValue>[] {
   const options: OptionWithDescription<ResponseValue>[] = [];
@@ -658,33 +654,23 @@ export function buildPlanApprovalOptions({
         label: `Yes, clear context${usedLabel} and use auto mode`,
         value: 'yes-auto-clear-context'
       });
-    } else if (isBypassPermissionsModeAvailable) {
+    } else {
       options.push({
         label: `Yes, clear context${usedLabel} and bypass permissions`,
         value: 'yes-bypass-permissions'
       });
-    } else {
-      options.push({
-        label: `Yes, clear context${usedLabel} and auto-accept edits`,
-        value: 'yes-accept-edits'
-      });
     }
   }
 
-  // Slot 2: keep-context with elevated mode (same priority: auto > bypass > edits).
+  // Slot 2: keep-context with elevated mode (priority: auto > bypass).
   if (feature('TRANSCRIPT_CLASSIFIER') && isAutoModeAvailable) {
     options.push({
       label: 'Yes, and use auto mode',
       value: 'yes-resume-auto-mode'
     });
-  } else if (isBypassPermissionsModeAvailable) {
-    options.push({
-      label: 'Yes, and bypass permissions',
-      value: 'yes-accept-edits-keep-context'
-    });
   } else {
     options.push({
-      label: 'Yes, auto-accept edits',
+      label: 'Yes, and bypass permissions',
       value: 'yes-accept-edits-keep-context'
     });
   }

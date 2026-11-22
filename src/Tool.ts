@@ -127,7 +127,8 @@ export type ToolPermissionContext = DeepImmutable<{
   alwaysAllowRules: ToolPermissionRulesBySource
   alwaysDenyRules: ToolPermissionRulesBySource
   alwaysAskRules: ToolPermissionRulesBySource
-  isBypassPermissionsModeAvailable: boolean
+  /** Set when the session was launched with bypassPermissions; keeps plan mode non-prompting. */
+  bypassInPlanMode?: boolean
   isAutoModeAvailable?: boolean
   strippedDangerousRules?: ToolPermissionRulesBySource
   /** When true, permission prompts are auto-denied (e.g., background agents that can't show UI) */
@@ -145,7 +146,6 @@ export const getEmptyToolPermissionContext: () => ToolPermissionContext =
     alwaysAllowRules: {},
     alwaysDenyRules: {},
     alwaysAskRules: {},
-    isBypassPermissionsModeAvailable: false,
   })
 
 export type CompactProgressEvent =

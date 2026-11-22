@@ -433,7 +433,8 @@ export type ToolPermissionContext = {
   readonly alwaysAllowRules: ToolPermissionRulesBySource
   readonly alwaysDenyRules: ToolPermissionRulesBySource
   readonly alwaysAskRules: ToolPermissionRulesBySource
-  readonly isBypassPermissionsModeAvailable: boolean
+  /** Set when the session was launched with bypassPermissions; keeps plan mode non-prompting. */
+  readonly bypassInPlanMode?: boolean
   readonly strippedDangerousRules?: ToolPermissionRulesBySource
   readonly shouldAvoidPermissionPrompts?: boolean
   readonly awaitAutomatedChecksBeforeDialog?: boolean

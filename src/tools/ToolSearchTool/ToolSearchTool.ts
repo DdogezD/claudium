@@ -76,7 +76,6 @@ const getToolDescriptionMemoized = memoize(
         alwaysAllowRules: {},
         alwaysDenyRules: {},
         alwaysAskRules: {},
-        isBypassPermissionsModeAvailable: false,
       }),
       tools,
       agents: [],

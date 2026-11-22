@@ -74,8 +74,7 @@ export function MCPToolDetailView(t0) {
               additionalWorkingDirectories: new Map(),
               alwaysAllowRules: {},
               alwaysDenyRules: {},
-              alwaysAskRules: {},
-              isBypassPermissionsModeAvailable: false
+              alwaysAskRules: {}
             },
             tools: []
           });

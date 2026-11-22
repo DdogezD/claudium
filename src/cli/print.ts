@@ -155,7 +155,6 @@ import {
   isAutoModeGateEnabled,
   getAutoModeUnavailableNotification,
   getAutoModeUnavailableReason,
-  isBypassPermissionsModeDisabled,
   transitionPermissionMode,
 } from 'src/utils/permissions/permissionSetup.js'
 import { getLastCacheSafeParams } from 'src/utils/forkedAgent.js'
@@ -3892,34 +3891,6 @@ function handleSetPermissionMode(
   toolPermissionContext: ToolPermissionContext,
   output: Stream<StdoutMessage>,
 ): ToolPermissionContext {
-  // Check if trying to switch to bypassPermissions mode
-  if (request.mode === 'bypassPermissions') {
-    if (isBypassPermissionsModeDisabled()) {
-      output.enqueue({
-        type: 'control_response',
-        response: {
-          subtype: 'error',
-          request_id: requestId,
-          error:
-            'Cannot set permission mode to bypassPermissions because it is disabled by settings or configuration',
-        },
-      })
-      return toolPermissionContext
-    }
-    if (!toolPermissionContext.isBypassPermissionsModeAvailable) {
-      output.enqueue({
-        type: 'control_response',
-        response: {
-          subtype: 'error',
-          request_id: requestId,
-          error:
-            'Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions',
-        },
-      })
-      return toolPermissionContext
-    }
-  }
-
   // Check if trying to switch to auto mode without the classifier gate
   if (
     feature('TRANSCRIPT_CLASSIFIER') &&

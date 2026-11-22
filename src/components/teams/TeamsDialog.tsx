@@ -82,8 +82,6 @@ export function TeamsDialog({
     return teammateStatuses.find(t => t.name === dialogLevel.memberName) ?? null;
   }, [dialogLevel, teammateStatuses]);
 
-  // Get isBypassPermissionsModeAvailable from AppState
-  const isBypassAvailable = useAppState(s => s.toolPermissionContext.isBypassPermissionsModeAvailable);
   const goBackToList = (): void => {
     setDialogLevel({
       type: 'teammateList',
@@ -96,14 +94,14 @@ export function TeamsDialog({
   const handleCycleMode = useCallback(() => {
     if (dialogLevel.type === 'teammateDetail' && currentTeammate) {
       // Detail view: cycle just this teammate
-      cycleTeammateMode(currentTeammate, dialogLevel.teamName, isBypassAvailable);
+      cycleTeammateMode(currentTeammate, dialogLevel.teamName);
       setRefreshKey(k => k + 1);
     } else if (dialogLevel.type === 'teammateList' && teammateStatuses.length > 0) {
       // List view: cycle all teammates in tandem
-      cycleAllTeammateModes(teammateStatuses, dialogLevel.teamName, isBypassAvailable);
+      cycleAllTeammateModes(teammateStatuses, dialogLevel.teamName);
       setRefreshKey(k => k + 1);
     }
-  }, [dialogLevel, currentTeammate, teammateStatuses, isBypassAvailable]);
+  }, [dialogLevel, currentTeammate, teammateStatuses]);
 
   // Use keybindings for mode cycling
   useKeybindings({
@@ -662,12 +660,11 @@ function sendModeChangeToTeammate(teammateName: string, teamName: string, target
 /**
  * Cycle a single teammate's mode
  */
-function cycleTeammateMode(teammate: TeammateStatus, teamName: string, isBypassAvailable: boolean): void {
+function cycleTeammateMode(teammate: TeammateStatus, teamName: string): void {
   const currentMode = teammate.mode ? permissionModeFromString(teammate.mode) : 'default';
   const context = {
     ...getEmptyToolPermissionContext(),
-    mode: currentMode,
-    isBypassPermissionsModeAvailable: isBypassAvailable
+    mode: currentMode
   };
   const nextMode = getNextPermissionMode(context);
   sendModeChangeToTeammate(teammate.name, teamName, nextMode);
@@ -679,7 +676,7 @@ function cycleTeammateMode(teammate: TeammateStatus, teamName: string, isBypassA
  * If same, cycle all to next mode
  * Uses batch update to avoid race conditions
  */
-function cycleAllTeammateModes(teammates: TeammateStatus[], teamName: string, isBypassAvailable: boolean): void {
+function cycleAllTeammateModes(teammates: TeammateStatus[], teamName: string): void {
   if (teammates.length === 0) return;
   const modes = teammates.map(t => t.mode ? permissionModeFromString(t.mode) : 'default');
   const allSame = modes.every(m => m === modes[0]);
@@ -687,8 +684,7 @@ function cycleAllTeammateModes(teammates: TeammateStatus[], teamName: string, is
   // Determine target mode for all teammates
   const targetMode = !allSame ? 'default' : getNextPermissionMode({
     ...getEmptyToolPermissionContext(),
-    mode: modes[0] ?? 'default',
-    isBypassPermissionsModeAvailable: isBypassAvailable
+    mode: modes[0] ?? 'default'
   });
 
   // Batch update config.json in a single atomic operation

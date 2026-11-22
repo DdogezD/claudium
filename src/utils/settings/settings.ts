@@ -567,7 +567,6 @@ export function getManagedSettingsKeysForLogging(
       'deny',
       'ask',
       'defaultMode',
-      'disableBypassPermissionsMode',
       ...(feature('TRANSCRIPT_CLASSIFIER') ? ['disableAutoMode'] : []),
       'additionalDirectories',
     ]),

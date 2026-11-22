@@ -64,10 +64,6 @@ export const PermissionsSchema = lazySchema(() =>
         )
         .optional()
         .describe('Default permission mode when Claudium needs access'),
-      disableBypassPermissionsMode: z
-        .enum(['disable'])
-        .optional()
-        .describe('Disable the ability to bypass permission prompts'),
       ...(feature('TRANSCRIPT_CLASSIFIER')
         ? {
             disableAutoMode: z

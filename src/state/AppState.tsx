@@ -1,10 +1,8 @@
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
-import React, { useContext, useEffect, useEffectEvent, useState, useSyncExternalStore } from 'react';
+import React, { useContext, useEffectEvent, useState, useSyncExternalStore } from 'react';
 import { MailboxProvider } from '../context/mailbox.js';
 import { useSettingsChange } from '../hooks/useSettingsChange.js';
-import { logForDebugging } from '../utils/debug.js';
-import { createDisabledBypassPermissionsContext, isBypassPermissionsModeDisabled } from '../utils/permissions/permissionSetup.js';
 import { applySettingsChange } from '../utils/settings/applySettingsChange.js';
 import type { SettingSource } from '../utils/settings/constants.js';
 import { createStore } from './store.js';
@@ -55,30 +53,6 @@ export function AppStateProvider(t0) {
     t1 = $[2];
   }
   const [store] = useState(t1);
-  let t2;
-  if ($[3] !== store) {
-    t2 = () => {
-      const {
-        toolPermissionContext
-      } = store.getState();
-      if (toolPermissionContext.isBypassPermissionsModeAvailable && isBypassPermissionsModeDisabled()) {
-        logForDebugging("Disabling bypass permissions mode on mount (remote settings loaded before mount)");
-        store.setState(_temp);
-      }
-    };
-    $[3] = store;
-    $[4] = t2;
-  } else {
-    t2 = $[4];
-  }
-  let t3;
-  if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = [];
-    $[5] = t3;
-  } else {
-    t3 = $[5];
-  }
-  useEffect(t2, t3);
   let t4;
   if ($[6] !== store.setState) {
     t4 = source => applySettingsChange(source, store.setState);
@@ -107,12 +81,6 @@ export function AppStateProvider(t0) {
     t6 = $[12];
   }
   return t6;
-}
-function _temp(prev) {
-  return {
-    ...prev,
-    toolPermissionContext: createDisabledBypassPermissionsContext(prev.toolPermissionContext)
-  };
 }
 function useAppStore(): AppStateStore {
   // eslint-disable-next-line react-hooks/rules-of-hooks

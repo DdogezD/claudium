@@ -107,7 +107,7 @@ import { logError } from './utils/log.js';
 import { getModelDeprecationWarning } from './utils/model/deprecation.js';
 import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, parseUserSpecifiedModel } from './utils/model/model.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
-import { checkAndDisableBypassPermissions, getAutoModeEnabledStateIfCached, initializeToolPermissionContext, initialPermissionModeFromCLI, isDefaultPermissionModeAuto, parseToolListFromCLI, removeDangerousPermissions, stripDangerousPermissionsForAutoMode, verifyAutoModeGateAccess } from './utils/permissions/permissionSetup.js';
+import { getAutoModeEnabledStateIfCached, initializeToolPermissionContext, initialPermissionModeFromCLI, isDefaultPermissionModeAuto, parseToolListFromCLI, removeDangerousPermissions, stripDangerousPermissionsForAutoMode, verifyAutoModeGateAccess } from './utils/permissions/permissionSetup.js';
 import { cleanupOrphanedPluginVersionsInBackground } from './utils/plugins/cacheUtils.js';
 import { initializeVersionedPlugins } from './utils/plugins/installedPluginsManager.js';
 import { getManagedPluginNames } from './utils/plugins/managedPlugins.js';
@@ -1385,10 +1385,16 @@ async function run(): Promise<CommanderCommand> {
       disallowedToolsCli: disallowedTools,
       baseToolsCli: baseTools,
       permissionMode,
-      allowDangerouslySkipPermissions,
       addDirs: addDir
     });
     let toolPermissionContext = initResult.toolPermissionContext;
+    // Sessions launched directly in bypass mode keep plan mode non-prompting.
+    if ((permissionMode === 'bypassPermissions' || allowDangerouslySkipPermissions) && !toolPermissionContext.bypassInPlanMode) {
+      toolPermissionContext = {
+        ...toolPermissionContext,
+        bypassInPlanMode: true
+      };
+    }
     const {
       warnings,
       dangerousPermissions,
@@ -2207,12 +2213,6 @@ async function run(): Promise<CommanderCommand> {
 
       // Init app state
       const headlessStore = createStore(headlessInitialState, onChangeAppState);
-
-      // Check if bypassPermissions should be disabled based on Statsig gate
-      // This runs in parallel to the code below, to avoid blocking the main loop.
-      if (toolPermissionContext.mode === 'bypassPermissions' || allowDangerouslySkipPermissions) {
-        void checkAndDisableBypassPermissions(toolPermissionContext);
-      }
 
       // Async check of auto mode gate — corrects state and disables auto if needed.
       // Gated on TRANSCRIPT_CLASSIFIER (not USER_TYPE) so GrowthBook kill switch runs for external builds too.
