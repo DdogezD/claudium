@@ -489,7 +489,7 @@ export function Config({
     options: (() => {
       const priorityOrder: PermissionMode[] = ['default', 'plan'];
       const allModes: readonly PermissionMode[] = feature('TRANSCRIPT_CLASSIFIER') ? PERMISSION_MODES : EXTERNAL_PERMISSION_MODES;
-      const excluded: PermissionMode[] = ['bypassPermissions'];
+      const excluded: PermissionMode[] = [];
       if (feature('TRANSCRIPT_CLASSIFIER') && !showAutoInDefaultModePicker) {
         excluded.push('auto');
       }
