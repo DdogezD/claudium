@@ -456,7 +456,7 @@ export const AgentTool = buildTool({
         // Log agent memory loaded event for subagents
         if (selectedAgent.memory) {
           logEvent('tengu_agent_memory_loaded', {
-            ...("external" === 'ant' && {
+            ...(false && {
               agent_type: selectedAgent.agentType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
             }),
             scope: selectedAgent.memory as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -1224,8 +1224,8 @@ export const AgentTool = buildTool({
 
     // Only route through auto mode classifier when in auto mode
     // In all other modes, auto-approve sub-agent generation
-    // Note: "external" === 'ant' guard enables dead code elimination for external builds
-    if ("external" === 'ant' && appState.toolPermissionContext.mode === 'auto') {
+    // Note: the USER_TYPE 'ant' guard enables dead code elimination for external builds
+    if (false && appState.toolPermissionContext.mode === 'auto') {
       return {
         behavior: 'passthrough',
         message: 'Agent tool requires permission to spawn sub-agents.'
