@@ -24,7 +24,7 @@ import { formatDuration } from '../../utils/format.js';
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js';
 import { toIDEDisplayName } from '../../utils/ide.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
-import { tokenCountWithEstimation } from '../../utils/tokens.js';
+import { tokenCountForSubmittedContext } from '../../utils/tokens.js';
 import { AutoUpdaterWrapper } from '../AutoUpdaterWrapper.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 // import { IdeStatusIndicator } from '../IdeStatusIndicator.js'; // stripped
@@ -76,13 +76,13 @@ export function Notifications(t0) {
   let t3;
   if ($[0] !== messages) {
     const messagesForTokenCount = getMessagesAfterCompactBoundary(messages);
-    // Use the canonical context-size measure (last API usage + estimates for
-    // messages added since) instead of the raw usage of the last API response.
-    // The raw value includes streaming thinking/tool_use output and drops back
-    // when the provider strips it from the next request, which made the footer
-    // jump up during a turn and fall back after it. This is the same measure
-    // autocompact uses, so the footer no longer disagrees with compaction.
-    t3 = tokenCountWithEstimation(messagesForTokenCount);
+    // Count only what will actually be submitted on the next request: the
+    // last response's input+cache baseline plus tool_results/user messages
+    // added since. The model's own streaming output (thinking/text/tool_use)
+    // is excluded — providers may strip it from replayed history, and
+    // counting it (either raw usage or an estimate) made the footer jump up
+    // while a thinking turn streamed and drop back on the next request.
+    t3 = tokenCountForSubmittedContext(messagesForTokenCount);
     $[0] = messages;
     $[1] = t3;
   } else {

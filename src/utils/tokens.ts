@@ -199,6 +199,58 @@ export function getAssistantMessageContentLength(
 }
 
 /**
+ * Context size as it will actually be submitted on the next request.
+ *
+ * Unlike tokenCountWithEstimation(), this excludes the model's own streaming
+ * output (thinking/text/tool_use) from the usage baseline: many providers
+ * strip thinking blocks from replayed history (or recompute usage without
+ * them), so counting it makes the context counter jump while a long-thinking
+ * turn streams and drop back on the next request — even though the submitted
+ * context never grew. This measure only grows once the content is actually
+ * part of a future request: input + cache tokens of the last response, plus
+ * rough estimates of user/tool_result/attachment messages added since (the
+ * assistant records carry nothing that would be re-sent unmodified).
+ */
+export function tokenCountForSubmittedContext(
+  messages: readonly Message[],
+): number {
+  let i = messages.length - 1
+  while (i >= 0) {
+    const message = messages[i]
+    const usage = message ? getTokenUsage(message) : undefined
+    if (message && usage) {
+      // Same sibling walk-back as tokenCountWithEstimation(): parallel tool
+      // calls split one response across several records with interleaved
+      // tool_results; anchor at the first sibling so all of them are counted.
+      const responseId = getAssistantMessageId(message)
+      if (responseId) {
+        let j = i - 1
+        while (j >= 0) {
+          const prior = messages[j]
+          const priorId = prior ? getAssistantMessageId(prior) : undefined
+          if (priorId === responseId) {
+            i = j
+          } else if (priorId !== undefined) {
+            break
+          }
+          j--
+        }
+      }
+      const inputBaseline =
+        usage.input_tokens +
+        (usage.cache_creation_input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0)
+      const tail = messages
+        .slice(i + 1)
+        .filter(m => m && m.type !== 'assistant')
+      return inputBaseline + roughTokenCountEstimationForMessages(tail)
+    }
+    i--
+  }
+  return roughTokenCountEstimationForMessages(messages)
+}
+
+/**
  * Get the current context window size in tokens.
  *
  * This is the CANONICAL function for measuring context size when checking
