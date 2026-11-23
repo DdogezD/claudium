@@ -164,6 +164,19 @@ install_binary() {
   chmod +x "$INSTALL_DIR/claudium"
   ok "Installed: $INSTALL_DIR/claudium"
 
+  # Ship the vendored seccomp binaries next to the binary. The compiled
+  # single-file build cannot resolve sandbox-runtime's own vendor/ dir,
+  # so the CLI looks for <install-dir>/vendor/seccomp/<arch>/ at runtime.
+  local seccomp_src="$BUILD_DIR/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp"
+  if [ -d "$seccomp_src" ]; then
+    cp -r "$seccomp_src" "$INSTALL_DIR/vendor/seccomp.tmp" && \
+      rm -rf "$INSTALL_DIR/vendor/seccomp" && \
+      mv "$INSTALL_DIR/vendor/seccomp.tmp" "$INSTALL_DIR/vendor/seccomp"
+    ok "Installed seccomp vendor: $INSTALL_DIR/vendor/seccomp"
+  else
+    warn "seccomp vendor not found in build tree; sandbox unix-socket blocking will be reduced on Linux"
+  fi
+
   rm -rf "$BUILD_DIR"
   ok "Build cache cleaned"
 

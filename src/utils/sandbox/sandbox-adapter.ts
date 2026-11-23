@@ -31,6 +31,7 @@ import {
 } from '../../bootstrap/state.js'
 import { logForDebugging } from '../debug.js'
 import { expandPath } from '../path.js'
+import { resolveVendoredSeccompPaths } from './seccompPaths.js'
 import { getPlatform, type Platform } from '../platform.js'
 import { settingsChangeDetector } from '../settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../settings/constants.js'
@@ -354,6 +355,11 @@ export function convertToSandboxRuntimeConfig(
     args: rgArgs,
   }
 
+  // In a compiled single-file build, sandbox-runtime cannot resolve its own
+  // vendor/seccomp directory; point it at the vendored files shipped next
+  // to the executable instead. undefined in source/dev runs.
+  const seccomp = resolveVendoredSeccompPaths()
+
   return {
     network: {
       allowedDomains,
@@ -375,6 +381,7 @@ export function convertToSandboxRuntimeConfig(
     enableWeakerNetworkIsolation:
       settings.sandbox?.enableWeakerNetworkIsolation,
     ripgrep: ripgrepConfig,
+    ...(seccomp && { seccomp }),
   }
 }
 
