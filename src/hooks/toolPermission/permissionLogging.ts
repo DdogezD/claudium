@@ -1,15 +1,13 @@
 // Centralized analytics/telemetry logging for tool permission decisions.
 // All permission approve/reject events flow through logPermissionDecision(),
-// which fans out to Statsig analytics, OTel telemetry, and code-edit metrics.
+// which fans out to analytics events and OTel telemetry.
 import { feature } from 'bun:bundle'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics-stub.js'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics-stub.js'
-import { getCodeEditToolDecisionCounter } from '../../bootstrap/state.js'
 import type { Tool as ToolType, ToolUseContext } from '../../Tool.js'
-import { getLanguageName } from '../../utils/cliHighlight.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import { logOTelEvent } from '../../utils/telemetry-stub.js'
 import type {
@@ -34,34 +32,6 @@ const CODE_EDITING_TOOLS = ['Edit', 'Write', 'NotebookEdit']
 
 function isCodeEditingTool(toolName: string): boolean {
   return CODE_EDITING_TOOLS.includes(toolName)
-}
-
-// Builds OTel counter attributes for code editing tools, enriching with
-// language when the tool's target file path can be extracted from input
-async function buildCodeEditToolAttributes(
-  tool: ToolType,
-  input: unknown,
-  decision: 'accept' | 'reject',
-  source: string,
-): Promise<Record<string, string>> {
-  // Derive language from file path if the tool exposes one (e.g., Edit, Write)
-  let language: string | undefined
-  if (tool.getPath && input) {
-    const parseResult = tool.inputSchema.safeParse(input)
-    if (parseResult.success) {
-      const filePath = tool.getPath(parseResult.data)
-      if (filePath) {
-        language = await getLanguageName(filePath)
-      }
-    }
-  }
-
-  return {
-    decision,
-    source,
-    tool_name: tool.name,
-    ...(language && { language }),
-  }
 }
 
 // Flattens structured source into a string label for analytics/OTel events
@@ -177,13 +147,13 @@ function logRejectionEvent(
 
 // Single entry point for all permission decision logging. Called by permission
 // handlers after every approve/reject. Fans out to: analytics events, OTel
-// telemetry, code-edit OTel counters, and toolUseContext decision storage.
+// telemetry, and toolUseContext decision storage.
 function logPermissionDecision(
   ctx: PermissionLogContext,
   args: PermissionDecisionArgs,
   permissionPromptStartTimeMs?: number,
 ): void {
-  const { tool, input, toolUseContext, messageId, toolUseID } = ctx
+  const { tool, toolUseContext, messageId, toolUseID } = ctx
   const { decision, source } = args
 
   const waiting_for_user_permission_ms =
@@ -209,13 +179,6 @@ function logPermissionDecision(
   }
 
   const sourceString = source === 'config' ? 'config' : sourceToString(source)
-
-  // Track code editing tool metrics
-  if (isCodeEditingTool(tool.name)) {
-    void buildCodeEditToolAttributes(tool, input, decision, sourceString).then(
-      attributes => getCodeEditToolDecisionCounter()?.add(1, attributes),
-    )
-  }
 
   // Persist decision on the context so downstream code can inspect what happened
   if (!toolUseContext.toolDecisions) {

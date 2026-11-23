@@ -11,7 +11,6 @@ import { count } from '../utils/array.js';
 import sample from 'lodash-es/sample.js';
 import { formatDuration, formatNumber, formatSecondsShort } from '../utils/format.js';
 import type { Theme } from 'src/utils/theme.js';
-import { activityManager } from '../utils/activityManager.js';
 import { getSpinnerVerbs } from '../constants/spinnerVerbs.js';
 import { MessageResponse } from './MessageResponse.js';
 import { TaskListV2 } from './TaskListV2.js';
@@ -168,14 +167,6 @@ function SpinnerWithVerbInner({
   const effectiveVerb = foregroundedTeammate && !foregroundedTeammate.isIdle ? foregroundedTeammate.spinnerVerb ?? randomVerb : leaderVerb;
   const message = effectiveVerb + '…';
 
-  // Track CLI activity when spinner is active
-  useEffect(() => {
-    const operationId = 'spinner-' + mode;
-    activityManager.startCLIActivity(operationId);
-    return () => {
-      activityManager.endCLIActivity(operationId);
-    };
-  }, [mode]);
   const effortValue = useAppState(s_4 => s_4.effortValue);
   const effortSuffix = '';
 
@@ -322,25 +313,6 @@ function BriefSpinner(t0) {
   const [randomVerb] = useState(_temp4);
   const verb = overrideMessage ?? randomVerb;
   const connStatus = useAppState(_temp5);
-  let t1;
-  let t2;
-  if ($[0] !== mode) {
-    t1 = () => {
-      const operationId = "spinner-" + mode;
-      activityManager.startCLIActivity(operationId);
-      return () => {
-        activityManager.endCLIActivity(operationId);
-      };
-    };
-    t2 = [mode];
-    $[0] = mode;
-    $[1] = t1;
-    $[2] = t2;
-  } else {
-    t1 = $[1];
-    t2 = $[2];
-  }
-  useEffect(t1, t2);
   const [, time] = useAnimationFrame(reducedMotion ? null : 120);
   const runningCount = useAppState(_temp6);
   const showConnWarning = connStatus === "reconnecting" || connStatus === "disconnected";

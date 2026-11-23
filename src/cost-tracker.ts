@@ -3,11 +3,9 @@ import chalk from 'chalk'
 import {
   addToTotalCostState,
   addToTotalLinesChanged,
-  getCostCounter,
   getModelUsage,
   getSdkBetas,
   getSessionId,
-  getTokenCounter,
   getTotalAPIDuration,
   getTotalAPIDurationWithoutRetries,
   getTotalCacheCreationInputTokens,
@@ -272,20 +270,6 @@ export function addToTotalSessionCost(
 ): number {
   const modelUsage = addToTotalModelUsage(cost, usage, model)
   addToTotalCostState(cost, modelUsage, model)
-
-  const attrs = { model }
-
-  getCostCounter()?.add(cost, attrs)
-  getTokenCounter()?.add(usage.input_tokens, { ...attrs, type: 'input' })
-  getTokenCounter()?.add(usage.output_tokens, { ...attrs, type: 'output' })
-  getTokenCounter()?.add(usage.cache_read_input_tokens ?? 0, {
-    ...attrs,
-    type: 'cacheRead',
-  })
-  getTokenCounter()?.add(usage.cache_creation_input_tokens ?? 0, {
-    ...attrs,
-    type: 'cacheCreation',
-  })
 
   return cost
 }

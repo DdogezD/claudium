@@ -20,13 +20,8 @@ import {
 } from '../analytics-stub.js'
 import {
   addToToolDuration,
-  getCodeEditToolDecisionCounter,
   getStatsStore,
 } from '../../bootstrap/state.js'
-import {
-  buildCodeEditToolAttributes,
-  isCodeEditingTool,
-} from '../../hooks/toolPermission/permissionLogging.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import {
   findToolByName,
@@ -989,16 +984,6 @@ async function checkPermissionsAndCallTool(
       source,
       tool_name: sanitizeToolNameForAnalytics(tool.name),
     })
-
-    // Increment code-edit tool decision counter for headless mode
-    if (isCodeEditingTool(tool.name)) {
-      void buildCodeEditToolAttributes(
-        tool,
-        processedInput,
-        decision,
-        source,
-      ).then(attributes => getCodeEditToolDecisionCounter()?.add(1, attributes))
-    }
   }
 
   // Add message if permission was granted/denied by PermissionRequest hook
