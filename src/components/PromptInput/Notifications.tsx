@@ -24,7 +24,7 @@ import { formatDuration } from '../../utils/format.js';
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js';
 import { toIDEDisplayName } from '../../utils/ide.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
-import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js';
+import { tokenCountWithEstimation } from '../../utils/tokens.js';
 import { AutoUpdaterWrapper } from '../AutoUpdaterWrapper.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 // import { IdeStatusIndicator } from '../IdeStatusIndicator.js'; // stripped
@@ -76,7 +76,13 @@ export function Notifications(t0) {
   let t3;
   if ($[0] !== messages) {
     const messagesForTokenCount = getMessagesAfterCompactBoundary(messages);
-    t3 = tokenCountFromLastAPIResponse(messagesForTokenCount);
+    // Use the canonical context-size measure (last API usage + estimates for
+    // messages added since) instead of the raw usage of the last API response.
+    // The raw value includes streaming thinking/tool_use output and drops back
+    // when the provider strips it from the next request, which made the footer
+    // jump up during a turn and fall back after it. This is the same measure
+    // autocompact uses, so the footer no longer disagrees with compaction.
+    t3 = tokenCountWithEstimation(messagesForTokenCount);
     $[0] = messages;
     $[1] = t3;
   } else {
@@ -289,8 +295,9 @@ function NotificationContent({
   // available-percentage from the effective window that autocompact actually sees.
   // Turns red/warning when approaching the compaction threshold.
   //
-  // tokenUsage can briefly drop to 0 mid-stream (between API updates).
-  // A ref holds the last non-zero density so the footer doesn't blink.
+  // tokenUsage can briefly read 0 (compact-boundary switches, empty message
+  // lists between API updates). A ref holds the last non-zero density so the
+  // footer text and its warning color don't blink between turns.
   const effortValue = resolveAppliedEffort(mainLoopModel, undefined);
   const displayWindow = getContextWindowForModel(mainLoopModel);
   const effectiveWindow = getEffectiveContextWindowSize(mainLoopModel);
