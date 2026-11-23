@@ -162,12 +162,12 @@ export function calculateCostFromTokens(
   },
 ): number {
   const usage: Usage = {
-    input_tokens: tokens.inputTokens,
-    output_tokens: tokens.outputTokens,
-    cache_read_input_tokens: tokens.cacheReadInputTokens,
-    cache_creation_input_tokens: tokens.cacheCreationInputTokens,
+    input_tokens: _tokens.inputTokens,
+    output_tokens: _tokens.outputTokens,
+    cache_read_input_tokens: _tokens.cacheReadInputTokens,
+    cache_creation_input_tokens: _tokens.cacheCreationInputTokens,
   } as Usage
-  return calculateUSDCost(model, usage)
+  return calculateUSDCost(_model, usage)
 }
 
 function formatPrice(price: number): string {

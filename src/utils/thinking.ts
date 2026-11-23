@@ -1,4 +1,5 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
+import { resolveAntModel } from './model/antModels.js'
 import type { Theme } from './theme.js'
 import { getCanonicalName } from './model/model.js'
 import { getSettingsWithErrors } from './settings/settings.js'
