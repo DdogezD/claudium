@@ -33,7 +33,6 @@ import { SentryErrorBoundary } from '../SentryErrorBoundary.js';
 import { SandboxPromptFooterHint } from './SandboxPromptFooterHint.js';
 import { formatTokenCount } from '../../utils/model/modelProfiles.js';
 import { resolveAppliedEffort } from '../../utils/effort.js';
-import { getEffectiveContextWindowSize } from '../../services/compact/autoCompact.js';
 import { getContextWindowForModel } from '../../utils/context.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -290,17 +289,21 @@ function NotificationContent({
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useAppState(s_1 => s_1.isBriefOnly) : false;
 
-  // Persistent effort + context display (same pattern as compaction token footer).
-  // Display the full context window (what the user configured), but calculate the
-  // available-percentage from the effective window that autocompact actually sees.
-  // Turns red/warning when approaching the compaction threshold.
+  // Persistent effort + context display. The full context window (what the
+  // user configured) is shown as the denominator, but every derived state
+  // (percent, color, compaction notice) is unified below.
   //
   // tokenUsage can briefly read 0 (compact-boundary switches, empty message
   // lists between API updates). A ref holds the last non-zero density so the
   // footer text and its warning color don't blink between turns.
+  // All three display states come from calculateTokenWarningState against a
+  // single threshold (the auto-compaction point, or the effective window when
+  // auto-compact is off): percentLeft measures distance to that threshold,
+  // warning starts WARNING_LEAD_TOKENS early, and the red color plus the
+  // compaction notice fire together at the threshold itself. The footer no
+  // longer computes its own percentage against a different denominator.
   const effortValue = resolveAppliedEffort(mainLoopModel, undefined);
   const displayWindow = getContextWindowForModel(mainLoopModel);
-  const effectiveWindow = getEffectiveContextWindowSize(mainLoopModel);
   const autoCompactEnabled = isAutoCompactEnabled();
   const warnState = calculateTokenWarningState(tokenUsage, mainLoopModel);
   const footerColorRaw = warnState.isAboveErrorThreshold ? 'error' as const : warnState.isAboveWarningThreshold ? 'warning' as const : undefined;
@@ -310,8 +313,8 @@ function NotificationContent({
   } else if (tokenUsage > 0) {
     lastStable.current = {
       usage: tokenUsage,
-      pct: effectiveWindow > 0 ? Math.max(0, Math.round(((effectiveWindow - tokenUsage) / effectiveWindow) * 100)) : 100,
-      notice: autoCompactEnabled && warnState.isAboveAutoCompactThreshold,
+      pct: warnState.percentLeft,
+      notice: autoCompactEnabled && warnState.isAboveErrorThreshold,
       color: footerColorRaw,
     };
   }

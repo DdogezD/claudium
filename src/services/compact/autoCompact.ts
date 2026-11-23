@@ -157,8 +157,11 @@ export type AutoCompactTrackingState = {
 }
 
 export const DEFAULT_AUTOCOMPACT_BUFFER_TOKENS = 13_000
-export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000
-export const ERROR_THRESHOLD_BUFFER_TOKENS = 20_000
+// How far below the compaction threshold the UI starts showing a yellow
+// warning. Warning and error are single-tier: error/red appears exactly at
+// the compaction threshold (where "Auto-compaction will occur soon" shows),
+// so the footer color and the notice can never disagree.
+export const WARNING_LEAD_TOKENS = 20_000
 export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
 
 // ---------------------------------------------------------------------------
@@ -348,16 +351,25 @@ export function calculateTokenWarningState(
     ? autoCompactThreshold
     : getEffectiveContextWindowSize(model, querySource, contextWindowOverride)
 
+  // percentLeft is measured against the compaction threshold (when
+  // auto-compact is on), so "X% available" always means "X% away from an
+  // automatic compaction" — the number the footer displays and the number
+  // that decides compaction are the same number.
   const percentLeft = Math.max(
     0,
     Math.round(((threshold - tokenUsage) / threshold) * 100),
   )
 
-  const warningThreshold = threshold - WARNING_THRESHOLD_BUFFER_TOKENS
-  const errorThreshold = threshold - ERROR_THRESHOLD_BUFFER_TOKENS
+  // Single threshold, two tiers: yellow starts WARNING_LEAD_TOKENS before
+  // the threshold, red (error) starts exactly at it. When auto-compact is
+  // on, red and the compaction notice share the same condition, so they
+  // can never disagree. The old code had two equal 20K buffers, which made
+  // warning and error identical (yellow was unreachable) and fired red 20K
+  // before the threshold, contradicting the notice.
+  const warningThreshold = threshold - WARNING_LEAD_TOKENS
 
   const isAboveWarningThreshold = tokenUsage >= warningThreshold
-  const isAboveErrorThreshold = tokenUsage >= errorThreshold
+  const isAboveErrorThreshold = tokenUsage >= threshold
 
   const isAboveAutoCompactThreshold =
     isAutoCompactEnabled() && tokenUsage >= autoCompactThreshold
