@@ -199,6 +199,20 @@ export function getAssistantMessageContentLength(
 }
 
 /**
+ * True when a usage-bearing assistant record carries a final stop_reason.
+ * Records created at content_block_stop are written back with the real
+ * stop_reason and final usage when message_delta arrives (claude.ts);
+ * anything still null is a mid-stream partial.
+ */
+function isSettledAssistantRecord(message: Message): boolean {
+  if (message?.type !== 'assistant') return false
+  const stopReason = (
+    message.message as { stop_reason?: string | null } | undefined
+  )?.stop_reason
+  return stopReason != null
+}
+
+/**
  * Context size as it will actually be submitted on the next request.
  *
  * Unlike tokenCountWithEstimation(), this excludes the model's own streaming
@@ -210,6 +224,11 @@ export function getAssistantMessageContentLength(
  * part of a future request: input + cache tokens of the last response, plus
  * rough estimates of user/tool_result/attachment messages added since (the
  * assistant records carry nothing that would be re-sent unmodified).
+ *
+ * Mid-stream partials are skipped: some providers report different
+ * input/cache values in message_start (before prompt-cache accounting) than
+ * in the final message_delta, so anchoring on a partial reads high until the
+ * delta writes back the final usage — the observed footer sawtooth.
  */
 export function tokenCountForSubmittedContext(
   messages: readonly Message[],
@@ -218,7 +237,7 @@ export function tokenCountForSubmittedContext(
   while (i >= 0) {
     const message = messages[i]
     const usage = message ? getTokenUsage(message) : undefined
-    if (message && usage) {
+    if (message && usage && isSettledAssistantRecord(message)) {
       // Same sibling walk-back as tokenCountWithEstimation(): parallel tool
       // calls split one response across several records with interleaved
       // tool_results; anchor at the first sibling so all of them are counted.
