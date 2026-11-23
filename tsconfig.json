@@ -7,9 +7,8 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "types": ["bun"],
-    "baseUrl": ".",
     "paths": {
-      "src/*": ["src/*"]
+      "src/*": ["./src/*"]
     },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

@@ -4,8 +4,10 @@
  */
 
 // Type stubs
-export type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = Record<string, any>;
-export type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED = Record<string, any>;
+// The upstream marker types are `never` by design: values are only ever cast
+// to them to document that the developer verified the content is not PII.
+export type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = never;
+export type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED = never;
 
 // No-op analytics functions
 export function logEvent(...args: any[]): void {
@@ -28,16 +30,16 @@ export function isAnalyticsDisabled(): boolean {
   return true;
 }
 
-export function getFeatureValue_CACHED_MAY_BE_STALE(key: string, defaultValue?: any): any {
-  return defaultValue;
+export function getFeatureValue_CACHED_MAY_BE_STALE<T = any>(key: string, defaultValue?: T): T {
+  return defaultValue as T;
 }
 
-export function getFeatureValue_CACHED_WITH_REFRESH(key: string, defaultValue?: any): any {
-  return defaultValue;
+export function getFeatureValue_CACHED_WITH_REFRESH<T = any>(key: string, defaultValue?: T): T {
+  return defaultValue as T;
 }
 
-export function getFeatureValue_DEPRECATED(key: string, defaultValue?: any): any {
-  return defaultValue;
+export function getFeatureValue_DEPRECATED<T = any>(key: string, defaultValue?: T): T {
+  return defaultValue as T;
 }
 
 export function checkStatsigFeatureGate_CACHED_MAY_BE_STALE(gate: string): boolean {
@@ -68,16 +70,16 @@ export function sanitizeToolNameForAnalytics(toolName: string): string {
   return toolName;
 }
 
-export function getDynamicConfig_BLOCKS_ON_INIT(key: string, defaultValue?: any): Promise<any> {
-  return Promise.resolve(defaultValue);
+export function getDynamicConfig_BLOCKS_ON_INIT<T = any>(key: string, defaultValue?: T): Promise<T> {
+  return Promise.resolve(defaultValue as T);
 }
 
 export function onGrowthBookRefresh(callback: () => void): void {
   // No-op
 }
 
-export function getDynamicConfig_CACHED_MAY_BE_STALE(key: string, defaultValue?: any): any {
-  return defaultValue;
+export function getDynamicConfig_CACHED_MAY_BE_STALE<T = any>(key: string, defaultValue?: T): T {
+  return defaultValue as T;
 }
 
 export function logEventTo1P(...args: any[]): void {

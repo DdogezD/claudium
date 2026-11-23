@@ -197,5 +197,5 @@ function logPermissionDecision(
   })
 }
 
-export { isCodeEditingTool, buildCodeEditToolAttributes, logPermissionDecision }
+export { isCodeEditingTool, logPermissionDecision }
 export type { PermissionLogContext, PermissionDecisionArgs }
