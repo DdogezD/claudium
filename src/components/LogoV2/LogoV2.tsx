@@ -43,7 +43,6 @@ import { resolveAppliedEffort } from '../../utils/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 import { getAdvisorModelFromProfiles } from '../../utils/advisor.js';
-const LEFT_PANEL_MAX_WIDTH = 50;
 export function LogoV2() {
   const $ = _c(94);
   const activities = getRecentActivitySync();
@@ -165,17 +164,15 @@ export function LogoV2() {
     agentName: agentNameFromSettings
   } = getLogoDisplayData();
   const agentName = agent ?? agentNameFromSettings;
+  // Max width for the model / cwd info lines. Horizontal mode fills the
+  // right-hand panel (rightWidth minus its paddingLeft); compact mode fills
+  // the whole box (columns minus border/padding).
+  const infoLayout = calculateLayoutDimensions(columns, getLayoutMode(columns), 22);
+  const infoLineMaxWidth = getLayoutMode(columns) === 'horizontal' ? Math.max(infoLayout.rightWidth - 2, 30) : Math.max(columns - 4, 30);
   const mainEffort = resolveAppliedEffort(model, effortValue);
   const effortSuffix = mainEffort !== undefined ? `(${String(mainEffort)})` : '';
   const t9 = fullModelDisplayName + effortSuffix;
-  let t10;
-  if ($[13] !== t9) {
-    t10 = truncate(t9, LEFT_PANEL_MAX_WIDTH - 20);
-    $[13] = t9;
-    $[14] = t10;
-  } else {
-    t10 = $[14];
-  }
+  const t10 = truncate(t9, infoLineMaxWidth);
   const modelDisplayName = t10;
   if (!hasReleaseNotes && !showOnboarding && !isEnvTruthy(process.env.CLAUDE_CODE_FORCE_FULL_LOGO)) {
     let t11;
@@ -336,7 +333,7 @@ export function LogoV2() {
   const advisorEffort_0 = advisorModel ? resolveAppliedEffort(advisorModel, undefined, 'advisor') : undefined;
   const advisorEffortSuffix_0 = advisorEffort_0 !== undefined ? `(${String(advisorEffort_0)})` : '';
   const modelLine = advisorModel ? `${modelDisplayName} · ${advisorModel}${advisorEffortSuffix_0}` : modelDisplayName;
-  const cwdAvailableWidth_0 = agentName ? LEFT_PANEL_MAX_WIDTH - 1 - stringWidth(agentName) - 3 : LEFT_PANEL_MAX_WIDTH;
+  const cwdAvailableWidth_0 = agentName ? infoLineMaxWidth - 1 - stringWidth(agentName) - 3 : infoLineMaxWidth;
   const truncatedCwd_0 = truncatePath(cwd, Math.max(cwdAvailableWidth_0, 10));
   const cwdLine = agentName ? `@${agentName} · ${truncatedCwd_0}` : truncatedCwd_0;
   const optimalLeftWidth = 22;
