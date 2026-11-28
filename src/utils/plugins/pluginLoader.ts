@@ -2632,6 +2632,8 @@ async function finishLoadingPluginFromPath(
 
     // Process skills from marketplace entry
     if (entry.skills) {
+      // 市场条目就是清单；有显式列表时，不扫描共享仓库的默认 skills/ 目录。
+      delete plugin.skillsPath
       logForDebugging(
         `Processing ${Array.isArray(entry.skills) ? entry.skills.length : 1} skill paths for plugin ${entry.name}`,
       )
