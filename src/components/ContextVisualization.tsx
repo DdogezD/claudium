@@ -405,7 +405,14 @@ function _temp24(skill, i_8) {
   return <Box key={i_8}><Text>└ {skill.name}: </Text><Text dimColor={true}>{formatTokens(skill.tokens)} tokens</Text></Box>;
 }
 function _temp23(file, i_7) {
-  return <Box key={i_7}><Text>└ {getDisplayPath(file.path)}: </Text><Text dimColor={true}>{formatTokens(file.tokens)} tokens</Text></Box>;
+  return (
+    <Box key={i_7}>
+      <Text wrap="truncate-middle">└ {getDisplayPath(file.path)}</Text>
+      <Box flexShrink={0}>
+        <Text>: <Text dimColor={true}>{formatTokens(file.tokens)} tokens</Text></Text>
+      </Box>
+    </Box>
+  );
 }
 function _temp22(t0) {
   const [sourceDisplay, sourceAgents] = t0;
