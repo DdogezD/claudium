@@ -86,7 +86,7 @@ export function writeTextContent(
   content: string,
   encoding: BufferEncoding,
   endings: LineEndingType,
-): void {
+): string {
   let toWrite = content
   if (endings === 'CRLF') {
     // Normalize any existing CRLF to LF first so a new_string that already
@@ -95,6 +95,7 @@ export function writeTextContent(
   }
 
   writeFileSyncAndFlush_DEPRECATED(filePath, toWrite, { encoding })
+  return toWrite
 }
 
 export function detectFileEncoding(filePath: string): BufferEncoding {

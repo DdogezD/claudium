@@ -2,6 +2,8 @@ import { logForDebugging } from '../../utils/debug.js'
 import { isBareMode } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
+import { withTimeout } from '../../utils/sleep.js'
+import { clearDeliveredDiagnosticsForFile } from './LSPDiagnosticRegistry.js'
 import {
   createLSPServerManager,
   type LSPServerManager,
@@ -66,6 +68,29 @@ export function getLspServerManager(): LSPServerManager | undefined {
     return undefined
   }
   return lspManagerInstance
+}
+
+const FILE_SYNC_TIMEOUT_MS = 2_000
+
+export async function syncLspFileAfterWrite(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  const manager = getLspServerManager()
+  if (!manager) return
+
+  const deadline = performance.now() + FILE_SYNC_TIMEOUT_MS
+  clearDeliveredDiagnosticsForFile(filePath)
+  try {
+    await withTimeout(
+      manager.syncFileAfterWrite(filePath, content, deadline),
+      FILE_SYNC_TIMEOUT_MS,
+      'LSP file synchronization timed out',
+    )
+  } catch (error) {
+    logForDebugging(`LSP: Failed to sync file for ${filePath}: ${errorMessage(error)}`)
+    logError(error)
+  }
 }
 
 /**

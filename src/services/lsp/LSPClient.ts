@@ -1,23 +1,23 @@
 import { type ChildProcess, spawn } from 'child_process'
+import { once } from 'events'
 import {
   createMessageConnection,
   type MessageConnection,
   StreamMessageReader,
   StreamMessageWriter,
   Trace,
-} from 'vscode-jsonrpc/node.js'
+} from 'vscode-jsonrpc/node'
 import type {
   InitializeParams,
   InitializeResult,
   ServerCapabilities,
 } from 'vscode-languageserver-protocol'
 import { logForDebugging } from '../../utils/debug.js'
-import { errorMessage } from '../../utils/errors.js'
+import { errorMessage, toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
+import { withTimeout } from '../../utils/sleep.js'
 import { subprocessEnv } from '../../utils/subprocessEnv.js'
-/**
- * LSP client interface.
- */
+
 export type LSPClient = {
   readonly capabilities: ServerCapabilities | undefined
   readonly isInitialized: boolean
@@ -32,10 +32,12 @@ export type LSPClient = {
   initialize: (params: InitializeParams) => Promise<InitializeResult>
   sendRequest: <TResult>(method: string, params: unknown) => Promise<TResult>
   sendNotification: (method: string, params: unknown) => Promise<void>
-  /** Like sendNotification but re-throws on transport failure so the
-   *  caller can react (e.g. refuse to remove a local record when
-   *  didClose was never delivered to the server). */
-  sendNotificationStrict: (method: string, params: unknown) => Promise<void>
+  /** Like sendNotification but re-throws on transport failure. */
+  sendNotificationStrict: (
+    method: string,
+    params: unknown,
+    deadline?: number,
+  ) => Promise<void>
   onNotification: (method: string, handler: (params: unknown) => void) => void
   onRequest: <TParams, TResult>(
     method: string,
@@ -44,420 +46,242 @@ export type LSPClient = {
   stop: () => Promise<void>
 }
 
-/**
- * Create an LSP client wrapper using vscode-jsonrpc.
- * Manages communication with an LSP server process via stdio.
- *
- * @param onCrash - Called when the server process exits unexpectedly (non-zero
- *   exit code during operation, not during intentional stop). Allows the owner
- *   to propagate crash state so the server can be restarted on next use.
- */
+type Transport = {
+  child: ChildProcess
+  rpc?: MessageConnection
+  capabilities?: ServerCapabilities
+  stopping: boolean
+}
+
+const NOTIFICATION_TIMEOUT_MS = 2_000
+const SHUTDOWN_TIMEOUT_MS = 2_000
+
 export function createLSPClient(
   serverName: string,
   onCrash?: (error: Error) => void,
 ): LSPClient {
-  // State variables in closure
-  let process: ChildProcess | undefined
-  let connection: MessageConnection | undefined
-  let capabilities: ServerCapabilities | undefined
-  let isInitialized = false
-  let startFailed = false
-  let startError: Error | undefined
-  let isStopping = false // Track intentional shutdown to avoid spurious error logging
-  // Queue handlers registered before connection ready (lazy initialization support)
-  const pendingHandlers: Array<{
-    method: string
-    handler: (params: unknown) => void
-  }> = []
-  const pendingRequestHandlers: Array<{
-    method: string
-    handler: (params: unknown) => unknown | Promise<unknown>
-  }> = []
+  let active: Transport | undefined
+  const notificationHandlers = new Map<string, (params: unknown) => void>()
+  const requestHandlers = new Map<
+    string,
+    (params: unknown) => unknown | Promise<unknown>
+  >()
 
-  function checkStartFailed(): void {
-    if (startFailed) {
-      throw startError || new Error(`LSP server ${serverName} failed to start`)
+  function release(transport: Transport): void {
+    if (active !== transport) return
+    active = undefined
+    // JSON-RPC 的 close 事件本身不会拒绝挂起的请求。
+    try {
+      transport.rpc?.dispose()
+    } catch (error) {
+      logForDebugging(`LSP server ${serverName} disposal failed: ${errorMessage(error)}`)
+    }
+    const { child } = transport
+    try {
+      if (
+        child.pid !== undefined &&
+        child.exitCode === null &&
+        child.signalCode === null
+      ) {
+        child.kill()
+      }
+    } catch (error) {
+      logForDebugging(`LSP server ${serverName} could not be stopped: ${errorMessage(error)}`)
+    }
+  }
+
+  function disconnected(transport: Transport, error: Error): void {
+    if (active !== transport) return
+    release(transport)
+    if (!transport.stopping) {
+      logError(error)
+      onCrash?.(error)
+    }
+  }
+
+  function getConnection() {
+    const transport = active
+    const rpc = transport?.rpc
+    if (!transport || !rpc || transport.stopping) {
+      throw new Error(`LSP server ${serverName} is not connected`)
+    }
+    return { transport, rpc }
+  }
+
+  async function sendNotificationStrict(
+    method: string,
+    params: unknown,
+    deadline = performance.now() + NOTIFICATION_TIMEOUT_MS,
+  ): Promise<void> {
+    const remaining = deadline - performance.now()
+    const timeoutMessage = `LSP notification ${method} timed out for ${serverName}`
+    if (remaining <= 0) throw new Error(timeoutMessage)
+    const { transport, rpc } = getConnection()
+    try {
+      await withTimeout(
+        rpc.sendNotification(method, params),
+        remaining,
+        timeoutMessage,
+      )
+      if (active !== transport) {
+        throw new Error(`LSP server ${serverName} disconnected during ${method}`)
+      }
+    } catch (error) {
+      // 写入一旦开始，失败后无法判断服务端已应用哪些文档状态。
+      disconnected(transport, toError(error))
+      throw error
     }
   }
 
   return {
-    get capabilities(): ServerCapabilities | undefined {
-      return capabilities
+    get capabilities() {
+      return active?.capabilities
+    },
+    get isInitialized() {
+      return active?.capabilities !== undefined && !active.stopping
     },
 
-    get isInitialized(): boolean {
-      return isInitialized
-    },
-
-    async start(
-      command: string,
-      args: string[],
-      options?: {
-        env?: Record<string, string>
-        cwd?: string
-      },
-    ): Promise<void> {
+    async start(command, args, options) {
+      if (active) throw new Error(`LSP server ${serverName} is already started`)
+      const child = spawn(command, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: subprocessEnv(options?.env),
+        cwd: options?.cwd,
+        windowsHide: true,
+      })
+      const transport: Transport = { child, stopping: false }
+      active = transport
+      child.stdin?.on('error', error => {
+        if (active === transport && !transport.stopping) {
+          logForDebugging(`LSP server ${serverName} stdin error: ${error.message}`)
+        }
+      })
       try {
-        // 1. Spawn LSP server process
-        const lspEnv = subprocessEnv(options?.env)
-        process = spawn(command, args, {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: lspEnv,
-          cwd: options?.cwd,
-          // Prevent visible console window on Windows (no-op on other platforms)
-          windowsHide: true,
-        })
-
-        if (!process.stdout || !process.stdin) {
-          throw new Error('LSP server process stdio not available')
+        await once(child, 'spawn')
+        if (active !== transport) {
+          throw new Error(`LSP server ${serverName} stopped during startup`)
         }
-
-        // 1.5. Wait for process to successfully spawn before using streams
-        // This is CRITICAL: spawn() returns immediately, but the 'error' event
-        // (e.g., ENOENT for command not found) fires asynchronously.
-        // If we use the streams before confirming spawn succeeded, we get
-        // unhandled promise rejections when writes fail on invalid streams.
-        const spawnedProcess = process // Capture for closure
-        await new Promise<void>((resolve, reject) => {
-          const onSpawn = (): void => {
-            cleanup()
-            resolve()
-          }
-          const onError = (error: Error): void => {
-            cleanup()
-            reject(error)
-          }
-          const cleanup = (): void => {
-            spawnedProcess.removeListener('spawn', onSpawn)
-            spawnedProcess.removeListener('error', onError)
-          }
-          spawnedProcess.once('spawn', onSpawn)
-          spawnedProcess.once('error', onError)
-        })
-
-        // Capture stderr for server diagnostics and errors
-        if (process.stderr) {
-          process.stderr.on('data', (data: Buffer) => {
-            const output = data.toString().trim()
-            if (output) {
-              logForDebugging(`[LSP SERVER ${serverName}] ${output}`)
-            }
-          })
+        if (
+          !child.stdout ||
+          !child.stdin ||
+          child.stdout.destroyed ||
+          child.stdin.destroyed ||
+          child.exitCode !== null ||
+          child.signalCode !== null
+        ) {
+          throw new Error(`LSP server ${serverName} stdio is not available`)
         }
-
-        // Handle process errors (after successful spawn, e.g., crash during operation)
-        process.on('error', error => {
-          if (!isStopping) {
-            startFailed = true
-            startError = error
-            logError(
-              new Error(
-                `LSP server ${serverName} failed to start: ${error.message}`,
-              ),
-            )
+        child.stderr?.on('data', (data: Buffer) => {
+          const output = data.toString().trim()
+          if (active === transport && output) {
+            logForDebugging(`[LSP SERVER ${serverName}] ${output}`)
           }
         })
-
-        process.on('exit', (code, _signal) => {
-          if (code !== 0 && code !== null && !isStopping) {
-            isInitialized = false
-            startFailed = false
-            startError = undefined
-            const crashError = new Error(
-              `LSP server ${serverName} crashed with exit code ${code}`,
-            )
-            logError(crashError)
-            onCrash?.(crashError)
-          }
-        })
-
-        // Handle stdin stream errors to prevent unhandled promise rejections
-        // when the LSP server process exits before we finish writing
-        process.stdin.on('error', (error: Error) => {
-          if (!isStopping) {
-            logForDebugging(
-              `LSP server ${serverName} stdin error: ${error.message}`,
-            )
-          }
-          // Error is logged but not thrown - the connection error handler will catch this
-        })
-
-        // 2. Create JSON-RPC connection
-        const reader = new StreamMessageReader(process.stdout)
-        const writer = new StreamMessageWriter(process.stdin)
-        connection = createMessageConnection(reader, writer)
-
-        // 2.5. Register error/close handlers BEFORE listen() to catch all errors
-        // This prevents unhandled promise rejections when the server crashes or closes unexpectedly
-        connection.onError(([error, _message, _code]) => {
-          // Only log if not intentionally stopping (avoid spurious errors during shutdown)
-          if (!isStopping) {
-            startFailed = true
-            startError = error
-            logError(
-              new Error(
-                `LSP server ${serverName} connection error: ${error.message}`,
-              ),
-            )
-          }
-        })
-
-        connection.onClose(() => {
-          // Only treat as error if not intentionally stopping
-          if (!isStopping) {
-            isInitialized = false
-            // Don't set startFailed here - the connection may close after graceful shutdown
-            logForDebugging(`LSP server ${serverName} connection closed`)
-          }
-        })
-
-        // 3. Start listening for messages
-        connection.listen()
-
-        // 3.5. Enable protocol tracing for debugging
-        // Note: trace() sends a $/setTrace notification which can fail if the server
-        // process has already exited. We catch and log the error rather than letting
-        // it become an unhandled promise rejection.
-        connection
-          .trace(Trace.Verbose, {
-            log: (message: string) => {
-              logForDebugging(`[LSP PROTOCOL ${serverName}] ${message}`)
-            },
-          })
-          .catch((error: Error) => {
-            logForDebugging(
-              `Failed to enable tracing for ${serverName}: ${error.message}`,
-            )
-          })
-
-        // 4. Apply any queued notification handlers
-        for (const { method, handler } of pendingHandlers) {
-          connection.onNotification(method, handler)
-          logForDebugging(
-            `Applied queued notification handler for ${serverName}.${method}`,
+        child.on('error', error => disconnected(transport, error))
+        child.once('exit', (code, signal) => {
+          disconnected(
+            transport,
+            new Error(`LSP server ${serverName} exited (${signal ?? code})`),
           )
+        })
+        const rpc = createMessageConnection(
+          new StreamMessageReader(child.stdout),
+          new StreamMessageWriter(child.stdin),
+        )
+        transport.rpc = rpc
+        rpc.onError(([error]) => disconnected(transport, error))
+        rpc.onClose(() => {
+          disconnected(transport, new Error(`LSP server ${serverName} connection closed`))
+        })
+        for (const [method, handler] of notificationHandlers) {
+          rpc.onNotification(method, handler)
         }
-        pendingHandlers.length = 0 // Clear the queue
-
-        // 5. Apply any queued request handlers
-        for (const { method, handler } of pendingRequestHandlers) {
-          connection.onRequest(method, handler)
-          logForDebugging(
-            `Applied queued request handler for ${serverName}.${method}`,
-          )
+        for (const [method, handler] of requestHandlers) {
+          rpc.onRequest(method, handler)
         }
-        pendingRequestHandlers.length = 0 // Clear the queue
-
+        rpc.listen()
+        await rpc.trace(Trace.Verbose, {
+          log: (message: string) => {
+            logForDebugging(`[LSP PROTOCOL ${serverName}] ${message}`)
+          },
+        })
         logForDebugging(`LSP client started for ${serverName}`)
       } catch (error) {
-        const err = error as Error
-        logError(
-          new Error(`LSP server ${serverName} failed to start: ${err.message}`),
-        )
+        release(transport)
         throw error
       }
     },
 
-    async initialize(params: InitializeParams): Promise<InitializeResult> {
-      if (!connection) {
-        throw new Error('LSP client not started')
+    async initialize(params) {
+      const { transport, rpc } = getConnection()
+      const result = await rpc.sendRequest<InitializeResult>('initialize', params)
+      if (active !== transport || transport.stopping) {
+        throw new Error(`LSP server ${serverName} disconnected during initialization`)
       }
+      const encoding = result.capabilities.positionEncoding
+      if (encoding !== undefined && encoding !== 'utf-16') {
+        throw new Error(`LSP server ${serverName} selected unsupported position encoding ${encoding}`)
+      }
+      await rpc.sendNotification('initialized', {})
+      if (active !== transport || transport.stopping) {
+        throw new Error(`LSP server ${serverName} disconnected during initialization`)
+      }
+      transport.capabilities = result.capabilities
+      logForDebugging(`LSP server ${serverName} initialized`)
+      return result
+    },
 
-      checkStartFailed()
-
+    async sendRequest<TResult>(method: string, params: unknown): Promise<TResult> {
+      const { transport, rpc } = getConnection()
+      if (!transport.capabilities) throw new Error('LSP server not initialized')
       try {
-        const result: InitializeResult = await connection.sendRequest(
-          'initialize',
-          params,
-        )
-
-        capabilities = result.capabilities
-
-        // Send initialized notification
-        await connection.sendNotification('initialized', {})
-
-        isInitialized = true
-        logForDebugging(`LSP server ${serverName} initialized`)
-
-        return result
+        return await rpc.sendRequest<TResult>(method, params)
       } catch (error) {
-        const err = error as Error
-        logError(
-          new Error(
-            `LSP server ${serverName} initialize failed: ${err.message}`,
-          ),
-        )
+        logError(new Error(`LSP server ${serverName} request ${method} failed: ${errorMessage(error)}`))
         throw error
       }
     },
 
-    async sendRequest<TResult>(
-      method: string,
-      params: unknown,
-    ): Promise<TResult> {
-      if (!connection) {
-        throw new Error('LSP client not started')
-      }
-
-      checkStartFailed()
-
-      if (!isInitialized) {
-        throw new Error('LSP server not initialized')
-      }
-
+    async sendNotification(method, params) {
       try {
-        return await connection.sendRequest(method, params)
+        await sendNotificationStrict(method, params)
       } catch (error) {
-        const err = error as Error
-        logError(
-          new Error(
-            `LSP server ${serverName} request ${method} failed: ${err.message}`,
-          ),
-        )
-        throw error
+        logForDebugging(`LSP notification ${method} failed for ${serverName}: ${errorMessage(error)}`)
       }
     },
+    sendNotificationStrict,
 
-    async sendNotification(method: string, params: unknown): Promise<void> {
-      if (!connection) {
-        throw new Error('LSP client not started')
-      }
-
-      checkStartFailed()
-
-      try {
-        await connection.sendNotification(method, params)
-      } catch (error) {
-        const err = error as Error
-        logError(
-          new Error(
-            `LSP server ${serverName} notification ${method} failed: ${err.message}`,
-          ),
-        )
-        // Don't re-throw for notifications - they're fire-and-forget
-        logForDebugging(`Notification ${method} failed but continuing`)
-      }
-    },
-
-    /** Strict variant that re-throws on failure.  Used by the document
-     *  lifecycle manager so it can react when didClose/didOpen cannot
-     *  be delivered. */
-    async sendNotificationStrict(method: string, params: unknown): Promise<void> {
-      if (!connection) {
-        throw new Error('LSP client not started')
-      }
-      checkStartFailed()
-      await connection.sendNotification(method, params)
-    },
-
-    onNotification(method: string, handler: (params: unknown) => void): void {
-      if (!connection) {
-        // Queue handler for application when connection is ready (lazy initialization)
-        pendingHandlers.push({ method, handler })
-        logForDebugging(
-          `Queued notification handler for ${serverName}.${method} (connection not ready)`,
-        )
-        return
-      }
-
-      checkStartFailed()
-
-      connection.onNotification(method, handler)
+    onNotification(method, handler) {
+      notificationHandlers.set(method, handler)
+      active?.rpc?.onNotification(method, handler)
     },
 
     onRequest<TParams, TResult>(
       method: string,
       handler: (params: TParams) => TResult | Promise<TResult>,
     ): void {
-      if (!connection) {
-        // Queue handler for application when connection is ready (lazy initialization)
-        pendingRequestHandlers.push({
-          method,
-          handler: handler as (params: unknown) => unknown | Promise<unknown>,
-        })
-        logForDebugging(
-          `Queued request handler for ${serverName}.${method} (connection not ready)`,
-        )
-        return
-      }
-
-      checkStartFailed()
-
-      connection.onRequest(method, handler)
+      const handleRequest = handler as (params: unknown) => unknown
+      requestHandlers.set(method, handleRequest)
+      active?.rpc?.onRequest(method, handleRequest)
     },
 
-    async stop(): Promise<void> {
-      let shutdownError: Error | undefined
-
-      // Mark as stopping to prevent error handlers from logging spurious errors
-      isStopping = true
-
+    async stop() {
+      const transport = active
+      if (!transport || transport.stopping) return
+      transport.stopping = true
+      const { rpc, child, capabilities } = transport
       try {
-        if (connection) {
-          // Try to send shutdown request and exit notification
-          await connection.sendRequest('shutdown', {})
-          await connection.sendNotification('exit', {})
+        if (rpc && capabilities) {
+          const shutdown = async () => {
+            await rpc.sendRequest('shutdown')
+            await Promise.all([once(child, 'exit'), rpc.sendNotification('exit')])
+          }
+          await withTimeout(shutdown(), SHUTDOWN_TIMEOUT_MS, `LSP server ${serverName} shutdown timed out`)
         }
-      } catch (error) {
-        const err = error as Error
-        logError(
-          new Error(`LSP server ${serverName} stop failed: ${err.message}`),
-        )
-        shutdownError = err
-        // Continue to cleanup despite shutdown failure
       } finally {
-        // Always cleanup resources, even if shutdown/exit failed
-        if (connection) {
-          try {
-            connection.dispose()
-          } catch (error) {
-            // Log but don't throw - disposal errors are less critical
-            logForDebugging(
-              `Connection disposal failed for ${serverName}: ${errorMessage(error)}`,
-            )
-          }
-          connection = undefined
-        }
-
-        if (process) {
-          // Remove event listeners to prevent memory leaks
-          process.removeAllListeners('error')
-          process.removeAllListeners('exit')
-          if (process.stdin) {
-            process.stdin.removeAllListeners('error')
-          }
-          if (process.stderr) {
-            process.stderr.removeAllListeners('data')
-          }
-
-          try {
-            process.kill()
-          } catch (error) {
-            // Process might already be dead, which is fine
-            logForDebugging(
-              `Process kill failed for ${serverName} (may already be dead): ${errorMessage(error)}`,
-            )
-          }
-          process = undefined
-        }
-
-        isInitialized = false
-        capabilities = undefined
-        isStopping = false // Reset for potential restart
-        // Don't reset startFailed - preserve error state for diagnostics
-        // startFailed and startError remain as-is
-        if (shutdownError) {
-          startFailed = true
-          startError = shutdownError
-        }
-
-        logForDebugging(`LSP client stopped for ${serverName}`)
+        release(transport)
       }
-
-      // Re-throw shutdown error after cleanup is complete
-      if (shutdownError) {
-        throw shutdownError
-      }
+      logForDebugging(`LSP client stopped for ${serverName}`)
     },
   }
 }

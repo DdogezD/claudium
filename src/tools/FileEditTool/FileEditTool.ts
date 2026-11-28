@@ -2,8 +2,7 @@ import { dirname, isAbsolute, sep } from 'path'
 import { logEvent } from '../../services/analytics-stub.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
-import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
-import { getLspServerManager } from '../../services/lsp/manager.js'
+import { syncLspFileAfterWrite } from '../../services/lsp/manager.js'
 import {
   activateConditionalSkillsForPaths,
   addSkillDirectories,
@@ -12,7 +11,6 @@ import {
 import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
-import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
@@ -34,7 +32,6 @@ import {
 } from '../../utils/fileRead.js'
 import { formatFileSize } from '../../utils/format.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
-import { logError } from '../../utils/log.js'
 import { expandPath } from '../../utils/path.js'
 import {
   checkWritePermissionForTool,
@@ -478,24 +475,13 @@ export const FileEditTool = buildTool({
     })
 
     // 5. Write to disk
-    writeTextContent(absoluteFilePath, updatedFile, encoding, endings)
-
-    // Notify LSP servers about file modification (didChange) and save (didSave).
-    // Fire the LSP chain early so it overlaps with local bookkeeping below,
-    // then await before returning so the tool doesn't complete before LSP.
-    const lspManager = getLspServerManager()
-    const lspDone = lspManager
-      ? (clearDeliveredDiagnosticsForFile(`file://${absoluteFilePath}`),
-         lspManager
-           .changeFile(absoluteFilePath, updatedFile)
-           .then(() => lspManager.saveFile(absoluteFilePath))
-           .catch((err: Error) => {
-             logForDebugging(
-               `LSP: Failed to sync file for ${absoluteFilePath}: ${err.message}`,
-             )
-             logError(err)
-           }))
-      : undefined
+    const writtenContent = writeTextContent(
+      absoluteFilePath,
+      updatedFile,
+      encoding,
+      endings,
+    )
+    const lspDone = syncLspFileAfterWrite(absoluteFilePath, writtenContent)
 
     // Notify VSCode about the file change for diff view
     // notifyVscodeFileUpdated removed (VSCode SDK MCP integration stripped)

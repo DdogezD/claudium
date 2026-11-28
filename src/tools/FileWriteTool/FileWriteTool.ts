@@ -2,8 +2,7 @@ import { dirname, sep } from 'path'
 import { logEvent } from '../../services/analytics-stub.js'
 import { z } from 'zod/v4'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
-import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
-import { getLspServerManager } from '../../services/lsp/manager.js'
+import { syncLspFileAfterWrite } from '../../services/lsp/manager.js'
 import {
   activateConditionalSkillsForPaths,
   addSkillDirectories,
@@ -12,7 +11,6 @@ import {
 import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
-import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged, getPatchForDisplay } from '../../utils/diff.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
@@ -24,7 +22,6 @@ import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { logError } from '../../utils/log.js'
 import { expandPath } from '../../utils/path.js'
 import {
   checkWritePermissionForTool,
@@ -288,23 +285,8 @@ export const FileWriteTool = buildTool({
     // the old file's line endings (or sampled the repo via ripgrep for new
     // files), which silently corrupted e.g. bash scripts with \r on Linux when
     // overwriting a CRLF file or when binaries in cwd poisoned the repo sample.
-    writeTextContent(fullFilePath, content, enc, 'LF')
-
-    // Fire the LSP chain early so it overlaps with local bookkeeping,
-    // then await before either return path.
-    const lspManager = getLspServerManager()
-    const lspDone = lspManager
-      ? (clearDeliveredDiagnosticsForFile(`file://${fullFilePath}`),
-         lspManager
-           .changeFile(fullFilePath, content)
-           .then(() => lspManager.saveFile(fullFilePath))
-           .catch((err: Error) => {
-             logForDebugging(
-               `LSP: Failed to sync file for ${fullFilePath}: ${err.message}`,
-             )
-             logError(err)
-           }))
-      : undefined
+    const writtenContent = writeTextContent(fullFilePath, content, enc, 'LF')
+    const lspDone = syncLspFileAfterWrite(fullFilePath, writtenContent)
 
     // Notify VSCode about the file change for diff view
     // notifyVscodeFileUpdated removed (VSCode SDK MCP integration stripped)
