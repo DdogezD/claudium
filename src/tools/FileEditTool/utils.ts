@@ -99,15 +99,8 @@ export function findActualString(
 }
 
 /**
- * When old_string doesn't match anything in the file, extract a hint showing
- * the model what the file actually looks like near where the match was likely
- * intended. This helps the model self-diagnose whitespace, quote, or other
- * formatting mismatches.
- *
- * Strategy: take the first non-empty, non-trivial line of old_string, strip
- * its leading whitespace, and search for the "content" part in the file
- * (ignoring indentation). If found, return the surrounding lines so the model
- * can see the actual formatting.
+ * Suggest an exact retry for a unique indentation-only mismatch, or show
+ * nearby file context when no safe retry can be identified.
  */
 export function buildNotMatchedHint(
   fileContent: string,
@@ -115,16 +108,59 @@ export function buildNotMatchedHint(
 ): string {
   if (!oldString.trim() || !fileContent) return ''
 
-  // Extract first meaningful line of old_string (strip leading whitespace)
+  const fileLines = fileContent.split('\n')
   const lines = oldString.split('\n')
-  const searchLine = lines.find(l => l.trim().length > 0)
-  if (!searchLine) return ''
+  const endsWithNewline = oldString.endsWith('\n')
+  if (endsWithNewline) lines.pop()
 
-  // Strip leading/trailing whitespace to get the "content core"
-  const trimmedSearch = searchLine.trim()
+  const stripIndent = (line: string) => line.replace(/^[ \t]+/, '')
+  const unindented = lines.map(stripIndent)
+  const prefixLengths = new Uint32Array(unindented.length)
+  for (let i = 1, matched = 0; i < unindented.length; i++) {
+    while (matched > 0 && unindented[i] !== unindented[matched]) {
+      matched = prefixLengths[matched - 1]!
+    }
+    if (unindented[i] === unindented[matched]) matched++
+    prefixLengths[i] = matched
+  }
+
+  let uniqueStart = -1
+  const searchEnd = fileLines.length - Number(endsWithNewline)
+  for (let i = 0, matched = 0; i < searchEnd; i++) {
+    const line = stripIndent(fileLines[i]!)
+    while (matched > 0 && line !== unindented[matched]) {
+      matched = prefixLengths[matched - 1]!
+    }
+    if (line !== unindented[matched]) continue
+    if (++matched < unindented.length) continue
+    if (uniqueStart !== -1) {
+      uniqueStart = -1
+      break
+    }
+    uniqueStart = i - matched + 1
+    matched = prefixLengths[matched - 1]!
+  }
+
+  if (uniqueStart !== -1) {
+    const actualLines = fileLines.slice(uniqueStart, uniqueStart + lines.length)
+    const mismatch = actualLines.findIndex((line, i) => line !== lines[i])
+    const exact = actualLines.join('\n') + (endsWithNewline ? '\n' : '')
+    if (
+      mismatch !== -1 &&
+      fileContent.indexOf(exact, fileContent.indexOf(exact) + 1) === -1
+    ) {
+      const expected = actualLines[mismatch]!.match(/^[ \t]*/)![0]
+      const supplied = lines[mismatch]!.match(/^[ \t]*/)![0]
+      const detail =
+        expected.includes('\t') || supplied.includes('\t')
+          ? `expected leading whitespace ${JSON.stringify(expected)}, got ${JSON.stringify(supplied)}`
+          : `expected ${expected.length} leading ${expected.length === 1 ? 'space' : 'spaces'}, got ${supplied.length}`
+      return `\n\nIndentation mismatch at line ${uniqueStart + mismatch + 1}: ${detail}.\nCheck indentation in new_string before retrying.\nExact old_string for retry (JSON string):\n${JSON.stringify(exact)}`
+    }
+  }
 
   // Search file line-by-line for a line whose trimmed content matches
-  const fileLines = fileContent.split('\n')
+  const trimmedSearch = lines.find(line => line.trim())!.trim()
   let bestLineNum = -1
   for (let i = 0; i < fileLines.length; i++) {
     if (fileLines[i]!.trim() === trimmedSearch) {
