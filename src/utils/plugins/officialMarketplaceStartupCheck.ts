@@ -8,8 +8,6 @@
  * - Previous installation attempts
  */
 
-import { join } from 'path'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics-stub.js'
 import { logEvent } from '../../services/analytics-stub.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
@@ -20,15 +18,12 @@ import { checkGitAvailable, markGitUnavailable } from './gitAvailability.js'
 import { isSourceAllowedByPolicy } from './marketplaceHelpers.js'
 import {
   addMarketplaceSource,
-  getMarketplacesCacheDir,
   loadKnownMarketplacesConfig,
-  saveKnownMarketplacesConfig,
 } from './marketplaceManager.js'
 import {
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
-import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
 
 /**
  * Reason why the official marketplace was not installed
@@ -211,77 +206,6 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
         policy_blocked: true,
       })
       return { installed: false, skipped: true, reason: 'policy_blocked' }
-    }
-
-    // inc-5046: try GCS mirror first — doesn't need git, doesn't hit GitHub.
-    // Backend (anthropic#317037) publishes a marketplace zip to the same
-    // bucket as the native binary. If GCS succeeds, register the marketplace
-    // with source:'github' (still true — GCS is a mirror) and skip git
-    // entirely.
-    const cacheDir = getMarketplacesCacheDir()
-    const installLocation = join(cacheDir, OFFICIAL_MARKETPLACE_NAME)
-    const gcsSha = await fetchOfficialMarketplaceFromGcs(
-      installLocation,
-      cacheDir,
-    )
-    if (gcsSha !== null) {
-      const known = await loadKnownMarketplacesConfig()
-      known[OFFICIAL_MARKETPLACE_NAME] = {
-        source: OFFICIAL_MARKETPLACE_SOURCE,
-        installLocation,
-        lastUpdated: new Date().toISOString(),
-      }
-      await saveKnownMarketplacesConfig(known)
-
-      saveGlobalConfig(current => ({
-        ...current,
-        officialMarketplaceAutoInstallAttempted: true,
-        officialMarketplaceAutoInstalled: true,
-        officialMarketplaceAutoInstallFailReason: undefined,
-        officialMarketplaceAutoInstallRetryCount: undefined,
-        officialMarketplaceAutoInstallLastAttemptTime: undefined,
-        officialMarketplaceAutoInstallNextRetryTime: undefined,
-      }))
-      logEvent('tengu_official_marketplace_auto_install', {
-        installed: true,
-        skipped: false,
-        via_gcs: true,
-      })
-      return { installed: true, skipped: false }
-    }
-    // GCS failed (404 until backend writes, or network). Fall through to git
-    // ONLY if the kill-switch allows — same gate as refreshMarketplace().
-    if (
-      !getFeatureValue_CACHED_MAY_BE_STALE(
-        'tengu_plugin_official_mkt_git_fallback',
-        true,
-      )
-    ) {
-      logForDebugging(
-        'Official marketplace GCS failed; git fallback disabled by flag — skipping install',
-      )
-      // Same retry-with-backoff metadata as git_unavailable below — transient
-      // GCS failures should retry with exponential backoff, not give up.
-      const retryCount =
-        (config.officialMarketplaceAutoInstallRetryCount || 0) + 1
-      const now = Date.now()
-      const nextRetryTime = now + calculateNextRetryDelay(retryCount)
-      saveGlobalConfig(current => ({
-        ...current,
-        officialMarketplaceAutoInstallAttempted: true,
-        officialMarketplaceAutoInstalled: false,
-        officialMarketplaceAutoInstallFailReason: 'gcs_unavailable',
-        officialMarketplaceAutoInstallRetryCount: retryCount,
-        officialMarketplaceAutoInstallLastAttemptTime: now,
-        officialMarketplaceAutoInstallNextRetryTime: nextRetryTime,
-      }))
-      logEvent('tengu_official_marketplace_auto_install', {
-        installed: false,
-        skipped: true,
-        gcs_unavailable: true,
-        retry_count: retryCount,
-      })
-      return { installed: false, skipped: true, reason: 'gcs_unavailable' }
     }
 
     // Check git availability
