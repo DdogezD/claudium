@@ -1143,6 +1143,25 @@ export const PluginSourceSchema = lazySchema(() =>
         'Plugin located in a subdirectory of a larger repository (monorepo). ' +
           'Only the specified subdirectory is materialized; the rest of the repo is not downloaded.',
       ),
+    z
+      .object({
+        source: z.literal('command'),
+        command: z
+          .string()
+          .min(1)
+          .describe(
+            'Shell command whose trimmed stdout is the local path to the plugin root',
+          ),
+        mode: z
+          .enum(['copy', 'link'])
+          .optional()
+          .describe(
+            'How the resolved path is materialized into the plugin cache. Defaults to copy.',
+          ),
+      })
+      .describe(
+        'Plugin path resolved by running a shell command (e.g. "xcrun agent plugin path --plugin-format claude").',
+      ),
     // TODO (future work) gist
     // TODO (future work) single file?
   ]),

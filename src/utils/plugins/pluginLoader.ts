@@ -845,6 +845,40 @@ export async function installFromGitSubdir(
 }
 
 /**
+ * Install a plugin whose local path is produced by a shell command
+ * (e.g. `xcrun agent plugin path --plugin-format claude`).
+ *
+ * "link" materializes the cache entry as a symlink to the resolved path;
+ * the default "copy" behaves like installFromLocal.
+ */
+async function installFromCommand(
+  source: { command: string; mode?: 'copy' | 'link' },
+  targetPath: string,
+): Promise<void> {
+  const result = await execFileNoThrow(
+    process.platform === 'win32' ? 'cmd' : '/bin/sh',
+    process.platform === 'win32' ? ['/c', source.command] : ['-c', source.command],
+    { useCwd: false, timeout: 60_000 },
+  )
+  const resolvedPath = result.stdout.trim()
+  if (result.code !== 0 || !resolvedPath) {
+    throw new Error(
+      `Plugin source command failed (exit ${result.code}): ${source.command}${result.stderr ? ` — ${result.stderr.trim()}` : ''}`,
+    )
+  }
+  if (!(await pathExists(resolvedPath))) {
+    throw new Error(
+      `Plugin source command resolved a non-existent path: ${resolvedPath}`,
+    )
+  }
+  if (source.mode === 'link') {
+    await symlink(await realpath(resolvedPath), targetPath)
+    return
+  }
+  await copyDir(resolvedPath, targetPath)
+}
+
+/**
  * Install a plugin from a local path
  */
 async function installFromLocal(
@@ -952,6 +986,9 @@ export async function cachePlugin(
           break
         case 'pip':
           throw new Error('Python package plugins are not yet supported')
+        case 'command':
+          await installFromCommand(source, tempPath)
+          break
         default:
           throw new Error(`Unsupported plugin source type`)
       }
