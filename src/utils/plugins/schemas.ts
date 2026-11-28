@@ -23,6 +23,7 @@ export const ALLOWED_OFFICIAL_MARKETPLACE_NAMES = new Set([
   'anthropic-marketplace',
   'anthropic-plugins',
   'agent-skills',
+  'anthropic-agent-skills',
   'life-sciences',
   'knowledge-work-plugins',
 ])

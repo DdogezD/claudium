@@ -15,7 +15,7 @@ import { formatInstallCount, getInstallCounts } from '../../utils/plugins/instal
 import { isPluginGloballyInstalled, isPluginInstalled } from '../../utils/plugins/installedPluginsManager.js';
 import { createPluginId, formatFailureDetails, formatMarketplaceLoadingErrors, getMarketplaceSourceDisplay, loadMarketplacesWithGracefulDegradation } from '../../utils/plugins/marketplaceHelpers.js';
 import { getMarketplace, loadKnownMarketplacesConfig } from '../../utils/plugins/marketplaceManager.js';
-import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js';
+import { isOfficialMarketplaceName, OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js';
 import { installPluginFromMarketplace } from '../../utils/plugins/pluginInstallationHelpers.js';
 import { isPluginBlockedByPolicy } from '../../utils/plugins/pluginPolicy.js';
 import { plural } from '../../utils/stringUtils.js';
@@ -608,6 +608,7 @@ export function BrowseMarketplace({
             <Box>
               <Text color={selectedIndex === index ? 'suggestion' : undefined}>
                 {selectedIndex === index ? figures.pointer : ' '}{' '}
+                {isOfficialMarketplaceName(marketplace_3.name) && <Text color="claude">✻ </Text>}
                 {marketplace_3.name}
               </Text>
             </Box>

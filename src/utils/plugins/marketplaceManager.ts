@@ -48,10 +48,7 @@ import {
   jsonStringify,
   writeFileSync_DEPRECATED,
 } from '../slowOperations.js'
-import {
-  getAddDirEnabledPlugins,
-  getAddDirExtraMarketplaces,
-} from './addDirPluginSettings.js'
+import { getAddDirExtraMarketplaces } from './addDirPluginSettings.js'
 import { markPluginVersionOrphaned } from './cacheUtils.js'
 import { classifyFetchError, logPluginFetch } from './fetchTelemetry.js'
 import { removeAllPluginsForMarketplace } from './installedPluginsManager.js'
@@ -63,10 +60,7 @@ import {
   isSourceAllowedByPolicy,
   isSourceInBlocklist,
 } from './marketplaceHelpers.js'
-import {
-  OFFICIAL_MARKETPLACE_NAME,
-  OFFICIAL_MARKETPLACE_SOURCE,
-} from './officialMarketplace.js'
+import { DEFAULT_OFFICIAL_MARKETPLACES } from './officialMarketplace.js'
 import {
   deletePluginDataDir,
   getPluginSeedDirs,
@@ -154,34 +148,22 @@ export type DeclaredMarketplace = {
  * Get declared marketplace intent from merged settings and --add-dir sources.
  * This is what SHOULD exist — used by the reconciler to find gaps.
  *
- * The official marketplace is implicitly declared with `sourceIsFallback: true`
- * when any enabled plugin references it.
+ * The Anthropic-official default marketplaces are always implicitly declared
+ * with `sourceIsFallback: true` (clone-if-missing, never stomp).
  */
 export function getDeclaredMarketplaces(): Record<string, DeclaredMarketplace> {
   const implicit: Record<string, DeclaredMarketplace> = {}
 
-  // Only the official marketplace can be implicitly declared — it's the one
-  // built-in source we know. Other marketplaces have no default source to inject.
-  // Explicitly-disabled entries (value: false) don't count.
-  const enabledPlugins = {
-    ...getAddDirEnabledPlugins(),
-    ...(getInitialSettings().enabledPlugins ?? {}),
-  }
-  for (const [pluginId, value] of Object.entries(enabledPlugins)) {
-    if (
-      value &&
-      parsePluginIdentifier(pluginId).marketplace === OFFICIAL_MARKETPLACE_NAME
-    ) {
-      implicit[OFFICIAL_MARKETPLACE_NAME] = {
-        source: OFFICIAL_MARKETPLACE_SOURCE,
-        sourceIsFallback: true,
-      }
-      break
-    }
+  // Anthropic-official marketplaces are implicitly declared on every
+  // startup — this is Claudium's default "bundled" marketplace set.
+  // sourceIsFallback: an existing materialization under any source is left
+  // alone. Explicit settings entries still override (lowest precedence).
+  for (const { name, source } of DEFAULT_OFFICIAL_MARKETPLACES) {
+    implicit[name] = { source, sourceIsFallback: true }
   }
 
   // Lowest precedence: implicit < --add-dir < merged settings.
-  // An explicit extraKnownMarketplaces entry for claude-plugins-official
+  // An explicit extraKnownMarketplaces entry for an official marketplace
   // in --add-dir or settings wins.
   return {
     ...implicit,
