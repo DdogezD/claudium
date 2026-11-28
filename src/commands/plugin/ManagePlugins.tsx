@@ -1112,7 +1112,7 @@ export function ManagePlugins({
       const pluginIdNow = `${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`;
       const settingsAfter = getSettings_DEPRECATED();
       const enabledAfter = settingsAfter?.enabledPlugins?.[pluginIdNow] !== false;
-      if (enabledAfter) {
+      if (operation !== 'uninstall' && enabledAfter) {
         setIsProcessing(false);
         setViewState({
           type: 'plugin-options'
