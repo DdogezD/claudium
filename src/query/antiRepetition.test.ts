@@ -71,6 +71,31 @@ async function drain(generator: ReturnType<typeof query>) {
   }
 }
 
+test('cancelling while waiting for the auto-compaction notice skips the model request', async () => {
+  let requests = 0
+  const { params, controller, deps } = setup(async function* () {
+    requests++
+    yield createAssistantMessage({ content: 'Unexpected request.' })
+  })
+  const waiting = Promise.withResolvers<void>()
+  params.querySource = 'repl_main_thread'
+  params.onBeforeAutoCompact = () => new Promise<void>(resolve => {
+    controller.signal.addEventListener('abort', () => resolve(), { once: true })
+    waiting.resolve()
+  })
+  deps.autocompact = async (_messages, _context, _cacheSafe, _source, _tracking, _freed, beforeCompact) => {
+    await beforeCompact?.()
+    return { wasCompacted: false }
+  }
+
+  const result = drain(query(params))
+  await waiting.promise
+  expect(requests).toBe(0)
+  controller.abort('user-cancel')
+  expect((await result).terminal.reason).toBe('aborted_streaming')
+  expect(requests).toBe(0)
+})
+
 describe('AntiRep in the existing Query Loop', () => {
   test('closes the bad stream and continues with only valid history and a meta correction', async () => {
     const requests: any[] = []

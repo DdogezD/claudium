@@ -503,7 +503,7 @@ export async function autoCompactIfNeeded(
   querySource?: QuerySource,
   tracking?: AutoCompactTrackingState,
   snipTokensFreed?: number,
-  onStateChange?: (active: boolean) => void,
+  onBeforeAutoCompact?: () => Promise<void>,
 ): Promise<{
   wasCompacted: boolean
   compactionResult?: CompactionResult
@@ -549,85 +549,75 @@ export async function autoCompactIfNeeded(
   }
 
   const signal = toolUseContext.abortController.signal
-  let reportProgress = signal.aborted ? undefined : onStateChange
-  const endProgress = () => {
-    const report = reportProgress
-    reportProgress = undefined
-    report?.(false)
+  if (onBeforeAutoCompact) {
+    if (signal.aborted) return { wasCompacted: false }
+    await onBeforeAutoCompact()
+    if (signal.aborted || !isAutoCompactEnabled()) return { wasCompacted: false }
   }
 
+  // EXPERIMENT: Try session memory compaction first
+  const sessionMemoryResult = await trySessionMemoryCompaction(
+    messages,
+    toolUseContext.agentId,
+    recompactionInfo.autoCompactThreshold,
+  )
+  if (sessionMemoryResult) {
+    // Reset lastSummarizedMessageId since session memory compaction prunes messages
+    // and the old message UUID will no longer exist after the REPL replaces messages
+    setLastSummarizedMessageId(undefined)
+    runPostCompactCleanup(querySource)
+    // Reset cache read baseline so the post-compact drop isn't flagged as a
+    // break. compactConversation does this internally; SM-compact doesn't.
+    // BQ 2026-03-01: missing this made 20% of tengu_prompt_cache_break events
+    // false positives (systemPromptChanged=true, timeSinceLastAssistantMsg=-1).
+    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+      notifyCompaction(querySource ?? 'compact', toolUseContext.agentId)
+    }
+    markPostCompaction()
+    return {
+      wasCompacted: true,
+      compactionResult: sessionMemoryResult,
+    }
+  }
+
+  if (onBeforeAutoCompact && signal.aborted) return { wasCompacted: false }
   try {
-    if (reportProgress) {
-      signal.addEventListener('abort', endProgress, { once: true })
-      reportProgress(true)
-    }
-
-    // EXPERIMENT: Try session memory compaction first
-    const sessionMemoryResult = await trySessionMemoryCompaction(
+    const compactionResult = await compactConversation(
       messages,
-      toolUseContext.agentId,
-      recompactionInfo.autoCompactThreshold,
+      toolUseContext,
+      cacheSafeParams,
+      true, // Suppress user questions for autocompact
+      undefined, // No custom instructions for autocompact
+      true, // isAutoCompact
+      recompactionInfo,
     )
-    if (sessionMemoryResult) {
-      // Reset lastSummarizedMessageId since session memory compaction prunes messages
-      // and the old message UUID will no longer exist after the REPL replaces messages
-      setLastSummarizedMessageId(undefined)
-      runPostCompactCleanup(querySource)
-      // Reset cache read baseline so the post-compact drop isn't flagged as a
-      // break. compactConversation does this internally; SM-compact doesn't.
-      // BQ 2026-03-01: missing this made 20% of tengu_prompt_cache_break events
-      // false positives (systemPromptChanged=true, timeSinceLastAssistantMsg=-1).
-      if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-        notifyCompaction(querySource ?? 'compact', toolUseContext.agentId)
-      }
-      markPostCompaction()
-      return {
-        wasCompacted: true,
-        compactionResult: sessionMemoryResult,
-      }
-    }
 
-    try {
-      const compactionResult = await compactConversation(
-        messages,
-        toolUseContext,
-        cacheSafeParams,
-        true, // Suppress user questions for autocompact
-        undefined, // No custom instructions for autocompact
-        true, // isAutoCompact
-        recompactionInfo,
+    // Reset lastSummarizedMessageId since legacy compaction replaces all messages
+    // and the old message UUID will no longer exist in the new messages array
+    setLastSummarizedMessageId(undefined)
+    runPostCompactCleanup(querySource)
+
+    return {
+      wasCompacted: true,
+      compactionResult,
+      // Reset failure count on success
+      consecutiveFailures: 0,
+    }
+  } catch (error) {
+    if (!hasExactErrorMessage(error, ERROR_MESSAGE_USER_ABORT)) {
+      logError(error)
+    }
+    // Increment consecutive failure count for circuit breaker.
+    // The caller threads this through autoCompactTracking so the
+    // next query loop iteration can skip futile retry attempts.
+    const prevFailures = tracking?.consecutiveFailures ?? 0
+    const nextFailures = prevFailures + 1
+    if (nextFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES) {
+      logForDebugging(
+        `autocompact: circuit breaker tripped after ${nextFailures} consecutive failures — skipping future attempts this session`,
+        { level: 'warn' },
       )
-
-      // Reset lastSummarizedMessageId since legacy compaction replaces all messages
-      // and the old message UUID will no longer exist in the new messages array
-      setLastSummarizedMessageId(undefined)
-      runPostCompactCleanup(querySource)
-
-      return {
-        wasCompacted: true,
-        compactionResult,
-        // Reset failure count on success
-        consecutiveFailures: 0,
-      }
-    } catch (error) {
-      if (!hasExactErrorMessage(error, ERROR_MESSAGE_USER_ABORT)) {
-        logError(error)
-      }
-      // Increment consecutive failure count for circuit breaker.
-      // The caller threads this through autoCompactTracking so the
-      // next query loop iteration can skip futile retry attempts.
-      const prevFailures = tracking?.consecutiveFailures ?? 0
-      const nextFailures = prevFailures + 1
-      if (nextFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES) {
-        logForDebugging(
-          `autocompact: circuit breaker tripped after ${nextFailures} consecutive failures — skipping future attempts this session`,
-          { level: 'warn' },
-        )
-      }
-      return { wasCompacted: false, consecutiveFailures: nextFailures }
     }
-  } finally {
-    signal.removeEventListener('abort', endProgress)
-    endProgress()
+    return { wasCompacted: false, consecutiveFailures: nextFailures }
   }
 }

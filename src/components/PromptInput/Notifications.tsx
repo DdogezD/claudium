@@ -1,10 +1,11 @@
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import * as React from 'react';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Notification, useNotifications } from 'src/context/notifications.js';
 import { logEvent } from '../../services/analytics-stub.js';
-import { useAppState } from 'src/state/AppState.js';
+import { type AppState, useAppState } from 'src/state/AppState.js';
+import type { DOMElement } from '../../ink/dom.js';
 import { useVoiceState } from '../../context/voice.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import { useIdeConnectionStatus } from '../../hooks/useIdeConnectionStatus.js';
@@ -40,6 +41,7 @@ const VoiceIndicator: typeof import('./VoiceIndicator.js').VoiceIndicator = feat
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 export const FOOTER_TEMPORARY_STATUS_TIMEOUT = 5000;
+const AUTO_COMPACT_NOTICE = '(Auto-compaction will occur soon)';
 type Props = {
   apiKeyStatus: VerificationStatus;
   autoUpdaterResult: AutoUpdaterResult | null;
@@ -89,8 +91,9 @@ export function Notifications(t0) {
   }
   const tokenUsage = t3;
   const mainLoopModel = useMainLoopModel();
-  const isAutoCompacting = useAppState(s => s.autoCompactQueryGeneration !== undefined);
-  const isShowingCompactMessage = isAutoCompacting && isAutoCompactEnabled();
+  const pendingAutoCompact = useAppState(s => s.autoCompactNotice);
+  const autoCompactNotice = pendingAutoCompact && isAutoCompactEnabled() ? pendingAutoCompact : undefined;
+  const isShowingCompactMessage = autoCompactNotice !== undefined;
   const {
     status: ideStatus
   } = useIdeConnectionStatus(mcpClients);
@@ -175,14 +178,14 @@ export function Notifications(t0) {
   const t11 = isNarrow ? "flex-start" : "flex-end";
   const t12 = isInOverageMode ?? false;
   let t13;
-  if ($[15] !== apiKeyStatus || $[16] !== autoUpdaterResult || $[17] !== debug || $[18] !== ideSelection || $[19] !== isAutoUpdating || $[20] !== isShowingCompactMessage || $[21] !== mainLoopModel || $[22] !== mcpClients || $[23] !== notifications || $[24] !== onAutoUpdaterResult || $[25] !== onChangeIsUpdating || $[26] !== shouldShowAutoUpdater || $[27] !== t12 || $[28] !== tokenUsage || $[29] !== verbose || $[30] !== messages) {
-    t13 = <NotificationContent ideSelection={ideSelection} mcpClients={mcpClients} notifications={notifications} isInOverageMode={t12} isTeamOrEnterprise={isTeamOrEnterprise} apiKeyStatus={apiKeyStatus} debug={debug} verbose={verbose} messages={messages} tokenUsage={tokenUsage} mainLoopModel={mainLoopModel} shouldShowAutoUpdater={shouldShowAutoUpdater} autoUpdaterResult={autoUpdaterResult} isAutoUpdating={isAutoUpdating} isShowingCompactMessage={isShowingCompactMessage} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} />;
+  if ($[15] !== apiKeyStatus || $[16] !== autoUpdaterResult || $[17] !== debug || $[18] !== ideSelection || $[19] !== isAutoUpdating || $[20] !== autoCompactNotice || $[21] !== mainLoopModel || $[22] !== mcpClients || $[23] !== notifications || $[24] !== onAutoUpdaterResult || $[25] !== onChangeIsUpdating || $[26] !== shouldShowAutoUpdater || $[27] !== t12 || $[28] !== tokenUsage || $[29] !== verbose || $[30] !== messages) {
+    t13 = <NotificationContent ideSelection={ideSelection} mcpClients={mcpClients} notifications={notifications} isInOverageMode={t12} isTeamOrEnterprise={isTeamOrEnterprise} apiKeyStatus={apiKeyStatus} debug={debug} verbose={verbose} messages={messages} tokenUsage={tokenUsage} mainLoopModel={mainLoopModel} shouldShowAutoUpdater={shouldShowAutoUpdater} autoUpdaterResult={autoUpdaterResult} isAutoUpdating={isAutoUpdating} autoCompactNotice={autoCompactNotice} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} />;
     $[15] = apiKeyStatus;
     $[16] = autoUpdaterResult;
     $[17] = debug;
     $[18] = ideSelection;
     $[19] = isAutoUpdating;
-    $[20] = isShowingCompactMessage;
+    $[20] = autoCompactNotice;
     $[21] = mainLoopModel;
     $[22] = mcpClients;
     $[23] = notifications;
@@ -229,7 +232,7 @@ function NotificationContent({
   shouldShowAutoUpdater,
   autoUpdaterResult,
   isAutoUpdating,
-  isShowingCompactMessage,
+  autoCompactNotice,
   onAutoUpdaterResult,
   onChangeIsUpdating
 }: {
@@ -250,7 +253,7 @@ function NotificationContent({
   shouldShowAutoUpdater: boolean;
   autoUpdaterResult: AutoUpdaterResult | null;
   isAutoUpdating: boolean;
-  isShowingCompactMessage: boolean;
+  autoCompactNotice: AppState['autoCompactNotice'];
   onAutoUpdaterResult: (result: AutoUpdaterResult) => void;
   onChangeIsUpdating: (isUpdating: boolean) => void;
 }): ReactNode {
@@ -294,7 +297,14 @@ function NotificationContent({
     };
   }
   const displayUsage = lastStable.current.usage;
+  const isShowingCompactMessage = autoCompactNotice !== undefined;
   const contextSize = displayUsage > 0 || isShowingCompactMessage ? `${formatTokenCount(displayUsage)}/${displayWindow}` : displayWindow;
+  const observeNoticePaint = useCallback((node: DOMElement | null) => {
+    if (!node || !autoCompactNotice) return;
+    let root = node;
+    while (root.parentNode) root = root.parentNode;
+    return root.observeTextPaint?.(node, AUTO_COMPACT_NOTICE, autoCompactNotice.onPainted);
+  }, [autoCompactNotice]);
 
   // When voice is actively recording or processing, replace all
   // notifications with just the voice indicator.
@@ -344,10 +354,10 @@ function NotificationContent({
             </Box> : null}
       <MemoryUsageIndicator />
       <SandboxPromptFooterHint />
-      <Box>
+      <Box ref={observeNoticePaint}>
           <Text wrap="truncate">
             <Text dimColor>{contextSize}</Text>
-            {isShowingCompactMessage ? <Text color="error">(Auto-compaction will occur soon)</Text> : displayUsage > 0 ? <Text dimColor>{`(${lastStable.current.pct}% available)`}</Text> : null}
+            {isShowingCompactMessage ? <Text color="error">{AUTO_COMPACT_NOTICE}</Text> : displayUsage > 0 ? <Text dimColor>{`(${lastStable.current.pct}% available)`}</Text> : null}
             <Text dimColor>{` · ${effortValue ?? 'auto'}`}</Text>
           </Text>
         </Box>

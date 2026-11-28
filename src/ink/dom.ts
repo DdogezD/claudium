@@ -38,6 +38,7 @@ export type DOMElement = {
   onComputeLayout?: () => void
   onRender?: () => void
   onImmediateRender?: () => void
+  observeTextPaint?: (node: DOMElement, text: string, onPainted: () => void) => (() => void) | undefined
   // Used to skip empty renders during React 19's effect double-invoke in test mode
   hasRenderedContent?: boolean
 

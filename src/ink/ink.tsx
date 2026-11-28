@@ -76,6 +76,12 @@ export type Options = {
 export default class Ink {
   private readonly log: LogUpdate;
   private readonly terminal: Terminal;
+  private readonly textPaintObservers = new Set<{
+    node: dom.DOMElement;
+    text: string;
+    onPainted: () => void;
+    writing: boolean;
+  }>();
   private scheduleRender: (() => void) & {
     cancel?: () => void;
   };
@@ -236,6 +242,7 @@ export default class Ink {
     this.renderer = createRenderer(this.rootNode, this.stylePool);
     this.rootNode.onRender = this.scheduleRender;
     this.rootNode.onImmediateRender = this.onRender;
+    this.rootNode.observeTextPaint = this.observeTextPaint;
     this.rootNode.onComputeLayout = () => {
       // Calculate layout during React's commit phase so useLayoutEffect hooks
       // have access to fresh layout data
@@ -417,6 +424,12 @@ export default class Ink {
     // without the pop we'd accumulate depth on each editor round-trip).
     this.options.stdout.write('\x1b[?1004h' + (supportsExtendedKeys() ? DISABLE_KITTY_KEYBOARD + ENABLE_KITTY_KEYBOARD + ENABLE_MODIFY_OTHER_KEYS : ''));
   }
+  private observeTextPaint = (node: dom.DOMElement, text: string, onPainted: () => void): (() => void) | undefined => {
+    if (!this.options.stdout.isTTY) return;
+    const observer = { node, text, onPainted, writing: false };
+    this.textPaintObservers.add(observer);
+    return () => { this.textPaintObservers.delete(observer); };
+  };
   onRender() {
     if (this.isUnmounted || this.isPaused) {
       return;
@@ -732,8 +745,36 @@ export default class Ink {
         this.displayCursor = null;
       }
     }
+    let onWritten: ((error?: Error | null) => void) | undefined;
+    if (hasDiff && this.textPaintObservers.size > 0) {
+      // Main-screen Ink leaves a cursor row below the rendered content.
+      const firstVisibleRow = this.altScreenActive ? 0 : Math.max(0, frame.screen.height + 1 - terminalRows);
+      const ready = [...this.textPaintObservers].filter(observer => {
+        if (observer.writing || observer.node.isHidden) return false;
+        const rect = nodeCache.get(observer.node);
+        if (!rect) return false;
+        const lastColumn = Math.min(frame.screen.width, Math.round(rect.x + rect.width));
+        const lastRow = Math.min(frame.screen.height, firstVisibleRow + terminalRows, Math.round(rect.y + rect.height));
+        for (let y = Math.max(firstVisibleRow, Math.round(rect.y)); y < lastRow; y++) {
+          let line = '';
+          for (let x = Math.max(0, Math.round(rect.x)); x < lastColumn; x++) {
+            line += cellAt(frame.screen, x, y)?.char ?? ' ';
+          }
+          if (line.includes(observer.text)) return true;
+        }
+        return false;
+      });
+      if (ready.length > 0) {
+        for (const observer of ready) observer.writing = true;
+        onWritten = error => {
+          for (const observer of ready) {
+            if (this.textPaintObservers.delete(observer) && !error) observer.onPainted();
+          }
+        };
+      }
+    }
     const tWrite = performance.now();
-    writeDiffToTerminal(this.terminal, optimized, this.altScreenActive && !SYNC_OUTPUT_SUPPORTED);
+    writeDiffToTerminal(this.terminal, optimized, this.altScreenActive && !SYNC_OUTPUT_SUPPORTED, onWritten);
     const writeMs = performance.now() - tWrite;
 
     // Update blit safety for the NEXT frame. The frame just rendered

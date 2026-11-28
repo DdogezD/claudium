@@ -39,10 +39,11 @@ afterEach(() => {
   }
 })
 
-function attempt({ outputTokens = 40_000, aborted = false, tracking }: {
+function attempt({ outputTokens = 40_000, aborted = false, tracking, beforeCompact = async () => {} }: {
   outputTokens?: number
   aborted?: boolean
   tracking?: AutoCompactTrackingState
+  beforeCompact?: () => Promise<void>
 } = {}) {
   const controller = new AbortController()
   if (aborted) controller.abort()
@@ -57,98 +58,94 @@ function attempt({ outputTokens = 40_000, aborted = false, tracking }: {
     options: { mainLoopModel: model },
     abortController: controller,
   } as ToolUseContext
-  const state = mock<(active: boolean) => void>()
+  const before = mock(beforeCompact)
   const promise = autoCompactIfNeeded(messages, context, {
     systemPrompt: asSystemPrompt([]),
     userContext: {},
     systemContext: {},
     toolUseContext: context,
     forkContextMessages: messages,
-  }, 'repl_main_thread', tracking, undefined, state)
-  return { controller, model, messages, promise, state }
+  }, 'repl_main_thread', tracking, undefined, before)
+  return { controller, model, messages, promise, before }
 }
 
-test('reports a real attempt even when the footer estimate is below the threshold', async () => {
-  const entered = Promise.withResolvers<void>()
-  const memory = Promise.withResolvers<compact.CompactionResult>()
-  spyOn(sessionMemory, 'trySessionMemoryCompaction').mockImplementation(() => {
-    entered.resolve()
-    return memory.promise
+function waitingAttempt() {
+  const waiting = Promise.withResolvers<void>()
+  const proceed = Promise.withResolvers<void>()
+  return {
+    ...attempt({ beforeCompact: () => {
+      waiting.resolve()
+      return proceed.promise
+    } }),
+    waiting: waiting.promise,
+    proceed: proceed.resolve,
+  }
+}
+
+for (const useSessionMemory of [true, false]) {
+  test(`waits for the notice before starting ${useSessionMemory ? 'session-memory' : 'summary'} compaction`, async () => {
+    const memory = spyOn(sessionMemory, 'trySessionMemoryCompaction').mockResolvedValue(useSessionMemory ? result : null)
+    const summary = spyOn(compact, 'compactConversation').mockResolvedValue(result)
+    const { model, messages, promise, before, waiting, proceed } = waitingAttempt()
+    expect(tokenCountForSubmittedContext(messages)).toBeLessThan(getAutoCompactThreshold(model))
+    await waiting
+    expect(memory).not.toHaveBeenCalled()
+    expect(summary).not.toHaveBeenCalled()
+    proceed()
+    expect((await promise).compactionResult).toBe(result)
+    expect(before).toHaveBeenCalledTimes(1)
+    expect(memory).toHaveBeenCalledTimes(1)
+    expect(summary).toHaveBeenCalledTimes(useSessionMemory ? 0 : 1)
   })
-  const summary = spyOn(compact, 'compactConversation').mockRejectedValue(new Error('Unexpected summary request'))
-  const { model, messages, promise, state } = attempt()
-  expect(tokenCountForSubmittedContext(messages)).toBeLessThan(getAutoCompactThreshold(model))
-  await entered.promise
-  expect(state.mock.calls).toEqual([[true]])
-  memory.resolve(result)
-  expect((await promise).compactionResult).toBe(result)
-  expect(state.mock.calls).toEqual([[true], [false]])
+}
+
+test('a late acknowledgement cannot start a cancelled attempt', async () => {
+  const memory = spyOn(sessionMemory, 'trySessionMemoryCompaction').mockResolvedValue(result)
+  const summary = spyOn(compact, 'compactConversation').mockResolvedValue(result)
+  const old = waitingAttempt()
+  await old.waiting
+  old.controller.abort('user-cancel')
+  const next = waitingAttempt()
+  await next.waiting
+
+  old.proceed()
+  expect(await old.promise).toEqual({ wasCompacted: false })
+  expect(memory).not.toHaveBeenCalled()
   expect(summary).not.toHaveBeenCalled()
+
+  next.proceed()
+  expect((await next.promise).compactionResult).toBe(result)
+  expect(memory).toHaveBeenCalledTimes(1)
 })
 
-test('stays active across fallback to summary and clears after a failure', async () => {
-  spyOn(sessionMemory, 'trySessionMemoryCompaction').mockResolvedValue(null)
-  const entered = Promise.withResolvers<void>()
-  const summary = Promise.withResolvers<compact.CompactionResult>()
-  spyOn(compact, 'compactConversation').mockImplementation(() => {
-    entered.resolve()
-    return summary.promise
-  })
-  const { promise, state } = attempt()
-  await entered.promise
-  expect(state.mock.calls).toEqual([[true]])
-  summary.reject(new Error(compact.ERROR_MESSAGE_USER_ABORT))
-  expect(await promise).toEqual({ wasCompacted: false, consecutiveFailures: 1 })
-  expect(state.mock.calls).toEqual([[true], [false]])
-})
-
-test('clears immediately on cancellation, without a late update during the next attempt', async () => {
-  const entered = Promise.withResolvers<void>()
-  const memory = Promise.withResolvers<compact.CompactionResult>()
-  const nextEntered = Promise.withResolvers<void>()
-  const nextMemory = Promise.withResolvers<compact.CompactionResult>()
-  spyOn(sessionMemory, 'trySessionMemoryCompaction')
-    .mockImplementationOnce(() => {
-      entered.resolve()
-      return memory.promise
-    })
-    .mockImplementationOnce(() => {
-      nextEntered.resolve()
-      return nextMemory.promise
-    })
-  const { controller, promise, state } = attempt()
-  await entered.promise
-  controller.abort()
-  expect(state.mock.calls).toEqual([[true], [false]])
-
-  const next = attempt()
-  await nextEntered.promise
-  memory.resolve(result)
-  await promise
-  expect(state.mock.calls).toEqual([[true], [false]])
-  expect(next.state.mock.calls).toEqual([[true]])
-  nextMemory.resolve(result)
-  await next.promise
-  expect(next.state.mock.calls).toEqual([[true], [false]])
+test('skips compaction if disabled while waiting for the notice', async () => {
+  const memory = spyOn(sessionMemory, 'trySessionMemoryCompaction').mockResolvedValue(result)
+  const { waiting, proceed, promise } = waitingAttempt()
+  await waiting
+  process.env.DISABLE_AUTO_COMPACT = '1'
+  proceed()
+  expect(await promise).toEqual({ wasCompacted: false })
+  expect(memory).not.toHaveBeenCalled()
 })
 
 test('does not report low usage, circuit-breaking, disabled, or already cancelled requests', async () => {
   const memory = spyOn(sessionMemory, 'trySessionMemoryCompaction').mockResolvedValue(result)
+  const summary = spyOn(compact, 'compactConversation').mockResolvedValue(result)
   const low = attempt({ outputTokens: 0 })
   const circuitBroken = attempt({ tracking: { compacted: false, turnCounter: 1, turnId: 'test', consecutiveFailures: 3 } })
   await Promise.all([low.promise, circuitBroken.promise])
-  expect(memory).not.toHaveBeenCalled()
-  expect(low.state).not.toHaveBeenCalled()
-  expect(circuitBroken.state).not.toHaveBeenCalled()
+  expect(low.before).not.toHaveBeenCalled()
+  expect(circuitBroken.before).not.toHaveBeenCalled()
 
   process.env.DISABLE_AUTO_COMPACT = '1'
   const disabled = attempt()
   await disabled.promise
-  expect(memory).not.toHaveBeenCalled()
-  expect(disabled.state).not.toHaveBeenCalled()
+  expect(disabled.before).not.toHaveBeenCalled()
 
   process.env.DISABLE_AUTO_COMPACT = ''
   const cancelled = attempt({ aborted: true })
   await cancelled.promise
-  expect(cancelled.state).not.toHaveBeenCalled()
+  expect(cancelled.before).not.toHaveBeenCalled()
+  expect(memory).not.toHaveBeenCalled()
+  expect(summary).not.toHaveBeenCalled()
 })

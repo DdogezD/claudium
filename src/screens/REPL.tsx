@@ -154,6 +154,7 @@ import type { MCPServerConnection } from '../services/mcp/types.js';
 import type { ScopedMcpServerConfig } from '../services/mcp/types.js';
 import { randomUUID, type UUID } from 'crypto';
 import { processSessionStartHooks } from '../utils/sessionStart.js';
+import { sleep } from '../utils/sleep.js';
 import { executeSessionEndHooks, getSessionEndHookTimeoutMs } from '../utils/hooks.js';
 import { type IDESelection, useIdeSelection } from '../hooks/useIdeSelection.js';
 import { getTools, assembleToolPool, getAllBaseTools } from '../tools.js';
@@ -276,6 +277,8 @@ import { createAttachmentMessage, getQueuedCommandAttachments } from '../utils/a
 // creating a new [] literal on every render in remote mode, which would
 // cause useEffect dependency changes and infinite re-render loops.
 const EMPTY_MCP_CLIENTS: MCPServerConnection[] = [];
+const AUTO_COMPACT_PAINT_TIMEOUT_MS = 400;
+const AUTO_COMPACT_NOTICE_MS = 750;
 
 // Stable stub for useAssistantHistory's non-KAIROS branch — avoids a new
 // function identity each render, which would break composedOnScroll's memo.
@@ -2040,7 +2043,11 @@ export function REPL({
     }
     const generation = queryGuard.generation;
     queryGuard.forceEnd();
-    setAppState(prev => prev.autoCompactQueryGeneration === generation ? { ...prev, autoCompactQueryGeneration: undefined } : prev);
+    const notice = store.getState().autoCompactNotice;
+    if (notice?.queryGeneration === generation) {
+      setAppState(prev => prev.autoCompactNotice === notice ? { ...prev, autoCompactNotice: undefined } : prev);
+      notice.cancel();
+    }
     skipIdleCheckRef.current = false;
 
     // Preserve partially-streamed text so the user can read what was
@@ -2660,12 +2667,28 @@ export function REPL({
       canUseTool,
       toolUseContext,
       querySource: getQuerySourceForREPL(),
-      onAutoCompactStateChange: active => {
-        if (active && (queryGuard.generation !== queryGeneration || abortController.signal.aborted)) return;
-        setAppState(prev => {
-          if (active) return { ...prev, autoCompactQueryGeneration: queryGeneration };
-          return prev.autoCompactQueryGeneration === queryGeneration ? { ...prev, autoCompactQueryGeneration: undefined } : prev;
-        });
+      onBeforeAutoCompact: async () => {
+        if (queryGuard.generation !== queryGeneration) abortController.abort('user-cancel');
+        const { signal } = abortController;
+        if (signal.aborted || !process.stdout.isTTY) return;
+
+        const painted = Promise.withResolvers<boolean>();
+        const notice = {
+          queryGeneration,
+          onPainted: () => painted.resolve(true),
+          cancel: () => abortController.abort('user-cancel')
+        };
+        const stopWaiting = () => painted.resolve(false);
+        const timer = setTimeout(stopWaiting, AUTO_COMPACT_PAINT_TIMEOUT_MS);
+        signal.addEventListener('abort', stopWaiting, { once: true });
+        try {
+          setAppState(prev => ({ ...prev, autoCompactNotice: notice }));
+          if (await painted.promise) await sleep(AUTO_COMPACT_NOTICE_MS, signal);
+        } finally {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', stopWaiting);
+          setAppState(prev => prev.autoCompactNotice === notice ? { ...prev, autoCompactNotice: undefined } : prev);
+        }
       }
     })) {
       onQueryEvent(event);

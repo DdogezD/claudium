@@ -191,6 +191,7 @@ export function writeDiffToTerminal(
   terminal: Terminal,
   diff: Diff,
   skipSyncMarkers = false,
+  onWritten?: (error?: Error | null) => void,
 ): void {
   // No output if there are no patches
   if (diff.length === 0) {
@@ -244,5 +245,5 @@ export function writeDiffToTerminal(
 
   // Add synchronized update end and flush buffer
   if (useSync) buffer += ESU
-  terminal.stdout.write(buffer)
+  terminal.stdout.write(buffer, onWritten)
 }
