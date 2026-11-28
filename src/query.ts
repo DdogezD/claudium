@@ -211,6 +211,7 @@ export type QueryParams = {
   // budget for the whole agentic turn; `remaining` is computed per iteration
   // from cumulative API usage. See configureTaskBudgetParams in claude.ts.
   taskBudget?: { total: number }
+  onAutoCompactStateChange?: (active: boolean) => void
   deps?: QueryDeps
 }
 
@@ -488,6 +489,7 @@ async function* queryLoop(
       querySource,
       tracking,
       snipTokensFreed,
+      params.onAutoCompactStateChange,
     )
     queryCheckpoint('query_autocompact_end')
 

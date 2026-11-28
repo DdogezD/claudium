@@ -2038,7 +2038,9 @@ export function REPL({
     if (feature('PROACTIVE') || feature('KAIROS')) {
       proactiveModule?.pauseProactive();
     }
+    const generation = queryGuard.generation;
     queryGuard.forceEnd();
+    setAppState(prev => prev.autoCompactQueryGeneration === generation ? { ...prev, autoCompactQueryGeneration: undefined } : prev);
     skipIdleCheckRef.current = false;
 
     // Preserve partially-streamed text so the user can read what was
@@ -2523,7 +2525,7 @@ export function REPL({
       });
     }, onStreamingText, () => setResponseLength(() => 0));
   }, [setMessages, setResponseLength, setStreamMode, setStreamingToolUses, setStreamingThinking, onStreamingText]);
-  const onQueryImpl = useCallback(async (messagesIncludingNewMessages: MessageType[], newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, effort?: EffortValue) => {
+  const onQueryImpl = useCallback(async (messagesIncludingNewMessages: MessageType[], newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, queryGeneration: number, effort?: EffortValue) => {
     // Prepare IDE integration for new prompt. Read mcpClients fresh from
     // store — useManageMCPConnections may have populated it since the
     // render that captured this closure (same pattern as computeTools).
@@ -2657,7 +2659,14 @@ export function REPL({
       systemContext,
       canUseTool,
       toolUseContext,
-      querySource: getQuerySourceForREPL()
+      querySource: getQuerySourceForREPL(),
+      onAutoCompactStateChange: active => {
+        if (active && (queryGuard.generation !== queryGeneration || abortController.signal.aborted)) return;
+        setAppState(prev => {
+          if (active) return { ...prev, autoCompactQueryGeneration: queryGeneration };
+          return prev.autoCompactQueryGeneration === queryGeneration ? { ...prev, autoCompactQueryGeneration: undefined } : prev;
+        });
+      }
     })) {
       onQueryEvent(event);
       if (event.type === 'stream_reset') {
@@ -2732,7 +2741,7 @@ export function REPL({
 
     // Signal that a query turn has completed successfully
     await onTurnComplete?.(messagesRef.current);
-  }, [initialMcpClients, resetLoadingState, getToolUseContext, toolPermissionContext, setAppState, customSystemPrompt, onTurnComplete, appendSystemPrompt, canUseTool, mainThreadAgentDefinition, onQueryEvent, sessionTitle, titleDisabled, haikuTitleTextRef, haikuTitleAttemptedRef, setHaikuTitle]);
+  }, [initialMcpClients, resetLoadingState, getToolUseContext, toolPermissionContext, setAppState, customSystemPrompt, onTurnComplete, appendSystemPrompt, canUseTool, mainThreadAgentDefinition, onQueryEvent, sessionTitle, titleDisabled, haikuTitleTextRef, haikuTitleAttemptedRef, setHaikuTitle, queryGuard]);
   const onQuery = useCallback(async (newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>, input?: string, effort?: EffortValue): Promise<void> => {
     // If this is a teammate, mark them as active when starting a turn
     if (isAgentSwarmsEnabled()) {
@@ -2796,7 +2805,7 @@ export function REPL({
           return;
         }
       }
-      await onQueryImpl(latestMessages, newMessages, abortController, shouldQuery, additionalAllowedTools, mainLoopModelParam, effort);
+      await onQueryImpl(latestMessages, newMessages, abortController, shouldQuery, additionalAllowedTools, mainLoopModelParam, thisGeneration, effort);
     } finally {
       // queryGuard.end() atomically checks generation and transitions
       // running→idle. Returns false if a newer query owns the guard

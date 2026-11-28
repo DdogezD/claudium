@@ -157,10 +157,7 @@ export type AutoCompactTrackingState = {
 }
 
 export const DEFAULT_AUTOCOMPACT_BUFFER_TOKENS = 13_000
-// How far below the compaction threshold the UI starts showing a yellow
-// warning. Warning and error are single-tier: error/red appears exactly at
-// the compaction threshold (where "Auto-compaction will occur soon" shows),
-// so the footer color and the notice can never disagree.
+// Lead time for usage warnings, not for the footer's live compaction notice.
 export const WARNING_LEAD_TOKENS = 20_000
 export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
 
@@ -351,21 +348,12 @@ export function calculateTokenWarningState(
     ? autoCompactThreshold
     : getEffectiveContextWindowSize(model, querySource, contextWindowOverride)
 
-  // percentLeft is measured against the compaction threshold (when
-  // auto-compact is on), so "X% available" always means "X% away from an
-  // automatic compaction" — the number the footer displays and the number
-  // that decides compaction are the same number.
+  // Measure the remaining percentage against the threshold, not the full window.
   const percentLeft = Math.max(
     0,
     Math.round(((threshold - tokenUsage) / threshold) * 100),
   )
 
-  // Single threshold, two tiers: yellow starts WARNING_LEAD_TOKENS before
-  // the threshold, red (error) starts exactly at it. When auto-compact is
-  // on, red and the compaction notice share the same condition, so they
-  // can never disagree. The old code had two equal 20K buffers, which made
-  // warning and error identical (yellow was unreachable) and fired red 20K
-  // before the threshold, contradicting the notice.
   const warningThreshold = threshold - WARNING_LEAD_TOKENS
 
   const isAboveWarningThreshold = tokenUsage >= warningThreshold
@@ -515,6 +503,7 @@ export async function autoCompactIfNeeded(
   querySource?: QuerySource,
   tracking?: AutoCompactTrackingState,
   snipTokensFreed?: number,
+  onStateChange?: (active: boolean) => void,
 ): Promise<{
   wasCompacted: boolean
   compactionResult?: CompactionResult
@@ -559,68 +548,86 @@ export async function autoCompactIfNeeded(
     querySource,
   }
 
-  // EXPERIMENT: Try session memory compaction first
-  const sessionMemoryResult = await trySessionMemoryCompaction(
-    messages,
-    toolUseContext.agentId,
-    recompactionInfo.autoCompactThreshold,
-  )
-  if (sessionMemoryResult) {
-    // Reset lastSummarizedMessageId since session memory compaction prunes messages
-    // and the old message UUID will no longer exist after the REPL replaces messages
-    setLastSummarizedMessageId(undefined)
-    runPostCompactCleanup(querySource)
-    // Reset cache read baseline so the post-compact drop isn't flagged as a
-    // break. compactConversation does this internally; SM-compact doesn't.
-    // BQ 2026-03-01: missing this made 20% of tengu_prompt_cache_break events
-    // false positives (systemPromptChanged=true, timeSinceLastAssistantMsg=-1).
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-      notifyCompaction(querySource ?? 'compact', toolUseContext.agentId)
-    }
-    markPostCompaction()
-    return {
-      wasCompacted: true,
-      compactionResult: sessionMemoryResult,
-    }
+  const signal = toolUseContext.abortController.signal
+  let reportProgress = signal.aborted ? undefined : onStateChange
+  const endProgress = () => {
+    const report = reportProgress
+    reportProgress = undefined
+    report?.(false)
   }
 
   try {
-    const compactionResult = await compactConversation(
+    if (reportProgress) {
+      signal.addEventListener('abort', endProgress, { once: true })
+      reportProgress(true)
+    }
+
+    // EXPERIMENT: Try session memory compaction first
+    const sessionMemoryResult = await trySessionMemoryCompaction(
       messages,
-      toolUseContext,
-      cacheSafeParams,
-      true, // Suppress user questions for autocompact
-      undefined, // No custom instructions for autocompact
-      true, // isAutoCompact
-      recompactionInfo,
+      toolUseContext.agentId,
+      recompactionInfo.autoCompactThreshold,
     )
-
-    // Reset lastSummarizedMessageId since legacy compaction replaces all messages
-    // and the old message UUID will no longer exist in the new messages array
-    setLastSummarizedMessageId(undefined)
-    runPostCompactCleanup(querySource)
-
-    return {
-      wasCompacted: true,
-      compactionResult,
-      // Reset failure count on success
-      consecutiveFailures: 0,
+    if (sessionMemoryResult) {
+      // Reset lastSummarizedMessageId since session memory compaction prunes messages
+      // and the old message UUID will no longer exist after the REPL replaces messages
+      setLastSummarizedMessageId(undefined)
+      runPostCompactCleanup(querySource)
+      // Reset cache read baseline so the post-compact drop isn't flagged as a
+      // break. compactConversation does this internally; SM-compact doesn't.
+      // BQ 2026-03-01: missing this made 20% of tengu_prompt_cache_break events
+      // false positives (systemPromptChanged=true, timeSinceLastAssistantMsg=-1).
+      if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+        notifyCompaction(querySource ?? 'compact', toolUseContext.agentId)
+      }
+      markPostCompaction()
+      return {
+        wasCompacted: true,
+        compactionResult: sessionMemoryResult,
+      }
     }
-  } catch (error) {
-    if (!hasExactErrorMessage(error, ERROR_MESSAGE_USER_ABORT)) {
-      logError(error)
-    }
-    // Increment consecutive failure count for circuit breaker.
-    // The caller threads this through autoCompactTracking so the
-    // next query loop iteration can skip futile retry attempts.
-    const prevFailures = tracking?.consecutiveFailures ?? 0
-    const nextFailures = prevFailures + 1
-    if (nextFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES) {
-      logForDebugging(
-        `autocompact: circuit breaker tripped after ${nextFailures} consecutive failures — skipping future attempts this session`,
-        { level: 'warn' },
+
+    try {
+      const compactionResult = await compactConversation(
+        messages,
+        toolUseContext,
+        cacheSafeParams,
+        true, // Suppress user questions for autocompact
+        undefined, // No custom instructions for autocompact
+        true, // isAutoCompact
+        recompactionInfo,
       )
+
+      // Reset lastSummarizedMessageId since legacy compaction replaces all messages
+      // and the old message UUID will no longer exist in the new messages array
+      setLastSummarizedMessageId(undefined)
+      runPostCompactCleanup(querySource)
+
+      return {
+        wasCompacted: true,
+        compactionResult,
+        // Reset failure count on success
+        consecutiveFailures: 0,
+      }
+    } catch (error) {
+      if (!hasExactErrorMessage(error, ERROR_MESSAGE_USER_ABORT)) {
+        logError(error)
+      }
+      // Increment consecutive failure count for circuit breaker.
+      // The caller threads this through autoCompactTracking so the
+      // next query loop iteration can skip futile retry attempts.
+      const prevFailures = tracking?.consecutiveFailures ?? 0
+      const nextFailures = prevFailures + 1
+      if (nextFailures >= MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES) {
+        logForDebugging(
+          `autocompact: circuit breaker tripped after ${nextFailures} consecutive failures — skipping future attempts this session`,
+          { level: 'warn' },
+        )
+      }
+      return { wasCompacted: false, consecutiveFailures: nextFailures }
     }
-    return { wasCompacted: false, consecutiveFailures: nextFailures }
+  } finally {
+    signal.removeEventListener('abort', endProgress)
+    endProgress()
   }
 }

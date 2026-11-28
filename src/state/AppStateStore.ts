@@ -62,6 +62,7 @@ export type AppState = DeepImmutable<{
   // Lives in AppState so pill components rendered outside PromptInput
   // (CompanionSprite in REPL.tsx) can read their own focused state.
   footerSelection: FooterItem | null
+  autoCompactQueryGeneration?: number
   toolPermissionContext: ToolPermissionContext
   spinnerTip?: string
   // Agent name from --agent CLI flag or settings (for logo display)

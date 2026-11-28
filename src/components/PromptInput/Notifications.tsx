@@ -89,16 +89,8 @@ export function Notifications(t0) {
   }
   const tokenUsage = t3;
   const mainLoopModel = useMainLoopModel();
-  let t4;
-  if ($[2] !== mainLoopModel || $[3] !== tokenUsage) {
-    t4 = calculateTokenWarningState(tokenUsage, mainLoopModel);
-    $[2] = mainLoopModel;
-    $[3] = tokenUsage;
-    $[4] = t4;
-  } else {
-    t4 = $[4];
-  }
-  const isShowingCompactMessage = t4.isAboveWarningThreshold;
+  const isAutoCompacting = useAppState(s => s.autoCompactQueryGeneration !== undefined);
+  const isShowingCompactMessage = isAutoCompacting && isAutoCompactEnabled();
   const {
     status: ideStatus
   } = useIdeConnectionStatus(mcpClients);
@@ -289,40 +281,20 @@ function NotificationContent({
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useAppState(s_1 => s_1.isBriefOnly) : false;
 
-  // Persistent effort + context display. The full context window (what the
-  // user configured) is shown as the denominator, but every derived state
-  // (percent, color, compaction notice) is unified below.
-  //
-  // tokenUsage can briefly read 0 (compact-boundary switches, empty message
-  // lists between API updates). A ref holds the last non-zero density so the
-  // footer text and its warning color don't blink between turns.
-  // All three display states come from calculateTokenWarningState against a
-  // single threshold (the auto-compaction point, or the effective window when
-  // auto-compact is off): percentLeft measures distance to that threshold,
-  // warning starts WARNING_LEAD_TOKENS early, and the red color plus the
-  // compaction notice fire together at the threshold itself. The footer no
-  // longer computes its own percentage against a different denominator.
   const effortValue = resolveAppliedEffort(mainLoopModel, undefined);
-  const displayWindow = getContextWindowForModel(mainLoopModel);
-  const autoCompactEnabled = isAutoCompactEnabled();
-  const warnState = calculateTokenWarningState(tokenUsage, mainLoopModel);
-  const footerColorRaw = warnState.isAboveErrorThreshold ? 'error' as const : warnState.isAboveWarningThreshold ? 'warning' as const : undefined;
-  const lastStable = useRef({ usage: 0, pct: 100, notice: false, color: undefined as 'error' | 'warning' | undefined });
+  const displayWindow = formatTokenCount(getContextWindowForModel(mainLoopModel));
+  // Keep the last nonzero usage across brief gaps at a compaction boundary.
+  const lastStable = useRef({ usage: 0, pct: 100 });
   if (messages.length === 0) {
-    lastStable.current = { usage: 0, pct: 100, notice: false, color: undefined };
+    lastStable.current = { usage: 0, pct: 100 };
   } else if (tokenUsage > 0) {
     lastStable.current = {
       usage: tokenUsage,
-      pct: warnState.percentLeft,
-      notice: autoCompactEnabled && warnState.isAboveErrorThreshold,
-      color: footerColorRaw,
+      pct: calculateTokenWarningState(tokenUsage, mainLoopModel).percentLeft,
     };
   }
-  const pctAvail = lastStable.current.pct;
-  const displayUsage = tokenUsage > 0 ? tokenUsage : lastStable.current.usage;
-  const footerColor = lastStable.current.color;
-  const showAutoCompactNotice = autoCompactEnabled && lastStable.current.notice;
-  const contextLine = showAutoCompactNotice ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(Auto-compaction will occur soon)` : tokenUsage > 0 || lastStable.current.usage > 0 ? `${formatTokenCount(displayUsage)}/${formatTokenCount(displayWindow)}(${pctAvail}% available)` : formatTokenCount(displayWindow);
+  const displayUsage = lastStable.current.usage;
+  const contextSize = displayUsage > 0 || isShowingCompactMessage ? `${formatTokenCount(displayUsage)}/${displayWindow}` : displayWindow;
 
   // When voice is actively recording or processing, replace all
   // notifications with just the voice indicator.
@@ -374,9 +346,8 @@ function NotificationContent({
       <SandboxPromptFooterHint />
       <Box>
           <Text wrap="truncate">
-            <Text dimColor={!footerColor} color={footerColor}>
-              {contextLine}
-            </Text>
+            <Text dimColor>{contextSize}</Text>
+            {isShowingCompactMessage ? <Text color="error">(Auto-compaction will occur soon)</Text> : displayUsage > 0 ? <Text dimColor>{`(${lastStable.current.pct}% available)`}</Text> : null}
             <Text dimColor>{` · ${effortValue ?? 'auto'}`}</Text>
           </Text>
         </Box>
